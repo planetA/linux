@@ -75,6 +75,7 @@ struct sockaddr_ib {
  */
 static inline bool ib_safe_file_access(struct file *filp)
 {
+	return !uaccess_kernel();
 	return filp->f_cred == current_cred() && !uaccess_kernel();
 }
 
