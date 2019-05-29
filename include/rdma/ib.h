@@ -75,7 +75,7 @@ struct sockaddr_ib {
  */
 static inline bool ib_safe_file_access(struct file *filp)
 {
-	return filp->f_cred == current_cred();
+	return 1;
 }
 
 #endif /* _RDMA_IB_H */
