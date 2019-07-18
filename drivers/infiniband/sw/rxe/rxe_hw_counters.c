@@ -41,7 +41,6 @@ static const char * const rxe_counter_name[] = {
 	[RXE_CNT_RCV_RNR]             =  "rcvd_rnr_err",
 	[RXE_CNT_SND_RNR]             =  "send_rnr_err",
 	[RXE_CNT_RCV_SEQ_ERR]         =  "rcvd_seq_err",
-	[RXE_CNT_COMPLETER_SCHED]     =  "ack_deferred",
 	[RXE_CNT_RETRY_EXCEEDED]      =  "retry_exceeded_err",
 	[RXE_CNT_RNR_RETRY_EXCEEDED]  =  "retry_rnr_exceeded_err",
 	[RXE_CNT_COMP_RETRY]          =  "completer_retry_err",
