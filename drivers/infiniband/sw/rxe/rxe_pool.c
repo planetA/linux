@@ -536,3 +536,21 @@ out:
 	read_unlock_irqrestore(&pool->pool_lock, flags);
 	return node ? elem : NULL;
 }
+
+static void rxe_dummy_release(struct kref *kref)
+{
+}
+
+void rxe_drop_ref(struct rxe_pool_entry *pelem)
+{
+	int res;
+	struct rxe_pool *pool = pelem->pool;
+	unsigned long flags;
+
+	write_lock_irqsave(&pool->pool_lock, flags);
+	res = kref_put(&pelem->ref_cnt, rxe_dummy_release);
+	write_unlock_irqrestore(&pool->pool_lock, flags);
+	if (res) {
+		rxe_elem_release(&pelem->ref_cnt);
+	}
+}
