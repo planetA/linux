@@ -437,7 +437,7 @@ int copy_data(
 
 		if (offset >= sge->length) {
 			if (mem) {
-				rxe_drop_ref(mem);
+				rxe_drop_ref(&mem->pelem);
 				mem = NULL;
 			}
 			sge++;
@@ -482,13 +482,13 @@ int copy_data(
 	dma->resid	= resid;
 
 	if (mem)
-		rxe_drop_ref(mem);
+		rxe_drop_ref(&mem->pelem);
 
 	return 0;
 
 err2:
 	if (mem)
-		rxe_drop_ref(mem);
+		rxe_drop_ref(&mem->pelem);
 err1:
 	return err;
 }
@@ -548,7 +548,7 @@ struct rxe_mem *lookup_mem(struct rxe_pd *pd, int access, u32 key,
 		     mr_pd(mem) != pd ||
 		     (access && !(access & mem->access)) ||
 		     mem->state != RXE_MEM_STATE_VALID)) {
-		rxe_drop_ref(mem);
+		rxe_drop_ref(&mem->pelem);
 		mem = NULL;
 	}
 

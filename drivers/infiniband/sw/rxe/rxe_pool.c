@@ -255,9 +255,8 @@ out:
 	return;
 }
 
-void rxe_add_key(void *arg, void *key)
+void rxe_add_key(struct rxe_pool_entry *elem, void *key)
 {
-	struct rxe_pool_entry *elem = arg;
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
@@ -267,9 +266,8 @@ void rxe_add_key(void *arg, void *key)
 	write_unlock_irqrestore(&pool->pool_lock, flags);
 }
 
-void rxe_drop_key(void *arg)
+void rxe_drop_key(struct rxe_pool_entry *elem)
 {
-	struct rxe_pool_entry *elem = arg;
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
@@ -278,9 +276,8 @@ void rxe_drop_key(void *arg)
 	write_unlock_irqrestore(&pool->pool_lock, flags);
 }
 
-void rxe_add_index(void *arg)
+void rxe_add_index(struct rxe_pool_entry *elem)
 {
-	struct rxe_pool_entry *elem = arg;
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
@@ -290,9 +287,8 @@ void rxe_add_index(void *arg)
 	write_unlock_irqrestore(&pool->pool_lock, flags);
 }
 
-void rxe_drop_index(void *arg)
+void rxe_drop_index(struct rxe_pool_entry *elem)
 {
-	struct rxe_pool_entry *elem = arg;
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 

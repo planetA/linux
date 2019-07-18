@@ -118,7 +118,7 @@ static void rxe_dealloc_ucontext(struct ib_ucontext *ibuc)
 {
 	struct rxe_ucontext *uc = to_ruc(ibuc);
 
-	rxe_drop_ref(uc);
+	rxe_drop_ref(&uc->pelem);
 }
 
 static int rxe_port_immutable(struct ib_device *dev, u8 port_num,
@@ -152,7 +152,7 @@ static int rxe_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 {
 	struct rxe_pd *pd = to_rpd(ibpd);
 
-	rxe_drop_ref(pd);
+	rxe_drop_ref(&pd->pelem);
 	return 0;
 }
 
@@ -205,7 +205,7 @@ static int rxe_destroy_ah(struct ib_ah *ibah, u32 flags)
 {
 	struct rxe_ah *ah = to_rah(ibah);
 
-	rxe_drop_ref(ah);
+	rxe_drop_ref(&ah->pelem);
 	return 0;
 }
 
@@ -279,7 +279,7 @@ static int rxe_create_srq(struct ib_srq *ibsrq, struct ib_srq_init_attr *init,
 	if (err)
 		goto err1;
 
-	rxe_add_ref(pd);
+	rxe_add_ref(&pd->pelem);
 	srq->pd = pd;
 
 	err = rxe_srq_from_init(rxe, srq, init, udata, uresp);
@@ -289,8 +289,8 @@ static int rxe_create_srq(struct ib_srq *ibsrq, struct ib_srq_init_attr *init,
 	return 0;
 
 err2:
-	rxe_drop_ref(pd);
-	rxe_drop_ref(srq);
+	rxe_drop_ref(&pd->pelem);
+	rxe_drop_ref(&srq->pelem);
 err1:
 	return err;
 }
@@ -347,8 +347,8 @@ static int rxe_destroy_srq(struct ib_srq *ibsrq, struct ib_udata *udata)
 	if (srq->rq.queue)
 		rxe_queue_cleanup(srq->rq.queue);
 
-	rxe_drop_ref(srq->pd);
-	rxe_drop_ref(srq);
+	rxe_drop_ref(&srq->pd->pelem);
+	rxe_drop_ref(&srq->pelem);
 	return 0;
 }
 
@@ -410,7 +410,7 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 		qp->is_user = 1;
 	}
 
-	rxe_add_index(qp);
+	rxe_add_index(&qp->pelem);
 
 	err = rxe_qp_from_init(rxe, qp, pd, init, uresp, ibpd, udata);
 	if (err)
@@ -419,9 +419,9 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 	return &qp->ibqp;
 
 err3:
-	rxe_drop_index(qp);
+	rxe_drop_index(&qp->pelem);
 err2:
-	rxe_drop_ref(qp);
+	rxe_drop_ref(&qp->pelem);
 err1:
 	return ERR_PTR(err);
 }
@@ -463,8 +463,8 @@ static int rxe_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
 	struct rxe_qp *qp = to_rqp(ibqp);
 
 	rxe_qp_destroy(qp);
-	rxe_drop_index(qp);
-	rxe_drop_ref(qp);
+	rxe_drop_index(&qp->pelem);
+	rxe_drop_ref(&qp->pelem);
 	return 0;
 }
 
@@ -785,7 +785,7 @@ static int rxe_destroy_cq(struct ib_cq *ibcq, struct ib_udata *udata)
 
 	rxe_cq_disable(cq);
 
-	rxe_drop_ref(cq);
+	rxe_drop_ref(&cq->pelem);
 	return 0;
 }
 
@@ -873,8 +873,8 @@ static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
-	rxe_add_index(mr);
-	rxe_add_ref(pd);
+	rxe_add_index(&mr->pelem);
+	rxe_add_ref(&pd->pelem);
 	rxe_mem_init_dma(pd, access, mr);
 
 	return &mr->ibmr;
@@ -897,9 +897,9 @@ static struct ib_mr *rxe_reg_user_mr(struct ib_pd *ibpd,
 		goto err2;
 	}
 
-	rxe_add_index(mr);
+	rxe_add_index(&mr->pelem);
 
-	rxe_add_ref(pd);
+	rxe_add_ref(&pd->pelem);
 
 	err = rxe_mem_init_user(pd, start, length, iova,
 				access, udata, mr);
@@ -909,9 +909,9 @@ static struct ib_mr *rxe_reg_user_mr(struct ib_pd *ibpd,
 	return &mr->ibmr;
 
 err3:
-	rxe_drop_ref(pd);
-	rxe_drop_index(mr);
-	rxe_drop_ref(mr);
+	rxe_drop_ref(&pd->pelem);
+	rxe_drop_index(&mr->pelem);
+	rxe_drop_ref(&mr->pelem);
 err2:
 	return ERR_PTR(err);
 }
@@ -921,9 +921,9 @@ static int rxe_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
 	struct rxe_mem *mr = to_rmr(ibmr);
 
 	mr->state = RXE_MEM_STATE_ZOMBIE;
-	rxe_drop_ref(mr_pd(mr));
-	rxe_drop_index(mr);
-	rxe_drop_ref(mr);
+	rxe_drop_ref(&mr_pd(mr)->pelem);
+	rxe_drop_index(&mr->pelem);
+	rxe_drop_ref(&mr->pelem);
 	return 0;
 }
 
@@ -944,9 +944,9 @@ static struct ib_mr *rxe_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 		goto err1;
 	}
 
-	rxe_add_index(mr);
+	rxe_add_index(&mr->pelem);
 
-	rxe_add_ref(pd);
+	rxe_add_ref(&pd->pelem);
 
 	err = rxe_mem_init_fast(pd, max_num_sg, mr);
 	if (err)
@@ -955,9 +955,9 @@ static struct ib_mr *rxe_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 	return &mr->ibmr;
 
 err2:
-	rxe_drop_ref(pd);
-	rxe_drop_index(mr);
-	rxe_drop_ref(mr);
+	rxe_drop_ref(&pd->pelem);
+	rxe_drop_index(&mr->pelem);
+	rxe_drop_ref(&mr->pelem);
 err1:
 	return ERR_PTR(err);
 }
@@ -1015,7 +1015,7 @@ static int rxe_attach_mcast(struct ib_qp *ibqp, union ib_gid *mgid, u16 mlid)
 
 	err = rxe_mcast_add_grp_elem(rxe, qp, grp);
 
-	rxe_drop_ref(grp);
+	rxe_drop_ref(&grp->pelem);
 	return err;
 }
 
