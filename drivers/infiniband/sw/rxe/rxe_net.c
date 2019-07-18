@@ -418,7 +418,7 @@ static void rxe_skb_tx_dtor(struct sk_buff *skb)
 		     skb_out < RXE_INFLIGHT_SKBS_PER_QP_LOW))
 		rxe_run_task(&qp->req.task);
 
-	rxe_drop_ref(qp);
+	rxe_drop_ref(&qp->pelem);
 }
 
 int rxe_send(struct rxe_pkt_info *pkt, struct sk_buff *skb)
@@ -428,7 +428,7 @@ int rxe_send(struct rxe_pkt_info *pkt, struct sk_buff *skb)
 	skb->destructor = rxe_skb_tx_dtor;
 	skb->sk = pkt->qp->sk->sk;
 
-	rxe_add_ref(pkt->qp);
+	rxe_add_ref(&pkt->qp->pelem);
 	atomic_inc(&pkt->qp->skb_out);
 
 	if (skb->protocol == htons(ETH_P_IP)) {
@@ -438,7 +438,7 @@ int rxe_send(struct rxe_pkt_info *pkt, struct sk_buff *skb)
 	} else {
 		pr_err("Unknown layer 3 protocol: %d\n", skb->protocol);
 		atomic_dec(&pkt->qp->skb_out);
-		rxe_drop_ref(pkt->qp);
+		rxe_drop_ref(&pkt->qp->pelem);
 		kfree_skb(skb);
 		return -EINVAL;
 	}

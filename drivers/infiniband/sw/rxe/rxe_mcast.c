@@ -59,7 +59,7 @@ int rxe_mcast_get_grp(struct rxe_dev *rxe, union ib_gid *mgid,
 	spin_lock_init(&grp->mcg_lock);
 	grp->rxe = rxe;
 
-	rxe_add_key(grp, mgid);
+	rxe_add_key(&grp->pelem, mgid);
 
 	err = rxe_mcast_add(rxe, mgid);
 	if (err)
@@ -70,7 +70,7 @@ done:
 	return 0;
 
 err2:
-	rxe_drop_ref(grp);
+	rxe_drop_ref(&grp->pelem);
 err1:
 	return err;
 }
@@ -103,7 +103,7 @@ int rxe_mcast_add_grp_elem(struct rxe_dev *rxe, struct rxe_qp *qp,
 	}
 
 	/* each qp holds a ref on the grp */
-	rxe_add_ref(grp);
+	rxe_add_ref(&grp->pelem);
 
 	grp->num_qp++;
 	elem->qp = qp;
@@ -140,16 +140,16 @@ int rxe_mcast_drop_grp_elem(struct rxe_dev *rxe, struct rxe_qp *qp,
 
 			spin_unlock_bh(&grp->mcg_lock);
 			spin_unlock_bh(&qp->grp_lock);
-			rxe_drop_ref(elem);
-			rxe_drop_ref(grp);	/* ref held by QP */
-			rxe_drop_ref(grp);	/* ref from get_key */
+			rxe_drop_ref(&elem->pelem);
+			rxe_drop_ref(&grp->pelem);	/* ref held by QP */
+			rxe_drop_ref(&grp->pelem);	/* ref from get_key */
 			return 0;
 		}
 	}
 
 	spin_unlock_bh(&grp->mcg_lock);
 	spin_unlock_bh(&qp->grp_lock);
-	rxe_drop_ref(grp);			/* ref from get_key */
+	rxe_drop_ref(&grp->pelem);			/* ref from get_key */
 err1:
 	return -EINVAL;
 }
@@ -175,8 +175,8 @@ void rxe_drop_all_mcast_groups(struct rxe_qp *qp)
 		list_del(&elem->qp_list);
 		grp->num_qp--;
 		spin_unlock_bh(&grp->mcg_lock);
-		rxe_drop_ref(grp);
-		rxe_drop_ref(elem);
+		rxe_drop_ref(&grp->pelem);
+		rxe_drop_ref(&elem->pelem);
 	}
 }
 
@@ -185,6 +185,6 @@ void rxe_mc_cleanup(struct rxe_pool_entry *arg)
 	struct rxe_mc_grp *grp = container_of(arg, typeof(*grp), pelem);
 	struct rxe_dev *rxe = grp->rxe;
 
-	rxe_drop_key(grp);
+	rxe_drop_key(&grp->pelem);
 	rxe_mcast_delete(rxe, &grp->mgid);
 }

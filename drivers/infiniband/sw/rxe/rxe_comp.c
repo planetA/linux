@@ -534,7 +534,7 @@ static void rxe_drain_resp_pkts(struct rxe_qp *qp, bool notify)
 	struct rxe_send_wqe *wqe;
 
 	while ((skb = skb_dequeue(&qp->resp_pkts))) {
-		rxe_drop_ref(qp);
+		rxe_drop_ref(&qp->pelem);
 		kfree_skb(skb);
 	}
 
@@ -557,7 +557,7 @@ int rxe_completer(void *arg)
 	struct rxe_pkt_info *pkt = NULL;
 	enum comp_state state;
 
-	rxe_add_ref(qp);
+	rxe_add_ref(&qp->pelem);
 
 	if (!qp->valid || qp->req.state == QP_STATE_ERROR ||
 	    qp->req.state == QP_STATE_RESET) {
@@ -646,7 +646,7 @@ int rxe_completer(void *arg)
 
 		case COMPST_DONE:
 			if (pkt) {
-				rxe_drop_ref(pkt->qp);
+				rxe_drop_ref(&pkt->qp->pelem);
 				kfree_skb(skb);
 				skb = NULL;
 			}
@@ -694,7 +694,7 @@ int rxe_completer(void *arg)
 			if (qp->comp.started_retry &&
 			    !qp->comp.timeout_retry) {
 				if (pkt) {
-					rxe_drop_ref(pkt->qp);
+					rxe_drop_ref(&pkt->qp->pelem);
 					kfree_skb(skb);
 					skb = NULL;
 				}
@@ -723,7 +723,7 @@ int rxe_completer(void *arg)
 				}
 
 				if (pkt) {
-					rxe_drop_ref(pkt->qp);
+					rxe_drop_ref(&pkt->qp->pelem);
 					kfree_skb(skb);
 					skb = NULL;
 				}
@@ -748,7 +748,7 @@ int rxe_completer(void *arg)
 				mod_timer(&qp->rnr_nak_timer,
 					  jiffies + rnrnak_jiffies(aeth_syn(pkt)
 						& ~AETH_TYPE_MASK));
-				rxe_drop_ref(pkt->qp);
+				rxe_drop_ref(&pkt->qp->pelem);
 				kfree_skb(skb);
 				skb = NULL;
 				goto exit;
@@ -766,7 +766,7 @@ int rxe_completer(void *arg)
 			rxe_qp_error(qp);
 
 			if (pkt) {
-				rxe_drop_ref(pkt->qp);
+				rxe_drop_ref(&pkt->qp->pelem);
 				kfree_skb(skb);
 				skb = NULL;
 			}
@@ -780,7 +780,7 @@ exit:
 	 * exit from the loop calling us
 	 */
 	WARN_ON_ONCE(skb);
-	rxe_drop_ref(qp);
+	rxe_drop_ref(&qp->pelem);
 	return -EAGAIN;
 
 done:
@@ -788,6 +788,6 @@ done:
 	 * us again to see if there is anything else to do
 	 */
 	WARN_ON_ONCE(skb);
-	rxe_drop_ref(qp);
+	rxe_drop_ref(&qp->pelem);
 	return 0;
 }

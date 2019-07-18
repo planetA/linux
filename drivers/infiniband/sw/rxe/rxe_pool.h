@@ -138,18 +138,18 @@ int rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_entry *elem);
 /* assign an index to an indexed object and insert object into
  *  pool's rb tree
  */
-void rxe_add_index(void *elem);
+void rxe_add_index(struct rxe_pool_entry *elem);
 
 /* drop an index and remove object from rb tree */
-void rxe_drop_index(void *elem);
+void rxe_drop_index(struct rxe_pool_entry *elem);
 
 /* assign a key to a keyed object and insert object into
  *  pool's rb tree
  */
-void rxe_add_key(void *elem, void *key);
+void rxe_add_key(struct rxe_pool_entry *elem, void *key);
 
 /* remove elem from rb tree */
-void rxe_drop_key(void *elem);
+void rxe_drop_key(struct rxe_pool_entry *elem);
 
 /* lookup an indexed object from index. takes a reference on object */
 void *rxe_pool_get_index(struct rxe_pool *pool, u32 index);
@@ -161,9 +161,13 @@ void *rxe_pool_get_key(struct rxe_pool *pool, void *key);
 void rxe_elem_release(struct kref *kref);
 
 /* take a reference on an object */
-#define rxe_add_ref(elem) kref_get(&(elem)->pelem.ref_cnt)
+static inline void rxe_add_ref(struct rxe_pool_entry *pelem) {
+	kref_get(&pelem->ref_cnt);
+}
 
 /* drop a reference on an object */
-#define rxe_drop_ref(elem) kref_put(&(elem)->pelem.ref_cnt, rxe_elem_release)
+static inline void rxe_drop_ref(struct rxe_pool_entry *pelem) {
+	kref_put(&pelem->ref_cnt, rxe_elem_release);
+}
 
 #endif /* RXE_POOL_H */

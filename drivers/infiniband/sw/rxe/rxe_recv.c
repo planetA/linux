@@ -261,7 +261,7 @@ static int hdr_check(struct rxe_pkt_info *pkt)
 	return 0;
 
 err2:
-	rxe_drop_ref(qp);
+	rxe_drop_ref(&qp->pelem);
 err1:
 	return -EINVAL;
 }
@@ -316,13 +316,13 @@ static void rxe_rcv_mcast_pkt(struct rxe_dev *rxe, struct sk_buff *skb)
 			skb_get(skb);
 
 		pkt->qp = qp;
-		rxe_add_ref(qp);
+		rxe_add_ref(&qp->pelem);
 		rxe_rcv_pkt(pkt, skb);
 	}
 
 	spin_unlock_bh(&mcg->mcg_lock);
 
-	rxe_drop_ref(mcg);	/* drop ref from rxe_pool_get_key. */
+	rxe_drop_ref(&mcg->pelem);	/* drop ref from rxe_pool_get_key. */
 
 err1:
 	kfree_skb(skb);
@@ -415,7 +415,7 @@ void rxe_rcv(struct sk_buff *skb)
 
 drop:
 	if (pkt->qp)
-		rxe_drop_ref(pkt->qp);
+		rxe_drop_ref(&pkt->qp->pelem);
 
 	kfree_skb(skb);
 }

@@ -152,11 +152,11 @@ static void free_rd_atomic_resources(struct rxe_qp *qp)
 void free_rd_atomic_resource(struct rxe_qp *qp, struct resp_res *res)
 {
 	if (res->type == RXE_ATOMIC_MASK) {
-		rxe_drop_ref(qp);
+		rxe_drop_ref(&qp->pelem);
 		kfree_skb(res->atomic.skb);
 	} else if (res->type == RXE_READ_MASK) {
 		if (res->read.mr)
-			rxe_drop_ref(res->read.mr);
+			rxe_drop_ref(&res->read.mr->pelem);
 	}
 	res->type = 0;
 }
@@ -342,11 +342,11 @@ int rxe_qp_from_init(struct rxe_dev *rxe, struct rxe_qp *qp, struct rxe_pd *pd,
 	struct rxe_cq *scq = to_rcq(init->send_cq);
 	struct rxe_srq *srq = init->srq ? to_rsrq(init->srq) : NULL;
 
-	rxe_add_ref(pd);
-	rxe_add_ref(rcq);
-	rxe_add_ref(scq);
+	rxe_add_ref(&pd->pelem);
+	rxe_add_ref(&rcq->pelem);
+	rxe_add_ref(&scq->pelem);
 	if (srq)
-		rxe_add_ref(srq);
+		rxe_add_ref(&srq->pelem);
 
 	qp->pd			= pd;
 	qp->rcq			= rcq;
@@ -372,10 +372,10 @@ err2:
 	rxe_queue_cleanup(qp->sq.queue);
 err1:
 	if (srq)
-		rxe_drop_ref(srq);
-	rxe_drop_ref(scq);
-	rxe_drop_ref(rcq);
-	rxe_drop_ref(pd);
+		rxe_drop_ref(&srq->pelem);
+	rxe_drop_ref(&scq->pelem);
+	rxe_drop_ref(&rcq->pelem);
+	rxe_drop_ref(&pd->pelem);
 
 	return err;
 }
@@ -534,7 +534,7 @@ static void rxe_qp_reset(struct rxe_qp *qp)
 	qp->resp.sent_psn_nak = 0;
 
 	if (qp->resp.mr) {
-		rxe_drop_ref(qp->resp.mr);
+		rxe_drop_ref(&qp->resp.mr->pelem);
 		qp->resp.mr = NULL;
 	}
 
@@ -811,20 +811,20 @@ static void rxe_qp_do_cleanup(struct work_struct *work)
 		rxe_queue_cleanup(qp->sq.queue);
 
 	if (qp->srq)
-		rxe_drop_ref(qp->srq);
+		rxe_drop_ref(&qp->srq->pelem);
 
 	if (qp->rq.queue)
 		rxe_queue_cleanup(qp->rq.queue);
 
 	if (qp->scq)
-		rxe_drop_ref(qp->scq);
+		rxe_drop_ref(&qp->scq->pelem);
 	if (qp->rcq)
-		rxe_drop_ref(qp->rcq);
+		rxe_drop_ref(&qp->rcq->pelem);
 	if (qp->pd)
-		rxe_drop_ref(qp->pd);
+		rxe_drop_ref(&qp->pd->pelem);
 
 	if (qp->resp.mr) {
-		rxe_drop_ref(qp->resp.mr);
+		rxe_drop_ref(&qp->resp.mr->pelem);
 		qp->resp.mr = NULL;
 	}
 

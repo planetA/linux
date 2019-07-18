@@ -600,7 +600,7 @@ int rxe_requester(void *arg)
 	struct rxe_send_wqe rollback_wqe;
 	u32 rollback_psn;
 
-	rxe_add_ref(qp);
+	rxe_add_ref(&qp->pelem);
 
 next_wqe:
 	if (unlikely(!qp->valid || qp->req.state == QP_STATE_ERROR))
@@ -639,7 +639,7 @@ next_wqe:
 				goto exit;
 			}
 			rmr->state = RXE_MEM_STATE_FREE;
-			rxe_drop_ref(rmr);
+			rxe_drop_ref(&rmr->pelem);
 			wqe->state = wqe_state_done;
 			wqe->status = IB_WC_SUCCESS;
 		} else if (wqe->wr.opcode == IB_WR_REG_MR) {
@@ -708,7 +708,7 @@ next_wqe:
 			wqe->state = wqe_state_done;
 			wqe->status = IB_WC_SUCCESS;
 			__rxe_do_task(&qp->comp.task);
-			rxe_drop_ref(qp);
+			rxe_drop_ref(&qp->pelem);
 			return 0;
 		}
 		payload = mtu;
@@ -759,6 +759,6 @@ err:
 	__rxe_do_task(&qp->comp.task);
 
 exit:
-	rxe_drop_ref(qp);
+	rxe_drop_ref(&qp->pelem);
 	return -EAGAIN;
 }

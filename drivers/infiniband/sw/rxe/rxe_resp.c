@@ -118,7 +118,7 @@ static inline enum resp_states get_req(struct rxe_qp *qp,
 
 	if (qp->resp.state == QP_STATE_ERROR) {
 		while ((skb = skb_dequeue(&qp->req_pkts))) {
-			rxe_drop_ref(qp);
+			rxe_drop_ref(&qp->pelem);
 			kfree_skb(skb);
 		}
 
@@ -494,7 +494,7 @@ static enum resp_states check_rkey(struct rxe_qp *qp,
 
 err:
 	if (mem)
-		rxe_drop_ref(mem);
+		rxe_drop_ref(&mem->pelem);
 	return state;
 }
 
@@ -917,7 +917,7 @@ static enum resp_states do_complete(struct rxe_qp *qp,
 					return RESPST_ERROR;
 				}
 				rmr->state = RXE_MEM_STATE_FREE;
-				rxe_drop_ref(rmr);
+				rxe_drop_ref(&rmr->pelem);
 			}
 
 			wc->qp			= &qp->ibqp;
@@ -987,7 +987,7 @@ static int send_atomic_ack(struct rxe_qp *qp, struct rxe_pkt_info *pkt,
 		goto out;
 	}
 
-	rxe_add_ref(qp);
+	rxe_add_ref(&qp->pelem);
 
 	res = &qp->resp.resources[qp->resp.res_head];
 	free_rd_atomic_resource(qp, res);
@@ -1007,7 +1007,7 @@ static int send_atomic_ack(struct rxe_qp *qp, struct rxe_pkt_info *pkt,
 	rc = rxe_xmit_packet(qp, &ack_pkt, skb);
 	if (rc) {
 		pr_err_ratelimited("Failed sending ack\n");
-		rxe_drop_ref(qp);
+		rxe_drop_ref(&qp->pelem);
 	}
 out:
 	return rc;
@@ -1036,12 +1036,12 @@ static enum resp_states cleanup(struct rxe_qp *qp,
 
 	if (pkt) {
 		skb = skb_dequeue(&qp->req_pkts);
-		rxe_drop_ref(qp);
+		rxe_drop_ref(&qp->pelem);
 		kfree_skb(skb);
 	}
 
 	if (qp->resp.mr) {
-		rxe_drop_ref(qp->resp.mr);
+		rxe_drop_ref(&qp->resp.mr->pelem);
 		qp->resp.mr = NULL;
 	}
 
@@ -1187,7 +1187,7 @@ static enum resp_states do_class_d1e_error(struct rxe_qp *qp)
 		}
 
 		if (qp->resp.mr) {
-			rxe_drop_ref(qp->resp.mr);
+			rxe_drop_ref(&qp->resp.mr->pelem);
 			qp->resp.mr = NULL;
 		}
 
@@ -1200,7 +1200,7 @@ static void rxe_drain_req_pkts(struct rxe_qp *qp, bool notify)
 	struct sk_buff *skb;
 
 	while ((skb = skb_dequeue(&qp->req_pkts))) {
-		rxe_drop_ref(qp);
+		rxe_drop_ref(&qp->pelem);
 		kfree_skb(skb);
 	}
 
@@ -1219,7 +1219,7 @@ int rxe_responder(void *arg)
 	struct rxe_pkt_info *pkt = NULL;
 	int ret = 0;
 
-	rxe_add_ref(qp);
+	rxe_add_ref(&qp->pelem);
 
 	qp->resp.aeth_syndrome = AETH_ACK_UNLIMITED;
 
@@ -1399,6 +1399,6 @@ int rxe_responder(void *arg)
 exit:
 	ret = -EAGAIN;
 done:
-	rxe_drop_ref(qp);
+	rxe_drop_ref(&qp->pelem);
 	return ret;
 }
