@@ -126,7 +126,7 @@ void rnr_nak_timer(struct timer_list *t)
 	struct rxe_qp *qp = from_timer(qp, t, rnr_nak_timer);
 
 	pr_debug("qp#%d rnr nak timer fired\n", qp_num(qp));
-	rxe_run_task(&qp->req.task, 1);
+	rxe_run_task(&qp->req.task);
 }
 
 static struct rxe_send_wqe *req_next_wqe(struct rxe_qp *qp)
@@ -657,7 +657,7 @@ next_wqe:
 		}
 		if ((wqe->wr.send_flags & IB_SEND_SIGNALED) ||
 		    qp->sq_sig_type == IB_SIGNAL_ALL_WR)
-			rxe_run_task(&qp->comp.task, 1);
+			rxe_run_task(&qp->comp.task);
 		qp->req.wqe_index = next_index(qp->sq.queue,
 						qp->req.wqe_index);
 		goto next_wqe;
@@ -742,7 +742,7 @@ next_wqe:
 		rollback_state(wqe, qp, &rollback_wqe, rollback_psn);
 
 		if (ret == -EAGAIN) {
-			rxe_run_task(&qp->req.task, 1);
+			rxe_run_task(&qp->req.task);
 			goto exit;
 		}
 
