@@ -570,8 +570,6 @@ int rxe_requester(void *arg)
 	struct rxe_send_wqe rollback_wqe;
 	u32 rollback_psn;
 
-	rxe_add_ref(&qp->pelem);
-
 next_wqe:
 	if (unlikely(!qp->valid || qp->req.state == QP_STATE_ERROR))
 		goto exit;
@@ -678,7 +676,6 @@ next_wqe:
 			wqe->state = wqe_state_done;
 			wqe->status = IB_WC_SUCCESS;
 			__rxe_do_task(&qp->comp.task);
-			rxe_drop_ref(&qp->pelem);
 			return 0;
 		}
 		payload = mtu;
@@ -729,6 +726,5 @@ err:
 	__rxe_do_task(&qp->comp.task);
 
 exit:
-	rxe_drop_ref(&qp->pelem);
 	return -EAGAIN;
 }
