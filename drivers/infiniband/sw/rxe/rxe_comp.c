@@ -557,8 +557,6 @@ int rxe_completer(void *arg)
 	struct rxe_pkt_info *pkt = NULL;
 	enum comp_state state;
 
-	rxe_add_ref(&qp->pelem);
-
 	if (!qp->valid || qp->req.state == QP_STATE_ERROR ||
 	    qp->req.state == QP_STATE_RESET) {
 		rxe_drain_resp_pkts(qp, qp->valid &&
@@ -780,7 +778,6 @@ exit:
 	 * exit from the loop calling us
 	 */
 	WARN_ON_ONCE(skb);
-	rxe_drop_ref(&qp->pelem);
 	return -EAGAIN;
 
 done:
@@ -788,6 +785,5 @@ done:
 	 * us again to see if there is anything else to do
 	 */
 	WARN_ON_ONCE(skb);
-	rxe_drop_ref(&qp->pelem);
 	return 0;
 }

@@ -35,6 +35,7 @@
 #include <linux/interrupt.h>
 #include <linux/hardirq.h>
 
+#include "rxe.h"
 #include "rxe_task.h"
 
 int __rxe_do_task(struct rxe_task *task)
@@ -115,14 +116,15 @@ void rxe_do_task(unsigned long data)
 }
 
 int rxe_init_task(void *obj, struct rxe_task *task,
-		  void *arg, int (*func)(void *), char *name)
+		  struct rxe_qp *qp, int (*func)(void *), char *name)
 {
 	task->obj	= obj;
-	task->arg	= arg;
+	task->arg	= qp;
 	task->func	= func;
 	snprintf(task->name, sizeof(task->name), "%s", name);
 	task->destroyed	= false;
 
+	rxe_add_ref(&qp->pelem);
 	tasklet_init(&task->tasklet, rxe_do_task, (unsigned long)task);
 
 	task->state = TASK_STATE_START;
@@ -135,6 +137,7 @@ void rxe_cleanup_task(struct rxe_task *task)
 {
 	unsigned long flags;
 	bool idle;
+	struct rxe_qp *qp = (struct rxe_qp *)task->arg;
 
 	/*
 	 * Mark the task, then wait for it to finish. It might be
@@ -149,6 +152,7 @@ void rxe_cleanup_task(struct rxe_task *task)
 	} while (!idle);
 
 	tasklet_kill(&task->tasklet);
+	rxe_drop_ref(&qp->pelem);
 }
 
 void rxe_run_task(struct rxe_task *task)

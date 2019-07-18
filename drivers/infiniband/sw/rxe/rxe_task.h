@@ -63,7 +63,7 @@ struct rxe_task {
  *	fcn  => function to call until it returns != 0
  */
 int rxe_init_task(void *obj, struct rxe_task *task,
-		  void *arg, int (*func)(void *), char *name);
+		  struct rxe_qp *qp, int (*func)(void *), char *name);
 
 /* cleanup task */
 void rxe_cleanup_task(struct rxe_task *task);
