@@ -64,7 +64,8 @@ struct rxe_cq {
 	u8			notify;
 	bool			is_dying;
 	int			is_user;
-	struct tasklet_struct	comp_task;
+	struct workqueue_struct	*wq;
+	struct work_struct	work;
 };
 
 enum wqe_state {
@@ -243,6 +244,7 @@ struct rxe_qp {
 
 	atomic_t		ssn;
 	atomic_t		skb_out;
+	atomic_t		pending_skb_down;
 	int			need_req_skb;
 
 	/* Timer for retranmitting packet when ACKs have been lost. RC
@@ -258,7 +260,8 @@ struct rxe_qp {
 
 	spinlock_t		state_lock; /* guard requester and completer */
 
-	struct execute_work	cleanup_work;
+	struct work_struct	cleanup_work;
+	struct completion	*cleanup_completion;
 };
 
 enum rxe_mem_state {
