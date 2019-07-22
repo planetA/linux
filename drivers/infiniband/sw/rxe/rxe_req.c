@@ -605,6 +605,7 @@ next_wqe:
 		goto exit;
 
 	if (unlikely(qp->req.state == QP_STATE_RESET)) {
+		qp->req.noack_pkts = 0;
 		qp->req.wqe_index = consumer_index(qp->sq.queue);
 		qp->req.opcode = -1;
 		qp->req.need_rd_atomic = 0;

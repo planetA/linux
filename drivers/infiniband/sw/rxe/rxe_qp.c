@@ -161,7 +161,7 @@ void free_rd_atomic_resource(struct rxe_qp *qp, struct resp_res *res)
 	res->type = 0;
 }
 
-static void cleanup_rd_atomic_resources(struct rxe_qp *qp)
+void cleanup_rd_atomic_resources(struct rxe_qp *qp)
 {
 	int i;
 	struct resp_res *res;
@@ -524,21 +524,6 @@ static void rxe_qp_reset(struct rxe_qp *qp)
 
 	/* cleanup attributes */
 	atomic_set(&qp->ssn, 0);
-	qp->req.opcode = -1;
-	qp->req.need_retry = 0;
-	qp->req.noack_pkts = 0;
-	qp->resp.msn = 0;
-	qp->resp.opcode = -1;
-	qp->resp.drop_msg = 0;
-	qp->resp.goto_error = 0;
-	qp->resp.sent_psn_nak = 0;
-
-	if (qp->resp.mr) {
-		rxe_drop_ref(&qp->resp.mr->pelem);
-		qp->resp.mr = NULL;
-	}
-
-	cleanup_rd_atomic_resources(qp);
 
 	/* reenable tasks */
 	rxe_enable_task(&qp->resp.task);

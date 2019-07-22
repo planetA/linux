@@ -205,6 +205,7 @@ static inline int rcv_wqe_size(int max_sge)
 }
 
 void free_rd_atomic_resource(struct rxe_qp *qp, struct resp_res *res);
+void cleanup_rd_atomic_resources(struct rxe_qp *qp);
 
 static inline void rxe_advance_resp_resource(struct rxe_qp *qp)
 {

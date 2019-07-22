@@ -1221,19 +1221,10 @@ int rxe_responder(void *arg)
 
 	qp->resp.aeth_syndrome = AETH_ACK_UNLIMITED;
 
-	if (!qp->valid) {
-		ret = -EINVAL;
-		goto done;
-	}
-
-	switch (qp->resp.state) {
-	case QP_STATE_RESET:
+	if (!qp->valid || qp->resp.state == QP_STATE_RESET) {
 		state = RESPST_RESET;
-		break;
-
-	default:
+	} else {
 		state = RESPST_GET_REQ;
-		break;
 	}
 
 	while (1) {
@@ -1381,6 +1372,18 @@ int rxe_responder(void *arg)
 		case RESPST_RESET:
 			rxe_drain_req_pkts(qp, false);
 			qp->resp.wqe = NULL;
+			qp->resp.msn = 0;
+			qp->resp.opcode = -1;
+			qp->resp.drop_msg = 0;
+			qp->resp.goto_error = 0;
+			qp->resp.sent_psn_nak = 0;
+
+			if (qp->resp.mr) {
+				rxe_drop_ref(&qp->resp.mr->pelem);
+				qp->resp.mr = NULL;
+			}
+
+			cleanup_rd_atomic_resources(qp);
 			goto exit;
 
 		case RESPST_ERROR:
