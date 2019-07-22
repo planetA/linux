@@ -166,6 +166,6 @@ static inline void rxe_add_ref(struct rxe_pool_entry *pelem) {
 }
 
 /* drop a reference on an object */
-void rxe_drop_ref(struct rxe_pool_entry *pelem);
+int rxe_drop_ref(struct rxe_pool_entry *pelem);
 
 #endif /* RXE_POOL_H */
