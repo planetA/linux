@@ -104,6 +104,8 @@ void rxe_mem_cleanup(struct rxe_pool_entry *arg)
 
 		kfree(mem->map);
 	}
+
+	rxe_elem_cleanup(arg);
 }
 
 static int rxe_mem_alloc(struct rxe_mem *mem, int num_buf)

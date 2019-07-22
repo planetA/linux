@@ -187,4 +187,6 @@ void rxe_mc_cleanup(struct rxe_pool_entry *arg)
 
 	rxe_drop_key(&grp->pelem);
 	rxe_mcast_delete(rxe, &grp->mgid);
+
+	rxe_elem_cleanup(arg);
 }

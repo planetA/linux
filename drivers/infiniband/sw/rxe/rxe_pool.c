@@ -462,9 +462,16 @@ void rxe_elem_release(struct kref *kref)
 
 	if (pool->cleanup)
 		pool->cleanup(elem);
+	else
+		rxe_elem_cleanup(elem);
+}
+
+void rxe_elem_cleanup(struct rxe_pool_entry *pelem)
+{
+	struct rxe_pool *pool = pelem->pool;
 
 	if (!(pool->flags & RXE_POOL_NO_ALLOC))
-		kmem_cache_free(pool_cache(pool), elem);
+		kmem_cache_free(pool_cache(pool), pelem);
 	atomic_dec(&pool->num_elem);
 	ib_device_put(&pool->rxe->ib_dev);
 	rxe_pool_put(pool);

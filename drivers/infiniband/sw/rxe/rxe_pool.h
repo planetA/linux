@@ -160,6 +160,8 @@ void *rxe_pool_get_key(struct rxe_pool *pool, void *key);
 /* cleanup an object when all references are dropped */
 void rxe_elem_release(struct kref *kref);
 
+void rxe_elem_cleanup(struct rxe_pool_entry *pelem);
+
 /* take a reference on an object */
 static inline void rxe_add_ref(struct rxe_pool_entry *pelem) {
 	kref_get(&pelem->ref_cnt);

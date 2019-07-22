@@ -182,4 +182,6 @@ void rxe_cq_cleanup(struct rxe_pool_entry *arg)
 
 	if (cq->queue)
 		rxe_queue_cleanup(cq->queue);
+
+	rxe_elem_cleanup(arg);
 }
