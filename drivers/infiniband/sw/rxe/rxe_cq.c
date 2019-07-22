@@ -66,9 +66,9 @@ err1:
 	return -EINVAL;
 }
 
-static void rxe_send_complete(unsigned long data)
+static void rxe_send_complete(struct work_struct *work)
 {
-	struct rxe_cq *cq = (struct rxe_cq *)data;
+	struct rxe_cq *cq = container_of(work, typeof(*cq), work);
 	unsigned long flags;
 
 	spin_lock_irqsave(&cq->cq_lock, flags);
@@ -106,8 +106,12 @@ int rxe_cq_from_init(struct rxe_dev *rxe, struct rxe_cq *cq, int cqe,
 		cq->is_user = 1;
 
 	cq->is_dying = false;
+	INIT_WORK(&cq->work, rxe_send_complete);
 
-	tasklet_init(&cq->comp_task, rxe_send_complete, (unsigned long)cq);
+	cq->wq = alloc_ordered_workqueue("cq:send_complete", 0);
+	if (!cq->wq) {
+		return -ENOMEM;
+	}
 
 	spin_lock_init(&cq->cq_lock);
 	cq->ibcq.cqe = cqe;
@@ -161,7 +165,7 @@ int rxe_cq_post(struct rxe_cq *cq, struct rxe_cqe *cqe, int solicited)
 	if ((cq->notify == IB_CQ_NEXT_COMP) ||
 	    (cq->notify == IB_CQ_SOLICITED && solicited)) {
 		cq->notify = 0;
-		tasklet_schedule(&cq->comp_task);
+		queue_work(cq->wq, &cq->work);
 	}
 
 	return 0;
@@ -182,6 +186,9 @@ void rxe_cq_cleanup(struct rxe_pool_entry *arg)
 
 	if (cq->queue)
 		rxe_queue_cleanup(cq->queue);
+
+	if (cq->wq)
+		destroy_workqueue(cq->wq);
 
 	rxe_elem_cleanup(arg);
 }

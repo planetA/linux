@@ -412,13 +412,20 @@ static void rxe_skb_tx_dtor(struct sk_buff *skb)
 {
 	struct sock *sk = skb->sk;
 	struct rxe_qp *qp = sk->sk_user_data;
-	int skb_out = atomic_dec_return(&qp->skb_out);
+	int skb_out = atomic_read(&qp->skb_out);
 
-	if (unlikely(qp->need_req_skb &&
-		     skb_out < RXE_INFLIGHT_SKBS_PER_QP_LOW))
-		rxe_run_task(&qp->req.task);
+	atomic_inc(&qp->pending_skb_down);
+	skb_out = atomic_read(&qp->pending_skb_down);
+	if (!rxe_drop_ref(&qp->pelem)) {
+		atomic_dec(&qp->pending_skb_down);
+		atomic_dec(&qp->skb_out);
 
-	rxe_drop_ref(&qp->pelem);
+		if (unlikely(qp->need_req_skb &&
+			     skb_out < RXE_INFLIGHT_SKBS_PER_QP_LOW))
+			rxe_run_task(&qp->req.task);
+
+		skb_out = atomic_read(&qp->pending_skb_down);
+	}
 }
 
 int rxe_send(struct rxe_pkt_info *pkt, struct sk_buff *skb)

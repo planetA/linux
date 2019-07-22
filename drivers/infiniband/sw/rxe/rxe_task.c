@@ -38,81 +38,62 @@
 #include "rxe.h"
 #include "rxe_task.h"
 
-int __rxe_do_task(struct rxe_task *task)
-
+#define RXE_BURST_SIZE 100
+/*
+ * common function called by any of the main tasklets
+ * If there is any chance that there is additional
+ * work to do someone must reschedule the task before
+ * leaving
+ */
+static int rxe_do_task_burst(struct rxe_task *task)
 {
+	struct rxe_qp *qp = (struct rxe_qp *)task->arg;
 	int ret;
+	int count = 0;
 
-	while ((ret = task->func(task->arg)) == 0)
-		;
+	while (1) {
+		if (task->destroyed) {
+			pr_debug("Running a destroyed task %p\n", task);
+		}
 
-	task->ret = ret;
+		if (!qp->valid) {
+			pr_debug("Running a task %p with an invalid qp#%d\n", task, qp_num(qp));
+		}
 
-	return ret;
+		ret = task->func(task->arg);
+		if (ret) {
+			return ret;
+		}
+
+		count ++;
+		if (count > RXE_BURST_SIZE) {
+			return 0;
+		}
+	}
 }
 
-/*
- * this locking is due to a potential race where
- * a second caller finds the task already running
- * but looks just after the last call to func
- */
-void rxe_do_task(unsigned long data)
+static void rxe_do_task(struct work_struct *work)
 {
-	int cont;
+	struct rxe_task *task = container_of(work, typeof(*task), work);
+	int ret = rxe_do_task_burst(task);
+	if (!ret) {
+		queue_work(task->wq, work);
+	}
+}
+
+static void rxe_do_task_notify(struct work_struct *work)
+{
 	int ret;
-	unsigned long flags;
-	struct rxe_task *task = (struct rxe_task *)data;
+	struct rxe_task *task = container_of(work, typeof(*task), wait_work);
 
-	spin_lock_irqsave(&task->state_lock, flags);
-	switch (task->state) {
-	case TASK_STATE_START:
-		task->state = TASK_STATE_BUSY;
-		spin_unlock_irqrestore(&task->state_lock, flags);
-		break;
-
-	case TASK_STATE_BUSY:
-		task->state = TASK_STATE_ARMED;
-		/* fall through */
-	case TASK_STATE_ARMED:
-		spin_unlock_irqrestore(&task->state_lock, flags);
-		return;
-
-	default:
-		spin_unlock_irqrestore(&task->state_lock, flags);
-		pr_warn("%s failed with bad state %d\n", __func__, task->state);
+	ret = rxe_do_task_burst(task);
+	if (!ret) {
+		/* The queue was rescheduled and will run again */
+		queue_work(task->wq, work);
 		return;
 	}
 
-	do {
-		cont = 0;
-		ret = task->func(task->arg);
-
-		spin_lock_irqsave(&task->state_lock, flags);
-		switch (task->state) {
-		case TASK_STATE_BUSY:
-			if (ret)
-				task->state = TASK_STATE_START;
-			else
-				cont = 1;
-			break;
-
-		/* soneone tried to run the task since the last time we called
-		 * func, so we will call one more time regardless of the
-		 * return value
-		 */
-		case TASK_STATE_ARMED:
-			task->state = TASK_STATE_BUSY;
-			cont = 1;
-			break;
-
-		default:
-			pr_warn("%s failed with bad state %d\n", __func__,
-				task->state);
-		}
-		spin_unlock_irqrestore(&task->state_lock, flags);
-	} while (cont);
-
-	task->ret = ret;
+	complete_all(&task->completion);
 }
 
 int rxe_init_task(void *obj, struct rxe_task *task,
@@ -125,33 +106,34 @@ int rxe_init_task(void *obj, struct rxe_task *task,
 	task->destroyed	= false;
 
 	rxe_add_ref(&qp->pelem);
-	tasklet_init(&task->tasklet, rxe_do_task, (unsigned long)task);
+	init_completion(&task->completion);
 
-	task->state = TASK_STATE_START;
-	spin_lock_init(&task->state_lock);
+	INIT_WORK(&task->work, rxe_do_task);
+	INIT_WORK(&task->wait_work, rxe_do_task_notify);
+
+	task->wq = alloc_ordered_workqueue("qp#%d:%s", 0, qp_num(qp), name);
+	if (!task->wq) {
+		return -ENOMEM;
+	}
 
 	return 0;
 }
 
 void rxe_cleanup_task(struct rxe_task *task)
 {
-	unsigned long flags;
-	bool idle;
 	struct rxe_qp *qp = (struct rxe_qp *)task->arg;
 
 	/*
 	 * Mark the task, then wait for it to finish. It might be
 	 * running in a non-tasklet (direct call) context.
 	 */
+
+	rxe_run_task(task);
+
 	task->destroyed = true;
 
-	do {
-		spin_lock_irqsave(&task->state_lock, flags);
-		idle = (task->state == TASK_STATE_START);
-		spin_unlock_irqrestore(&task->state_lock, flags);
-	} while (!idle);
+	destroy_workqueue(task->wq);
 
-	tasklet_kill(&task->tasklet);
 	rxe_drop_ref(&qp->pelem);
 }
 
@@ -160,15 +142,21 @@ void rxe_run_task(struct rxe_task *task)
 	if (task->destroyed)
 		return;
 
-	tasklet_schedule(&task->tasklet);
+	queue_work(task->wq, &task->work);
 }
 
-void rxe_disable_task(struct rxe_task *task)
+void rxe_run_task_wait(struct rxe_task *task)
 {
-	tasklet_disable(&task->tasklet);
-}
+	int ret;
 
-void rxe_enable_task(struct rxe_task *task)
-{
-	tasklet_enable(&task->tasklet);
+	if (task->destroyed)
+		return;
+
+	reinit_completion(&task->completion);
+
+	queue_work(task->wq, &task->wait_work);
+
+	do {
+		ret = wait_for_completion_interruptible_timeout(&task->completion, HZ / 10);
+	} while (ret == -ERESTARTSYS);
 }

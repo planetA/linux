@@ -214,6 +214,7 @@ static void rxe_qp_init_misc(struct rxe_dev *rxe, struct rxe_qp *qp,
 
 	atomic_set(&qp->ssn, 0);
 	atomic_set(&qp->skb_out, 0);
+	atomic_set(&qp->pending_skb_down, 0);
 }
 
 static int rxe_qp_init_req(struct rxe_dev *rxe, struct rxe_qp *qp,
@@ -330,6 +331,8 @@ static int rxe_qp_init_resp(struct rxe_dev *rxe, struct rxe_qp *qp,
 	return 0;
 }
 
+void rxe_qp_do_cleanup(struct work_struct *work);
+
 /* called by the create qp verb */
 int rxe_qp_from_init(struct rxe_dev *rxe, struct rxe_qp *qp, struct rxe_pd *pd,
 		     struct ib_qp_init_attr *init,
@@ -365,6 +368,9 @@ int rxe_qp_from_init(struct rxe_dev *rxe, struct rxe_qp *qp, struct rxe_pd *pd,
 
 	qp->attr.qp_state = IB_QPS_RESET;
 	qp->valid = 1;
+
+	INIT_WORK(&qp->cleanup_work, rxe_qp_do_cleanup);
+	qp->cleanup_completion = NULL;
 
 	return 0;
 
@@ -497,16 +503,6 @@ err1:
 /* move the qp to the reset state */
 static void rxe_qp_reset(struct rxe_qp *qp)
 {
-	/* stop tasks from running */
-	rxe_disable_task(&qp->resp.task);
-
-	/* stop request/comp */
-	if (qp->sq.queue) {
-		if (qp_type(qp) == IB_QPT_RC)
-			rxe_disable_task(&qp->comp.task);
-		rxe_disable_task(&qp->req.task);
-	}
-
 	/* move qp to the reset state */
 	qp->req.state = QP_STATE_RESET;
 	qp->resp.state = QP_STATE_RESET;
@@ -514,26 +510,16 @@ static void rxe_qp_reset(struct rxe_qp *qp)
 	/* let state machines reset themselves drain work and packet queues
 	 * etc.
 	 */
-	__rxe_do_task(&qp->resp.task);
+	rxe_run_task_wait(&qp->req.task);
 
 	if (qp->sq.queue) {
-		__rxe_do_task(&qp->comp.task);
-		__rxe_do_task(&qp->req.task);
+		rxe_run_task_wait(&qp->comp.task);
+		rxe_run_task_wait(&qp->req.task);
 		rxe_queue_reset(qp->sq.queue);
 	}
 
 	/* cleanup attributes */
 	atomic_set(&qp->ssn, 0);
-
-	/* reenable tasks */
-	rxe_enable_task(&qp->resp.task);
-
-	if (qp->sq.queue) {
-		if (qp_type(qp) == IB_QPT_RC)
-			rxe_enable_task(&qp->comp.task);
-
-		rxe_enable_task(&qp->req.task);
-	}
 }
 
 /* drain the send queue */
@@ -545,7 +531,7 @@ static void rxe_qp_drain(struct rxe_qp *qp)
 			if (qp_type(qp) == IB_QPT_RC)
 				rxe_run_task(&qp->comp.task);
 			else
-				__rxe_do_task(&qp->comp.task);
+				rxe_run_task_wait(&qp->comp.task);
 			rxe_run_task(&qp->req.task);
 		}
 	}
@@ -564,7 +550,7 @@ void rxe_qp_error(struct rxe_qp *qp)
 	if (qp_type(qp) == IB_QPT_RC)
 		rxe_run_task(&qp->comp.task);
 	else
-		__rxe_do_task(&qp->comp.task);
+		rxe_run_task_wait(&qp->comp.task);
 	rxe_run_task(&qp->req.task);
 }
 
@@ -777,18 +763,22 @@ void rxe_qp_destroy(struct rxe_qp *qp)
 	rxe_cleanup_task(&qp->req.task);
 	rxe_cleanup_task(&qp->comp.task);
 
-	/* flush out any receive wr's or pending requests */
-	__rxe_do_task(&qp->req.task);
-	if (qp->sq.queue) {
-		__rxe_do_task(&qp->comp.task);
-		__rxe_do_task(&qp->req.task);
+	while (true) {
+		int skb_out;
+		skb_out = atomic_read(&qp->skb_out);
+		pr_debug("Waiting until %d skb's to flush at qp#%d\n", skb_out, qp_num(qp));
+		if (skb_out > 0)
+			msleep(10);
+		else
+			break;
 	}
 }
 
 /* called when the last reference to the qp is dropped */
-static void rxe_qp_do_cleanup(struct work_struct *work)
+void rxe_qp_do_cleanup(struct work_struct *work)
 {
-	struct rxe_qp *qp = container_of(work, typeof(*qp), cleanup_work.work);
+	int pending;
+	struct rxe_qp *qp = container_of(work, typeof(*qp), cleanup_work);
 
 	rxe_drop_all_mcast_groups(qp);
 
@@ -820,12 +810,25 @@ static void rxe_qp_do_cleanup(struct work_struct *work)
 
 	kernel_sock_shutdown(qp->sk, SHUT_RDWR);
 	sock_release(qp->sk);
+
+	do {
+		pending = atomic_dec_return(&qp->pending_skb_down);
+		if (pending < 0) {
+			atomic_inc(&qp->pending_skb_down);
+			break;
+		}
+
+		atomic_dec(&qp->skb_out);
+	} while (pending);
+
+	BUG_ON(!qp->cleanup_completion);
+	complete(qp->cleanup_completion);
+
+	rxe_elem_cleanup(&qp->pelem);
 }
 
-/* called when the last reference to the qp is dropped */
 void rxe_qp_cleanup(struct rxe_pool_entry *arg)
 {
 	struct rxe_qp *qp = container_of(arg, typeof(*qp), pelem);
-
-	execute_in_process_context(rxe_qp_do_cleanup, &qp->cleanup_work);
+	queue_work(system_highpri_wq, &qp->cleanup_work);
 }

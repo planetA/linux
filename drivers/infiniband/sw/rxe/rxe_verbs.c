@@ -498,10 +498,17 @@ static int rxe_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 static int rxe_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
 {
 	struct rxe_qp *qp = to_rqp(ibqp);
+	DECLARE_COMPLETION_ONSTACK(cleanup_completion);
+
+	BUG_ON(qp->cleanup_completion);
+	qp->cleanup_completion = &cleanup_completion;
 
 	rxe_qp_destroy(qp);
 	rxe_drop_index(&qp->pelem);
 	rxe_drop_ref(&qp->pelem);
+
+	wait_for_completion(&cleanup_completion);
+
 	return 0;
 }
 

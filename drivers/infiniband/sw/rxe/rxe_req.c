@@ -600,7 +600,6 @@ int rxe_requester(void *arg)
 	struct rxe_send_wqe rollback_wqe;
 	u32 rollback_psn;
 
-next_wqe:
 	if (unlikely(!qp->valid || qp->req.state == QP_STATE_ERROR))
 		goto exit;
 
@@ -659,7 +658,7 @@ next_wqe:
 			rxe_run_task(&qp->comp.task);
 		qp->req.wqe_index = next_index(qp->sq.queue,
 						qp->req.wqe_index);
-		goto next_wqe;
+		goto out;
 	}
 
 	if (unlikely(qp_type(qp) == IB_QPT_RC &&
@@ -706,7 +705,7 @@ next_wqe:
 						       qp->req.wqe_index);
 			wqe->state = wqe_state_done;
 			wqe->status = IB_WC_SUCCESS;
-			__rxe_do_task(&qp->comp.task);
+			rxe_run_task_wait(&qp->comp.task);
 			return 0;
 		}
 		payload = mtu;
@@ -749,12 +748,13 @@ next_wqe:
 
 	update_state(qp, wqe, &pkt, payload);
 
-	goto next_wqe;
+out:
+	return 0;
 
 err:
 	wqe->status = IB_WC_LOC_PROT_ERR;
 	wqe->state = wqe_state_error;
-	__rxe_do_task(&qp->comp.task);
+	rxe_run_task_wait(&qp->comp.task);
 
 exit:
 	return -EAGAIN;
