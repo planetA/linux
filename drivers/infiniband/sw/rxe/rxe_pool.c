@@ -379,6 +379,13 @@ void rxe_elem_release(struct kref *kref)
 
 	if (pool->cleanup)
 		pool->cleanup(elem);
+	else
+		rxe_elem_cleanup(elem);
+}
+
+void rxe_elem_cleanup(struct rxe_pool_entry *elem)
+{
+	struct rxe_pool *pool = elem->pool;
 
 	if (!(pool->flags & RXE_POOL_NO_ALLOC))
 		kfree(elem);
