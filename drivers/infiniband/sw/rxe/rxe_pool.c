@@ -458,7 +458,7 @@ static void rxe_dummy_release(struct kref *kref)
 {
 }
 
-void rxe_drop_ref(struct rxe_pool_entry *pelem)
+int rxe_drop_ref(struct rxe_pool_entry *pelem)
 {
 	int res;
 	struct rxe_pool *pool = pelem->pool;
@@ -470,4 +470,5 @@ void rxe_drop_ref(struct rxe_pool_entry *pelem)
 	if (res) {
 		rxe_elem_release(&pelem->ref_cnt);
 	}
+	return res;
 }
