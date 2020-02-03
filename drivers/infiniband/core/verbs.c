@@ -1463,6 +1463,7 @@ static const struct {
 						IB_QP_PATH_MIG_STATE),
 				[IB_QPT_RC]  = (IB_QP_CUR_STATE			|
 						IB_QP_ACCESS_FLAGS		|
+						IB_QP_AV			|
 						IB_QP_ALT_PATH			|
 						IB_QP_PATH_MIG_STATE		|
 						IB_QP_MIN_RNR_TIMER),
