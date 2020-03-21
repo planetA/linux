@@ -420,12 +420,26 @@ int copy_data(
 	enum rxe_mr_copy_dir	dir)
 {
 	int			bytes;
-	struct rxe_sge		*sge	= &dma->sge[dma->cur_sge];
-	int			offset	= dma->sge_offset;
-	int			resid	= dma->resid;
-	struct rxe_mr		*mr	= NULL;
+	struct rxe_sge		*sge;
+	int			offset;
+	int			resid;
+	struct rxe_mem		*mem	= NULL;
 	u64			iova;
 	int			err;
+
+	if (!dma) {
+		pr_err("copy data with empty dma region: length %d access %x\n", length, access);
+		return -EINVAL;
+	}
+
+	if (!dma->sge) {
+		pr_err("copy data with empty sge region: length %d access %x\n", length, access);
+		return -EINVAL;
+	}
+
+	sge = &dma->sge[dma->cur_sge];
+	offset = dma->sge_offset;
+	resid = dma->resid;
 
 	if (length == 0)
 		return 0;
