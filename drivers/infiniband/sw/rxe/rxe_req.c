@@ -35,12 +35,57 @@ static inline void retry_first_write_send(struct rxe_qp *qp,
 	}
 }
 
-static void req_retry(struct rxe_qp *qp)
+static int req_retry_wqe(struct rxe_qp *qp, struct rxe_send_wqe *wqe, int *first)
 {
-	struct rxe_send_wqe *wqe;
-	unsigned int wqe_index;
 	unsigned int mask;
 	int npsn;
+
+	if (wqe->state == wqe_state_posted)
+		return -1;
+
+	if (wqe->state == wqe_state_done)
+		return 0;
+
+	mask = wr_opcode_mask(wqe->wr.opcode, qp);
+	wqe->iova = (mask & WR_ATOMIC_MASK) ?
+		wqe->wr.wr.atomic.remote_addr :
+		(mask & WR_READ_OR_WRITE_MASK) ?
+		wqe->wr.wr.rdma.remote_addr :
+		0;
+
+	if (!*first || (mask & WR_READ_MASK) == 0) {
+		wqe->dma.resid = wqe->dma.length;
+		wqe->dma.cur_sge = 0;
+		wqe->dma.sge_offset = 0;
+	}
+
+	if (*first) {
+		*first = 0;
+
+		if (mask & WR_WRITE_OR_SEND_MASK) {
+			npsn = (qp->comp.psn - wqe->first_psn) &
+				BTH_PSN_MASK;
+			retry_first_write_send(qp, wqe, npsn);
+		}
+
+		if (mask & WR_READ_MASK) {
+			npsn = (wqe->dma.length - wqe->dma.resid) /
+				qp->mtu;
+			wqe->iova += npsn * qp->mtu;
+		}
+	}
+
+	wqe->state = wqe_state_posted;
+
+	return 0;
+}
+
+static void req_retry(struct rxe_qp *qp)
+{
+	unsigned int mask;
+	int npsn;
+	struct rxe_send_wqe *wqe;
+	unsigned int wqe_index;
 	int first = 1;
 	struct rxe_queue *q = qp->sq.queue;
 	unsigned int cons;
@@ -51,7 +96,15 @@ static void req_retry(struct rxe_qp *qp)
 
 	qp->req.wqe_index	= cons;
 	qp->req.psn		= qp->comp.psn;
+	MINMAX_UPDATE(qp, req_psn_1, (int) qp->req.psn);
 	qp->req.opcode		= -1;
+
+#if RXE_MIGRATION
+	if (qp->req.resume_wqe && !qp->req.resume_posted) {
+		if (req_retry_wqe(qp, qp->req.resume_wqe, &first) < 0)
+			return;
+	}
+#endif
 
 	for (wqe_index = cons; wqe_index != prod;
 			wqe_index = queue_next_index(q, wqe_index)) {
@@ -154,15 +207,32 @@ static struct rxe_send_wqe *req_next_wqe(struct rxe_qp *qp)
 		} while (0);
 	}
 
-	if (index == prod)
+#if RXE_MIGRATION
+	if (unlikely(qp->paused) || unlikely(qp->stopped)) {
 		return NULL;
+	}
 
-	wqe = queue_addr_from_index(q, index);
+	if (unlikely(qp->req.resume_wqe)) {
+		if (qp->req.resume_wqe->state != wqe_state_posted) {
+			return NULL;
+		}
 
-	if (unlikely((qp->req.state == QP_STATE_DRAIN ||
-		      qp->req.state == QP_STATE_DRAINED) &&
-		     (wqe->state != wqe_state_processing)))
-		return NULL;
+		wqe = qp->req.resume_wqe;
+	} else {
+#endif
+		if (index == prod)
+			return NULL;
+
+		wqe = queue_addr_from_index(q, index);
+
+		if (unlikely((qp->req.state == QP_STATE_DRAIN ||
+			      qp->req.state == QP_STATE_DRAINED) &&
+			     (wqe->state != wqe_state_processing)))
+			return NULL;
+
+#if RXE_MIGRATION
+	}
+#endif
 
 	wqe->mask = wr_opcode_mask(wqe->wr.opcode, qp);
 	return wqe;
@@ -268,6 +338,12 @@ static int next_opcode_rc(struct rxe_qp *qp, u32 opcode, int fits)
 	case IB_WR_REG_MR:
 	case IB_WR_LOCAL_INV:
 		return opcode;
+#if RXE_MIGRATION
+	case IB_WR_PAUSE:
+		return IB_OPCODE_RC_PAUSE;
+	case IB_WR_RESUME:
+		return IB_OPCODE_RC_RESUME;
+#endif
 	}
 
 	return -EINVAL;
@@ -402,6 +478,13 @@ static struct sk_buff *init_req_packet(struct rxe_qp *qp,
 	/* length from start of bth to end of icrc */
 	paylen = rxe_opcode[opcode].length + payload + pad + RXE_ICRC_SIZE;
 	pkt->paylen = paylen;
+#if 1
+#if RXE_MIGRATION
+	if (opcode == IB_OPCODE_RC_RESUME)
+		pkt->psn = (qp->comp.psn) & BTH_PSN_MASK;
+	else
+#endif
+#endif
 
 	/* init skb */
 	skb = rxe_init_packet(rxe, av, paylen, pkt);
@@ -535,15 +618,29 @@ static void update_wqe_psn(struct rxe_qp *qp,
 	if (num_pkt == 0)
 		num_pkt = 1;
 
+#if RXE_MIGRATION
+	if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+		wqe->first_psn = (qp->comp.psn - 1) & BTH_PSN_MASK;
+		wqe->last_psn = (qp->comp.psn + num_pkt - 2) & BTH_PSN_MASK;
+	} else 
+#endif
 	if (pkt->mask & RXE_START_MASK) {
 		wqe->first_psn = qp->req.psn;
 		wqe->last_psn = (qp->req.psn + num_pkt - 1) & BTH_PSN_MASK;
 	}
 
-	if (pkt->mask & RXE_READ_MASK)
+	if (pkt->mask & RXE_READ_MASK) {
 		qp->req.psn = (wqe->first_psn + num_pkt) & BTH_PSN_MASK;
-	else
+		MINMAX_UPDATE(qp, req_psn_2, (int) qp->req.psn);
+	} else
+#if RXE_MIGRATION
+	       	if (pkt->opcode != IB_OPCODE_RC_RESUME)
+#endif
+	{
 		qp->req.psn = (qp->req.psn + 1) & BTH_PSN_MASK;
+		MINMAX_UPDATE(qp, req_psn_3, (int) qp->req.psn);
+	}
+	MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 }
 
 static void save_state(struct rxe_send_wqe *wqe,
@@ -566,15 +663,23 @@ static void rollback_state(struct rxe_send_wqe *wqe,
 	wqe->first_psn = rollback_wqe->first_psn;
 	wqe->last_psn  = rollback_wqe->last_psn;
 	qp->req.psn    = rollback_psn;
+	MINMAX_UPDATE(qp, req_psn_4, (int) qp->req.psn);
 }
 
 static void update_state(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
 {
-	qp->req.opcode = pkt->opcode;
-
-	if (pkt->mask & RXE_END_MASK)
-		qp->req.wqe_index = queue_next_index(qp->sq.queue,
-						     qp->req.wqe_index);
+#if RXE_MIGRATION
+	if (qp->req.resume_wqe)
+		qp->req.resume_posted = true;
+	else {
+#endif
+		qp->req.opcode = pkt->opcode;
+		if (pkt->mask & RXE_END_MASK)
+			qp->req.wqe_index = queue_next_index(qp->sq.queue,
+							     qp->req.wqe_index);
+#if RXE_MIGRATION
+	}
+#endif
 
 	qp->need_req_skb = 0;
 
@@ -682,6 +787,11 @@ int rxe_requester(void *arg)
 		goto exit;
 	}
 
+#if RXE_MIGRATION
+	if (unlikely(qp->paused) || unlikely(qp->stopped)) {
+		goto exit;
+	}
+#endif
 	/* we come here if the retransmit timer has fired
 	 * or if the rnr timer has fired. If the retransmit
 	 * timer fires while we are processing an RNR NAK wait
@@ -710,13 +820,17 @@ int rxe_requester(void *arg)
 			goto done;
 	}
 
+	COUNTER_INC(qp, req_1);
 	if (unlikely(qp_type(qp) == IB_QPT_RC &&
 		psn_compare(qp->req.psn, (qp->comp.psn +
 				RXE_MAX_UNACKED_PSNS)) > 0)) {
+		COUNTER_INC(qp, req_3);
 		qp->req.wait_psn = 1;
-		goto exit;
+		if (wqe->wr.opcode != IB_WR_RESUME)
+			goto exit;
 	}
 
+	COUNTER_INC(qp, req_2);
 	/* Limit the number of inflight SKBs per QP */
 	if (unlikely(atomic_read(&qp->skb_out) >
 		     RXE_INFLIGHT_SKBS_PER_QP_HIGH)) {
@@ -752,6 +866,8 @@ int rxe_requester(void *arg)
 			wqe->first_psn = qp->req.psn;
 			wqe->last_psn = qp->req.psn;
 			qp->req.psn = (qp->req.psn + 1) & BTH_PSN_MASK;
+			MINMAX_UPDATE(qp, req_psn_5, (int) qp->req.psn);
+			MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 			qp->req.opcode = IB_OPCODE_UD_SEND_ONLY;
 			qp->req.wqe_index = queue_next_index(qp->sq.queue,
 						       qp->req.wqe_index);
@@ -808,6 +924,11 @@ int rxe_requester(void *arg)
 	 * rxe_xmit_packet().
 	 * Otherwise, completer might initiate an unjustified retry flow.
 	 */
+#if RXE_MIGRATION
+	if (pkt.opcode != IB_OPCODE_RC_RESUME)
+		MINMAX_UPDATE(qp, send_pkt_psn, (int) pkt.psn);
+#endif
+
 	save_state(wqe, qp, &rollback_wqe, &rollback_psn);
 	update_wqe_state(qp, wqe, &pkt);
 	update_wqe_psn(qp, wqe, &pkt, payload);

@@ -46,6 +46,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_umem.h>
 #include <rdma/ib_user_verbs.h>
+#include <rdma/ib_user_ioctl_verbs_dump.h>
 #include <rdma/uverbs_std_types.h>
 
 #define UVERBS_MODULE_NAME ib_uverbs
@@ -319,4 +320,44 @@ ib_uverbs_get_async_event(struct uverbs_attr_bundle *attrs,
 void copy_port_attr_to_resp(struct ib_port_attr *attr,
 			    struct ib_uverbs_query_port_resp *resp,
 			    struct ib_device *ib_dev, u8 port_num);
+
+
+static inline int ib_uverbs_dump_object_type(struct ib_uobject *obj)
+{
+	switch (uobj_get_object_id(obj)) {
+	case UVERBS_OBJECT_PD:
+		return IB_UVERBS_OBJECT_PD;
+	case UVERBS_OBJECT_COMP_CHANNEL:
+		return IB_UVERBS_OBJECT_COMP_CHANNEL;
+	case UVERBS_OBJECT_CQ:
+		return IB_UVERBS_OBJECT_CQ;
+	case UVERBS_OBJECT_QP:
+		return IB_UVERBS_OBJECT_QP;
+	case UVERBS_OBJECT_SRQ:
+		return IB_UVERBS_OBJECT_SRQ;
+	case UVERBS_OBJECT_AH:
+		return IB_UVERBS_OBJECT_AH;
+	case UVERBS_OBJECT_MR:
+		return IB_UVERBS_OBJECT_MR;
+	case UVERBS_OBJECT_MW:
+		return IB_UVERBS_OBJECT_MW;
+	case UVERBS_OBJECT_FLOW:
+		return IB_UVERBS_OBJECT_FLOW;
+	case UVERBS_OBJECT_XRCD:
+		return IB_UVERBS_OBJECT_XRCD;
+	case UVERBS_OBJECT_RWQ_IND_TBL:
+		return IB_UVERBS_OBJECT_RWQ_IND_TBL;
+	case UVERBS_OBJECT_WQ:
+		return IB_UVERBS_OBJECT_WQ;
+	case UVERBS_OBJECT_FLOW_ACTION:
+		return IB_UVERBS_OBJECT_FLOW_ACTION;
+	case UVERBS_OBJECT_DM:
+		return IB_UVERBS_OBJECT_DM;
+	case UVERBS_OBJECT_COUNTERS:
+		return IB_UVERBS_OBJECT_COUNTERS;
+	default:
+		return -1;
+	}
+}
+
 #endif /* UVERBS_H */

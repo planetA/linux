@@ -22,6 +22,7 @@ static const struct rdma_stat_desc rxe_counter_descs[] = {
 	[RXE_CNT_LINK_DOWNED].name         =  "link_downed",
 	[RXE_CNT_RDMA_SEND].name           =  "rdma_sends",
 	[RXE_CNT_RDMA_RECV].name           =  "rdma_recvs",
+	[RXE_CNT_RCV_PAUSE].name           =  "rcvd_pause",
 };
 
 int rxe_ib_get_hw_stats(struct ib_device *ibdev,

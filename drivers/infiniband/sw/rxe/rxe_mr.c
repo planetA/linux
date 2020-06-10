@@ -423,7 +423,7 @@ int copy_data(
 	struct rxe_sge		*sge;
 	int			offset;
 	int			resid;
-	struct rxe_mem		*mem	= NULL;
+	struct rxe_mr		*mr	= NULL;
 	u64			iova;
 	int			err;
 

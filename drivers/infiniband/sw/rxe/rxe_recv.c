@@ -106,9 +106,27 @@ static int check_addr(struct rxe_dev *rxe, struct rxe_pkt_info *pkt,
 		struct in_addr *daddr =
 			&qp->pri_av.dgid_addr._sockaddr_in.sin_addr;
 
-		if ((ip_hdr(skb)->daddr != saddr->s_addr) ||
-		    (ip_hdr(skb)->saddr != daddr->s_addr))
+		if (ip_hdr(skb)->daddr != saddr->s_addr) {
+			pr_warn_ratelimited("dst addr %pI4 != qp source addr %pI4\n",
+					    &ip_hdr(skb)->daddr,
+					    &saddr->s_addr);
 			return -EINVAL;
+		}
+
+		/* Ignore source check for the paused QP, because the restored
+		 * QP may come from different source. Or if opcode is RESUME. */
+#if RXE_MIGRATION
+		if (qp->paused || pkt->opcode == IB_OPCODE_RC_RESUME) {
+			return 0;
+		}
+#endif
+
+		if (ip_hdr(skb)->saddr != daddr->s_addr) {
+			pr_warn_ratelimited("source addr %pI4 != qp dst addr %pI4\n",
+					    &ip_hdr(skb)->saddr,
+					    &daddr->s_addr);
+			return -EINVAL;
+		}
 
 	} else if (skb->protocol == htons(ETH_P_IPV6)) {
 		struct in6_addr *saddr =
@@ -116,9 +134,23 @@ static int check_addr(struct rxe_dev *rxe, struct rxe_pkt_info *pkt,
 		struct in6_addr *daddr =
 			&qp->pri_av.dgid_addr._sockaddr_in6.sin6_addr;
 
-		if (memcmp(&ipv6_hdr(skb)->daddr, saddr, sizeof(*saddr)) ||
-		    memcmp(&ipv6_hdr(skb)->saddr, daddr, sizeof(*daddr)))
+		if (memcmp(&ipv6_hdr(skb)->daddr, saddr, sizeof(*saddr))) {
+			pr_warn_ratelimited("dst addr %pI6 != qp source addr %pI6\n",
+					    &ipv6_hdr(skb)->daddr, saddr);
 			return -EINVAL;
+		}
+
+#if RXE_MIGRATION
+		if (qp->paused || pkt->opcode == IB_OPCODE_RC_RESUME) {
+			return 0;
+		}
+#endif
+
+		if (memcmp(&ipv6_hdr(skb)->saddr, daddr, sizeof(*daddr))) {
+			pr_warn_ratelimited("source addr %pI6 != qp dst addr %pI6\n",
+					    &ipv6_hdr(skb)->saddr, daddr);
+			return -EINVAL;
+		}
 	}
 
 	return 0;

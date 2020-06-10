@@ -12,6 +12,7 @@
 #include "rxe_pool.h"
 #include "rxe_task.h"
 #include "rxe_hw_counters.h"
+#include "rxe_migrate.h"
 
 static inline int pkey_match(u16 key1, u16 key2)
 {
@@ -126,6 +127,10 @@ struct rxe_req_info {
 	int			wait_for_rnr_timer;
 	int			noack_pkts;
 	struct rxe_task		task;
+#if RXE_MIGRATION
+	struct rxe_send_wqe     *resume_wqe;
+	int			resume_posted;
+#endif
 };
 
 struct rxe_comp_info {
@@ -220,6 +225,10 @@ struct rxe_qp {
 	unsigned int		valid;
 	unsigned int		mtu;
 	bool			is_user;
+#if RXE_MIGRATION
+	bool			paused;
+	bool			stopped;
+#endif
 
 	struct rxe_pd		*pd;
 	struct rxe_srq		*srq;

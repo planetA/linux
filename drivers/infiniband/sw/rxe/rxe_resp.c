@@ -45,6 +45,8 @@ enum resp_states {
 	RESPST_RESET,
 	RESPST_DONE,
 	RESPST_EXIT,
+	RESPST_STOPPED,
+	RESPST_RESUME_REQUEST,
 };
 
 static char *resp_state_name[] = {
@@ -82,7 +84,11 @@ static char *resp_state_name[] = {
 	[RESPST_RESET]				= "RESET",
 	[RESPST_DONE]				= "DONE",
 	[RESPST_EXIT]				= "EXIT",
+	[RESPST_STOPPED]			= "STOPPED",
+	[RESPST_RESUME_REQUEST]			= "RESUME",
 };
+
+static int send_ack(struct rxe_qp *qp, u8 syndrome, u32 psn);
 
 /* rxe_recv calls here to add a request packet to the input queue */
 void rxe_resp_queue_pkt(struct rxe_qp *qp, struct sk_buff *skb)
@@ -117,6 +123,11 @@ static inline enum resp_states get_req(struct rxe_qp *qp,
 		return RESPST_CHK_RESOURCE;
 	}
 
+#if RXE_MIGRATION
+	if (qp->req.resume_posted)
+		return RESPST_EXIT;
+#endif
+
 	skb = skb_peek(&qp->req_pkts);
 	if (!skb)
 		return RESPST_EXIT;
@@ -134,18 +145,40 @@ static enum resp_states check_psn(struct rxe_qp *qp,
 
 	switch (qp_type(qp)) {
 	case IB_QPT_RC:
+#if RXE_MIGRATION
+		MINMAX_UPDATE(qp, rcv_psn, (int) pkt->psn);
+
+		MINMAX_UPDATE(qp, rcv_psn_1, (int) pkt->psn);
+		if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+			return RESPST_RESUME_REQUEST;
+		}
+#endif
+
+		if (diff < 0) {
+			MINMAX_UPDATE(qp, rcv_psn_2, (int) pkt->psn);
+			rxe_counter_inc(rxe, RXE_CNT_DUP_REQ);
+			return RESPST_DUPLICATE_REQUEST;
+		}
+
+#if RXE_MIGRATION
+		MINMAX_UPDATE(qp, rcv_psn_3, (int) pkt->psn);
+		if (diff == 0 && qp->stopped) {
+			return RESPST_STOPPED;
+		}
+#endif
+
 		if (diff > 0) {
+
 			if (qp->resp.sent_psn_nak)
 				return RESPST_CLEANUP;
 
+			MINMAX_UPDATE(qp, rcv_psn_4, (int) pkt->psn);
 			qp->resp.sent_psn_nak = 1;
 			rxe_counter_inc(rxe, RXE_CNT_OUT_OF_SEQ_REQ);
 			return RESPST_ERR_PSN_OUT_OF_SEQ;
 
-		} else if (diff < 0) {
-			rxe_counter_inc(rxe, RXE_CNT_DUP_REQ);
-			return RESPST_DUPLICATE_REQUEST;
 		}
+		MINMAX_UPDATE(qp, rcv_psn_5, (int) pkt->psn);
 
 		if (qp->resp.sent_psn_nak)
 			qp->resp.sent_psn_nak = 0;
@@ -170,6 +203,70 @@ static enum resp_states check_psn(struct rxe_qp *qp,
 	return RESPST_CHK_OP_SEQ;
 }
 
+#if RXE_MIGRATION
+static enum resp_states reply_stopped(struct rxe_qp *qp,
+				      struct rxe_pkt_info *pkt)
+{
+	send_ack(qp, AETH_NAK_PAUSE, qp->resp.psn);
+	return RESPST_CLEANUP;
+}
+
+static enum resp_states resume_request(struct rxe_qp *qp,
+				       struct rxe_pkt_info *pkt)
+{
+	int ret = 0;
+	struct sk_buff *skb = PKT_TO_SKB(pkt);
+	struct ib_qp_attr qp_attr;
+	struct ib_qp_init_attr qp_init_attr;
+	struct ib_global_route *grh = rdma_ah_retrieve_grh(&qp_attr.ah_attr);
+	struct ib_udata udata = {
+		.inbuf = NULL,
+		.outbuf = NULL,
+		.inlen = 0,
+		.outlen = 0,
+	};
+
+	RXE_DO_PRINT_DEBUG("Resuming from pause at qp#%d paused=%d\n", qp_num(qp), qp->paused);
+
+	ret = ib_query_qp(&qp->ibqp, &qp_attr, IB_QP_AV, &qp_init_attr);
+	if (ret) {
+		pr_err("Failed to query address: %d\n", ret);
+		return RESPST_ERROR;
+	}
+
+	if (skb->protocol == htons(ETH_P_IP)) {
+		struct in_addr *daddr =
+			&qp->pri_av.dgid_addr._sockaddr_in.sin_addr;
+
+		ipv6_addr_set_v4mapped(ip_hdr(skb)->saddr,
+				(struct in6_addr *)&grh->dgid);
+		RXE_DO_PRINT_DEBUG("Remembering the new address of the source QP: %pI4 -> (%pI4) %pI6c\n",
+				&daddr->s_addr, &ip_hdr(skb)->saddr, &grh->dgid);
+	} else if (skb->protocol == htons(ETH_P_IPV6)) {
+		struct in6_addr *daddr =
+			&qp->pri_av.dgid_addr._sockaddr_in6.sin6_addr;
+		memcpy(&grh->dgid, &ipv6_hdr(skb)->saddr, sizeof(grh->dgid));
+
+		RXE_DO_PRINT_DEBUG("Remembering the new address of the source QP: %pI6c -> %pI6c\n",
+				daddr, &grh->dgid);
+	} else {
+		pr_err("Unknown protocol\n");
+		return RESPST_ERROR;
+	}
+
+	ret = ib_modify_qp_with_udata(&qp->ibqp, &qp_attr, IB_QP_AV, &udata);
+	if (ret) {
+		pr_err("Failed to update address: %d\n", ret);
+		return RESPST_ERROR;
+	}
+
+	qp->paused = false;
+	qp->resp.sent_psn_nak = 0;
+	rxe_run_task(&qp->req.task);
+	return RESPST_CHK_RESOURCE;
+}
+#endif
+
 static enum resp_states check_op_seq(struct rxe_qp *qp,
 				     struct rxe_pkt_info *pkt)
 {
@@ -185,6 +282,7 @@ static enum resp_states check_op_seq(struct rxe_qp *qp,
 			case IB_OPCODE_RC_SEND_LAST_WITH_INVALIDATE:
 				return RESPST_CHK_OP_VALID;
 			default:
+				pr_err("OPCODE %d\n", pkt->opcode);
 				return RESPST_ERR_MISSING_OPCODE_LAST_C;
 			}
 
@@ -208,6 +306,7 @@ static enum resp_states check_op_seq(struct rxe_qp *qp,
 			case IB_OPCODE_RC_RDMA_WRITE_MIDDLE:
 			case IB_OPCODE_RC_RDMA_WRITE_LAST:
 			case IB_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE:
+				pr_err("OPCODE %s %d %d\n", __FILE__, __LINE__, pkt->opcode);
 				return RESPST_ERR_MISSING_OPCODE_FIRST;
 			default:
 				return RESPST_CHK_OP_VALID;
@@ -1037,6 +1136,7 @@ static enum resp_states read_reply(struct rxe_qp *qp,
 			qp->resp.opcode = -1;
 		if (psn_compare(res->cur_psn, qp->resp.psn) >= 0)
 			qp->resp.psn = res->cur_psn;
+		MINMAX_UPDATE(qp, resp_psn, (int) qp->resp.psn);
 		state = RESPST_CLEANUP;
 	}
 
@@ -1077,8 +1177,9 @@ static enum resp_states execute(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
 				return err;
 		}
 		err = send_data_in(qp, payload_addr(pkt), payload_size(pkt));
-		if (err)
+		if (err) {
 			return err;
+		}
 	} else if (pkt->mask & RXE_WRITE_MASK) {
 		err = write_data_in(qp, pkt);
 		if (err)
@@ -1093,6 +1194,10 @@ static enum resp_states execute(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
 		return RESPST_ATOMIC_WRITE_REPLY;
 	} else if (pkt->mask & RXE_FLUSH_MASK) {
 		return RESPST_PROCESS_FLUSH;
+#if RXE_MIGRATION
+	} else if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+		return RESPST_ACKNOWLEDGE;
+#endif
 	} else {
 		/* Unreachable */
 		WARN_ON_ONCE(1);
@@ -1112,6 +1217,7 @@ static enum resp_states execute(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
 
 	/* next expected psn, read handles this separately */
 	qp->resp.psn = (pkt->psn + 1) & BTH_PSN_MASK;
+	MINMAX_UPDATE(qp, resp_psn, (int) qp->resp.psn);
 	qp->resp.ack_psn = qp->resp.psn;
 
 	qp->resp.opcode = pkt->opcode;
@@ -1241,6 +1347,8 @@ static int send_common_ack(struct rxe_qp *qp, u8 syndrome, u32 psn,
 	if (!skb)
 		return -ENOMEM;
 
+	COUNTER_INC(qp, send_ack);
+
 	err = rxe_xmit_packet(qp, &ack_pkt, skb);
 	if (err)
 		rxe_dbg_qp(qp, "Failed sending %s\n", msg);
@@ -1285,9 +1393,17 @@ static enum resp_states acknowledge(struct rxe_qp *qp,
 	if (qp_type(qp) != IB_QPT_RC)
 		return RESPST_CLEANUP;
 
-	if (qp->resp.aeth_syndrome != AETH_ACK_UNLIMITED)
+	if (qp->resp.aeth_syndrome != AETH_ACK_UNLIMITED) {
+#if RXE_MIGRATION
+		if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+			send_ack(qp, qp->resp.aeth_syndrome, qp->resp.psn - 1);
+		} else {
+#endif
 		send_ack(qp, qp->resp.aeth_syndrome, pkt->psn);
-	else if (pkt->mask & RXE_ATOMIC_MASK)
+#if RXE_MIGRATION
+		}
+#endif
+	} else if (pkt->mask & RXE_ATOMIC_MASK)
 		send_atomic_ack(qp, AETH_ACK_UNLIMITED, pkt->psn);
 	else if (pkt->mask & (RXE_FLUSH_MASK | RXE_ATOMIC_WRITE_MASK))
 		send_read_response_ack(qp, AETH_ACK_UNLIMITED, pkt->psn);
@@ -1530,10 +1646,17 @@ int rxe_responder(void *arg)
 		case RESPST_CHK_PSN:
 			state = check_psn(qp, pkt);
 			break;
+#if RXE_MIGRATION
+		case RESPST_RESUME_REQUEST:
+			state = resume_request(qp, pkt);
+			break;
+#endif
 		case RESPST_CHK_OP_SEQ:
+
 			state = check_op_seq(qp, pkt);
 			break;
 		case RESPST_CHK_OP_VALID:
+
 			state = check_op_valid(qp, pkt);
 			break;
 		case RESPST_CHK_RESOURCE:
@@ -1572,6 +1695,11 @@ int rxe_responder(void *arg)
 		case RESPST_DUPLICATE_REQUEST:
 			state = duplicate_request(qp, pkt);
 			break;
+#if RXE_MIGRATION
+		case RESPST_STOPPED:
+			state = reply_stopped(qp, pkt);
+			break;
+#endif
 		case RESPST_ERR_PSN_OUT_OF_SEQ:
 			/* RC only - Class B. Drop packet. */
 			send_ack(qp, AETH_NAK_PSN_SEQ_ERROR, qp->resp.psn);
@@ -1584,6 +1712,7 @@ int rxe_responder(void *arg)
 		case RESPST_ERR_UNSUPPORTED_OPCODE:
 		case RESPST_ERR_MISALIGNED_ATOMIC:
 			/* RC Only - Class C. */
+			pr_err("state %s\n", resp_state_name[state]);
 			do_class_ac_error(qp, AETH_NAK_INVALID_REQ,
 					  IB_WC_REM_INV_REQ_ERR);
 			state = RESPST_COMPLETE;

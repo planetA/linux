@@ -698,6 +698,54 @@ out:
 	return ret;
 }
 
+static int ib_uverbs_fsync(struct file *filp, loff_t start, loff_t end, int datasync)
+{
+	struct ib_uverbs_file *file = filp->private_data;
+	struct ib_ucontext *ucontext;
+	struct ib_uobject *obj, *next_obj;
+	int ret = 0;
+	int srcu_key;
+
+	if (start != 0 || end != LLONG_MAX || datasync != 0) {
+		return -EINVAL;
+	}
+
+	srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
+	ucontext = ib_uverbs_get_ucontext_file(file);
+	if (IS_ERR(ucontext)) {
+		ret = PTR_ERR(ucontext);
+		goto out;
+	}
+
+	if (!ucontext->device->ops.pause_resume_qp) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* Once dump is done without error, we can pause the queue pairs. */
+	list_for_each_entry_safe (obj, next_obj, &file->uobjects, list) {
+		int obj_type = ib_uverbs_dump_object_type(obj);
+		switch (obj_type) {
+		case IB_UVERBS_OBJECT_QP:
+			pr_debug("Resuming a queue pair qp#%d\n", obj->id);
+			ret = ib_resume_qp(obj->object);
+			if (ret) {
+				/* XXX: Implement safe unpause */
+				pr_err("Pausing gone terribly wrong. No attempt to unpause."
+				       "The target process probably will now hang.\n");
+				goto out;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+  out:
+	srcu_read_unlock(&file->device->disassociate_srcu, srcu_key);
+	return ret;
+}
+
 /*
  * The VMA has been dup'd, initialize the vm_private_data with a new tracking
  * struct
@@ -985,6 +1033,7 @@ static const struct file_operations uverbs_fops = {
 	.llseek	 = no_llseek,
 	.unlocked_ioctl = ib_uverbs_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
+	.fsync = ib_uverbs_fsync,
 };
 
 static const struct file_operations uverbs_mmap_fops = {
@@ -996,6 +1045,7 @@ static const struct file_operations uverbs_mmap_fops = {
 	.llseek	 = no_llseek,
 	.unlocked_ioctl = ib_uverbs_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
+	.fsync = ib_uverbs_fsync,
 };
 
 static int ib_uverbs_get_nl_info(struct ib_device *ibdev, void *client_data,
