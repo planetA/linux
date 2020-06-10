@@ -276,7 +276,6 @@ static u32 alloc_index(struct rxe_pool *pool)
 
 	WARN_ON_ONCE(index >= range);
 	set_bit(index, pool->table);
-	pool->last = index;
 	return index + pool->min_index;
 }
 
