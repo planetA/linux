@@ -27,6 +27,9 @@ enum comp_state {
 	COMPST_ERROR,
 	COMPST_EXIT, /* We have an issue, and we want to rerun the completer */
 	COMPST_DONE, /* The completer finished successflly */
+#if RXE_MIGRATION
+	COMPST_PAUSE, /* Another end of the QP is migrating */
+#endif
 };
 
 static char *comp_state_name[] =  {
@@ -45,6 +48,9 @@ static char *comp_state_name[] =  {
 	[COMPST_ERROR]			= "ERROR",
 	[COMPST_EXIT]			= "EXIT",
 	[COMPST_DONE]			= "DONE",
+#if RXE_MIGRATION
+	[COMPST_PAUSE]			= "PAUSE",
+#endif
 };
 
 static unsigned long rnrnak_usec[32] = {
@@ -130,6 +136,8 @@ void rxe_comp_queue_pkt(struct rxe_qp *qp, struct sk_buff *skb)
 	if (must_sched != 0)
 		rxe_counter_inc(SKB_TO_PKT(skb)->rxe, RXE_CNT_COMPLETER_SCHED);
 
+	COUNTER_INC(qp, comp_queue_pkt);
+
 	rxe_run_task(&qp->comp.task, must_sched);
 }
 
@@ -146,15 +154,35 @@ static inline enum comp_state get_wqe(struct rxe_qp *qp,
 		wqe = queue_head(qp->sq.queue, QUEUE_TYPE_FROM_USER);
 	else
 		wqe = queue_head(qp->sq.queue, QUEUE_TYPE_KERNEL);
+
+#if RXE_MIGRATION
+	if (!wqe) {
+		wqe = qp->req.resume_wqe;
+	} else if (qp->req.resume_posted) {
+		s32 diff;
+		diff = psn_compare(qp->req.resume_wqe->first_psn, wqe->last_psn);
+		if (diff <= 0) {
+			wqe = qp->req.resume_wqe;
+		} else {
+			// let older wqes to complete
+		}
+	}
+#endif
+
 	*wqe_p = wqe;
 
 	/* no WQE or requester has not started it yet */
-	if (!wqe || wqe->state == wqe_state_posted)
+	if (!wqe || wqe->state == wqe_state_posted) {
+		if (pkt)
+			MINMAX_UPDATE(qp, comp_psn_3, (int) pkt->psn);
 		return pkt ? COMPST_DONE : COMPST_EXIT;
+	}
 
 	/* WQE does not require an ack */
-	if (wqe->state == wqe_state_done)
+	if (wqe->state == wqe_state_done) {
+		COUNTER_INC(qp, comp_4);
 		return COMPST_COMP_WQE;
+	}
 
 	/* WQE caused an error */
 	if (wqe->state == wqe_state_error)
@@ -177,6 +205,13 @@ static inline enum comp_state check_psn(struct rxe_qp *qp,
 {
 	s32 diff;
 
+#if RXE_MIGRATION
+	if (qp->stopped || qp->paused) {
+		return COMPST_DONE;
+	}
+
+	MINMAX_UPDATE(qp, recv_ack_psn, (int) pkt->psn);
+#endif
 	/* check to see if response is past the oldest WQE. if it is, complete
 	 * send/write or error read/atomic
 	 */
@@ -187,6 +222,7 @@ static inline enum comp_state check_psn(struct rxe_qp *qp,
 				return COMPST_ERROR_RETRY;
 
 			reset_retry_counters(qp);
+			COUNTER_INC(qp, comp_5);
 			return COMPST_COMP_WQE;
 		} else {
 			return COMPST_DONE;
@@ -304,8 +340,10 @@ static inline enum comp_state check_ack(struct rxe_qp *qp,
 					rxe_counter_inc(rxe,
 							RXE_CNT_RCV_SEQ_ERR);
 					qp->comp.psn = pkt->psn;
+					MINMAX_UPDATE(qp, comp_psn, (int) qp->comp.psn);
 					if (qp->req.wait_psn) {
 						qp->req.wait_psn = 0;
+						MINMAX_UPDATE(qp, psn_diff, (int) (qp->req.psn - qp->comp.psn));
 						rxe_run_task(&qp->req.task, 0);
 					}
 				}
@@ -322,6 +360,12 @@ static inline enum comp_state check_ack(struct rxe_qp *qp,
 			case AETH_NAK_REM_OP_ERR:
 				wqe->status = IB_WC_REM_OP_ERR;
 				return COMPST_ERROR;
+
+#if RXE_MIGRATION
+			case AETH_NAK_PAUSE:
+				rxe_counter_inc(rxe, RXE_CNT_RCV_PAUSE);
+				return COMPST_PAUSE;
+#endif
 
 			default:
 				pr_warn("unexpected nak %x\n", syn);
@@ -424,6 +468,28 @@ static void do_complete(struct rxe_qp *qp, struct rxe_send_wqe *wqe)
 	struct rxe_cqe cqe;
 	bool post;
 
+#if RXE_MIGRATION
+	if (wqe->wr.opcode == IB_WR_RESUME) {
+		kfree(qp->req.resume_wqe);
+		qp->req.resume_wqe = NULL;
+		qp->req.resume_posted = false;
+
+		qp->resp.wqe = queue_head(qp->rq.queue);
+		if (!qp->resp.wqe) {
+			RXE_DO_PRINT_DEBUG_ALWAYS("Restored resp wqe to NULL qp#%d\n", qp_num(qp));
+		}
+
+		qp->req.wait_psn = 0;
+
+		rxe_run_task(&qp->req.task, 1);
+		rxe_run_task(&qp->resp.task, 1);
+		COUNTER_INC(qp, comp_3);
+
+		/* Out-of-queue message. Do nothing. */
+		return;
+	}
+#endif
+
 	/* do we need to post a completion */
 	post = ((qp->sq_sig_type == IB_SIGNAL_ALL_WR) ||
 			(wqe->wr.send_flags & IB_SEND_SIGNALED) ||
@@ -493,6 +559,14 @@ static inline enum comp_state complete_ack(struct rxe_qp *qp,
 		}
 	}
 
+#if RXE_MIGRATION
+	if (qp->req.resume_posted) {
+		//do_complete(qp, wqe);
+		/* Can't use wqe after do_complete */
+		//return COMPST_GET_WQE;
+	}
+#endif
+
 	do_complete(qp, wqe);
 
 	if (psn_compare(pkt->psn, qp->comp.psn) >= 0)
@@ -506,19 +580,22 @@ static inline enum comp_state complete_wqe(struct rxe_qp *qp,
 					   struct rxe_send_wqe *wqe)
 {
 	if (pkt && wqe->state == wqe_state_pending) {
-		if (psn_compare(wqe->last_psn, qp->comp.psn) >= 0) {
+		if (psn_compare(wqe->last_psn, qp->comp.psn) >= 0 && wqe->wr.opcode != IB_WR_RESUME) {
 			qp->comp.psn = (wqe->last_psn + 1) & BTH_PSN_MASK;
+			MINMAX_UPDATE(qp, comp_psn, (int) qp->comp.psn);
 			qp->comp.opcode = -1;
 		}
 
 		if (qp->req.wait_psn) {
 			qp->req.wait_psn = 0;
+			MINMAX_UPDATE(qp, psn_diff, (int) (qp->req.psn - qp->comp.psn));
 			rxe_run_task(&qp->req.task, 1);
 		}
 	}
 
 	do_complete(qp, wqe);
 
+	COUNTER_INC(qp, comp_1);
 	return COMPST_GET_WQE;
 }
 
@@ -562,6 +639,7 @@ int rxe_completer(void *arg)
 	struct rxe_send_wqe *wqe = NULL;
 	struct sk_buff *skb = NULL;
 	struct rxe_pkt_info *pkt = NULL;
+	int counter = 0;
 	enum comp_state state;
 	int ret = 0;
 
@@ -597,12 +675,22 @@ int rxe_completer(void *arg)
 			skb = skb_dequeue(&qp->resp_pkts);
 			if (skb) {
 				pkt = SKB_TO_PKT(skb);
+				MINMAX_UPDATE(qp, comp_psn_1, (int) pkt->psn);
 				qp->comp.timeout_retry = 0;
 			}
+			COUNTER_INC(qp, comp_2);
 			state = COMPST_GET_WQE;
 			break;
 
 		case COMPST_GET_WQE:
+			COUNTER_INC(qp, comp_get_wqe);
+			counter = counter + 1;
+			if (counter > 10000) {
+				pr_err("Stuck in rxe_completer. Dropping packet\n");
+				state = COMPST_DONE;
+				break;
+			}
+
 			state = get_wqe(qp, pkt, &wqe);
 			break;
 
@@ -639,16 +727,25 @@ int rxe_completer(void *arg)
 			break;
 
 		case COMPST_UPDATE_COMP:
+#if RXE_MIGRATION
+			if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+				pr_err("UNEXPECTED SITUATION\n");
+			}
+#endif
+
 			if (pkt->mask & RXE_END_MASK)
 				qp->comp.opcode = -1;
 			else
 				qp->comp.opcode = pkt->opcode;
 
-			if (psn_compare(pkt->psn, qp->comp.psn) >= 0)
+			if (psn_compare(pkt->psn, qp->comp.psn) >= 0) {
 				qp->comp.psn = (pkt->psn + 1) & BTH_PSN_MASK;
+				MINMAX_UPDATE(qp, comp_psn, (int) qp->comp.psn);
+			}
 
 			if (qp->req.wait_psn) {
 				qp->req.wait_psn = 0;
+				MINMAX_UPDATE(qp, psn_diff, (int) (qp->req.psn - qp->comp.psn));
 				rxe_run_task(&qp->req.task, 1);
 			}
 
@@ -656,9 +753,11 @@ int rxe_completer(void *arg)
 			break;
 
 		case COMPST_DONE:
+			COUNTER_INC(qp, comp_done);
 			goto done;
 
 		case COMPST_EXIT:
+			COUNTER_INC(qp, comp_exit);
 			if (qp->comp.timeout_retry && wqe) {
 				state = COMPST_ERROR_RETRY;
 				break;
@@ -682,6 +781,7 @@ int rxe_completer(void *arg)
 			goto done;
 
 		case COMPST_ERROR_RETRY:
+			COUNTER_INC(qp, comp_error_retry);
 			/* we come here if the retry timer fired and we did
 			 * not receive a response packet. try to retry the send
 			 * queue if that makes sense and the limits have not
@@ -720,6 +820,10 @@ int rxe_completer(void *arg)
 							RXE_CNT_COMP_RETRY);
 					qp->req.need_retry = 1;
 					qp->comp.started_retry = 1;
+
+#if RXE_MIGRATION
+					qp->req.resume_posted = false;
+#endif
 					rxe_run_task(&qp->req.task, 0);
 				}
 				goto done;
@@ -751,6 +855,16 @@ int rxe_completer(void *arg)
 				state = COMPST_ERROR;
 			}
 			break;
+
+#if RXE_MIGRATION
+		case COMPST_PAUSE:
+			RXE_DO_PRINT_DEBUG_ALWAYS("qp#%d received pause request from (%pI4)",
+			       qp_num(qp), &qp->pri_av.dgid_addr._sockaddr_in.sin_addr.s_addr);
+			qp->paused = true;
+
+			state = COMPST_DONE;
+			break;
+#endif
 
 		case COMPST_ERROR:
 			WARN_ON_ONCE(wqe->status == IB_WC_SUCCESS);

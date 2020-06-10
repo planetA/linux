@@ -31,15 +31,6 @@ static int UVERBS_HANDLER(UVERBS_METHOD_INVOKE_WRITE)(
 	       attrs->ufile->device->ib_dev);
 	printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
 	       attrs->ufile->device->ib_dev->name);
-	struct ib_ucontext *uctx;
-	uctx = ib_uverbs_get_ucontext(attrs);
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx);
-	if (!IS_ERR(uctx)) {
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
-		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
-		       uctx->device->name);
-	}
 
 	rc = uverbs_get_const(&cmd, attrs, UVERBS_ATTR_WRITE_CMD);
 	if (rc)
@@ -230,16 +221,6 @@ static int UVERBS_HANDLER(UVERBS_METHOD_GET_CONTEXT)(
 	u32 num_comp = attrs->ufile->device->num_comp_vectors;
 	u64 core_support = IB_UVERBS_CORE_SUPPORT_OPTIONAL_MR_ACCESS;
 	int ret;
-
-	struct ib_ucontext *uctx;
-	uctx = ib_uverbs_get_ucontext(attrs);
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx);
-	if (!IS_ERR(uctx)) {
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
-		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
-		       uctx->device->name);
-	}
 
 	ret = uverbs_copy_to(attrs, UVERBS_ATTR_GET_CONTEXT_NUM_COMP_VECTORS,
 			     &num_comp, sizeof(num_comp));

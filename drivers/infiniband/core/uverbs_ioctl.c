@@ -451,16 +451,6 @@ static int ib_uverbs_run_method(struct bundle_priv *pbundle,
 	else
 		pbundle->bundle.driver_udata = (struct ib_udata){};
 
-	struct ib_ucontext *uctx;
-	uctx = ib_uverbs_get_ucontext(&pbundle->bundle);
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx);
-	if (!IS_ERR(uctx)) {
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
-		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
-		       uctx->device->name);
-	}
-
 	if (destroy_bkey != UVERBS_API_ATTR_BKEY_LEN) {
 		struct uverbs_obj_attr *destroy_attr =
 			&pbundle->bundle.attrs[destroy_bkey].obj_attr;
@@ -591,8 +581,6 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	pbundle->method_elm = method_elm;
 	pbundle->method_key = attrs_iter.index;
 	pbundle->bundle.ufile = ufile;
-	struct ib_ucontext *uctx;
-	uctx = ib_uverbs_get_ucontext_file(ufile);
 	pbundle->bundle.context = NULL; /* only valid if bundle has uobject */
 	pbundle->radix = &uapi->radix;
 	pbundle->radix_slots = slot;
