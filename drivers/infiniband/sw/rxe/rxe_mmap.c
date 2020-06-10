@@ -40,12 +40,17 @@ static void rxe_vma_open(struct vm_area_struct *vma)
 	struct rxe_mmap_info *ip = vma->vm_private_data;
 
 	kref_get(&ip->ref);
+	if (ip->vma) {
+		pr_err("Expected ip->vma to be NULL: %p\n", ip->vma);
+	}
+	ip->vma = vma;
 }
 
 static void rxe_vma_close(struct vm_area_struct *vma)
 {
 	struct rxe_mmap_info *ip = vma->vm_private_data;
 
+	ip->vma = NULL;
 	kref_put(&ip->ref, rxe_mmap_release);
 }
 
@@ -143,6 +148,7 @@ struct rxe_mmap_info *rxe_create_mmap_info(struct rxe_dev *rxe, u32 size,
 		container_of(udata, struct uverbs_attr_bundle, driver_udata)
 			->context;
 	ip->obj = obj;
+	ip->vma = NULL;
 	kref_init(&ip->ref);
 
 	return ip;

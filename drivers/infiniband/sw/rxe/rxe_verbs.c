@@ -7,10 +7,15 @@
 #include <linux/dma-mapping.h>
 #include <net/addrconf.h>
 #include <rdma/uverbs_ioctl.h>
+#include <rdma/ib_user_ioctl_verbs_dump.h>
 #include "rxe.h"
 #include "rxe_loc.h"
 #include "rxe_queue.h"
 #include "rxe_hw_counters.h"
+
+static int init_send_wqe(struct rxe_qp *qp, const struct ib_send_wr *ibwr,
+			 unsigned int mask, unsigned int length,
+			 struct rxe_send_wqe *wqe);
 
 static int rxe_query_device(struct ib_device *dev,
 			    struct ib_device_attr *attr,
@@ -154,6 +159,414 @@ static int rxe_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 
 	rxe_drop_ref(&pd->pelem);
 	return 0;
+}
+
+static int rxe_save_queue(struct rxe_dump_queue *dump_queue, struct rxe_queue *queue)
+{
+	if (!queue) {
+		return -EINVAL;
+	}
+
+	if (!dump_queue) {
+		return -EINVAL;
+	}
+
+	dump_queue->log2_elem_size	= queue->log2_elem_size;
+	dump_queue->index_mask	= queue->index_mask;
+	dump_queue->producer_index	= queue->buf->producer_index;
+	dump_queue->consumer_index	= queue->buf->consumer_index;
+
+	return 0;
+}
+
+static int rxe_restore_queue(struct rxe_queue *queue, const struct rxe_dump_queue *dump_queue)
+{
+	if (!queue)
+		return -EINVAL;
+
+	if (!dump_queue)
+		return -EINVAL;
+
+	queue->log2_elem_size      = dump_queue->log2_elem_size;
+	queue->index_mask          = dump_queue->index_mask;
+
+	if (queue->buf) {
+		queue->buf->log2_elem_size = dump_queue->log2_elem_size;
+		queue->buf->index_mask     = dump_queue->index_mask;
+		queue->buf->producer_index = dump_queue->producer_index;
+		queue->buf->consumer_index = dump_queue->consumer_index;
+	}
+
+	return 0;
+}
+
+static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dump_qp, ssize_t size)
+{
+	int ret;
+	struct rxe_qp *qp;
+	struct ib_qp_attr attr;
+
+	if (size < sizeof(*dump_qp)) {
+		return -ENOMEM;
+	}
+
+	attr.qp_state = IB_QPS_SQD;
+	/* ret = ib_modify_qp(ib_qp, &attr, IB_QP_STATE); */
+	/* if (ret) { */
+	/* 	pr_err("Failed to drain send queue: %d\n", ret); */
+	/* 	return ret; */
+	/* } */
+	/* pr_err("Drained QP\n"); */
+
+	qp = to_rqp(ib_qp);
+
+	if (!qp) {
+		return -EINVAL;
+	}
+
+	if (!qp->rq.queue) {
+		return -EINVAL;
+	}
+
+	if (qp->rq.queue->ip) {
+		dump_qp->rq_start = qp->rq.queue->ip->vma->vm_start;
+		dump_qp->rq_size = qp->rq.queue->ip->info.size;
+	} else {
+		dump_qp->rq_start = 0;
+		dump_qp->rq_size = 0;
+	}
+
+	if (!qp->sq.queue) {
+		return -EINVAL;
+	}
+
+	if (qp->sq.queue->ip) {
+		dump_qp->sq_start = qp->sq.queue->ip->vma->vm_start;
+		dump_qp->sq_size = qp->sq.queue->ip->info.size;
+	} else {
+		dump_qp->sq_start = 0;
+		dump_qp->sq_size = 0;
+	}
+
+	dump_qp->rxe.wqe_index = qp->req.wqe_index;
+	dump_qp->rxe.req_opcode = qp->req.opcode;
+	dump_qp->rxe.comp_psn = qp->comp.psn;
+	dump_qp->rxe.comp_opcode = qp->comp.opcode;
+	dump_qp->rxe.msn = qp->resp.msn;
+	dump_qp->rxe.resp_opcode = qp->resp.opcode;
+
+	ret = rxe_save_queue(&dump_qp->rxe.sq, qp->sq.queue);
+	if (ret)
+		return ret;
+
+	ret = rxe_save_queue(&dump_qp->rxe.rq, qp->rq.queue);
+	if (ret)
+		return ret;
+
+	return sizeof(*dump_qp);
+}
+
+static int rxe_dump_cq(struct ib_cq *ib_cq, struct ib_uverbs_dump_object_cq *dump_cq, ssize_t size)
+{
+	int ret;
+	struct rxe_cq *cq;
+	unsigned long vm_start = 0, vm_size = 0;
+
+	if (size < sizeof(*dump_cq)) {
+		return -ENOMEM;
+	}
+
+	cq = to_rcq(ib_cq);
+
+	/* Unimportant */
+	dump_cq->comp_vector = 0;
+	if (cq->queue->ip) {
+		vm_start = cq->queue->ip->vma->vm_start;
+		vm_size = cq->queue->ip->vma->vm_end - cq->queue->ip->vma->vm_start;
+	}
+	dump_cq->vm_start = vm_start;
+	dump_cq->vm_size = vm_size;
+
+	ret = rxe_save_queue(&dump_cq->rxe, cq->queue);
+	if (ret)
+		return ret;
+
+	return sizeof(*dump_cq);
+}
+
+static int rxe_dump_mr(struct ib_mr *ib_mr, struct ib_uverbs_dump_object_mr *dump_mr, ssize_t size)
+{
+	struct rxe_mem *mr;
+	if (size < sizeof(*dump_mr)) {
+		return -ENOMEM;
+	}
+
+	mr = to_rmr(ib_mr);
+
+	dump_mr->address = mr->umem->address;
+	dump_mr->length = mr->length;
+	dump_mr->access = mr->access;
+
+	dump_mr->rxe.mrn = mr->pelem.index;
+
+	return sizeof(*dump_mr);
+}
+
+static int rxe_dump_pd(struct ib_pd *pd, struct ib_uverbs_dump_object_pd *dump_pd, ssize_t size)
+{
+	if (size < sizeof(*dump_pd)) {
+		return -ENOMEM;
+	}
+
+	return sizeof(*dump_pd);
+}
+
+static int rxe_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
+{
+	switch (obj_type) {
+	case IB_UVERBS_OBJECT_PD:
+		return rxe_dump_pd(req, dump, size);
+	case IB_UVERBS_OBJECT_MR:
+		return rxe_dump_mr(req, dump, size);
+	case IB_UVERBS_OBJECT_CQ:
+		return rxe_dump_cq(req, dump, size);
+	case IB_UVERBS_OBJECT_QP:
+		return rxe_dump_qp(req, dump, size);
+	default:
+		return -ENOTSUPP;
+	}
+	/* Not reached */
+}
+
+static int rxe_restore_cq_refill(struct rxe_cq *rcq,
+				 const struct rxe_dump_queue *queue, ssize_t size)
+{
+	int ret = 0;
+	/* unsigned long flags; */
+	if (rcq->queue) {
+		/* spin_lock_irqsave(&rcq->cq_lock, flags); */
+		ret = rxe_restore_queue(rcq->queue, queue);
+		/* spin_unlock_irqrestore(&rcq->cq_lock, flags); */
+	}
+
+	return ret;
+}
+
+static int rxe_restore_cq(struct ib_cq *cq,
+			  u32 cmd, const void *args, ssize_t size)
+{
+	int ret;
+	struct rxe_cq *rcq = to_rcq(cq);
+
+	if (!rcq)
+		return -EINVAL;
+
+	switch (cmd) {
+	case IB_RESTORE_CQ_REFILL:
+		ret = rxe_restore_cq_refill(rcq, args, size);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
+static int rxe_restore_qp_refill(struct rxe_qp *rqp,
+				 const struct rxe_dump_qp *qp, ssize_t size)
+{
+	int ret = 0;
+
+	if (!rqp->sq.queue)
+		return -EINVAL;
+
+	/* unsigned long flags; */
+	/* spin_lock_irqsave(&rqp->sq.sq_lock, flags); */
+	ret = rxe_restore_queue(rqp->sq.queue, &qp->sq);
+	/* spin_unlock_irqrestore(&rqp->sq.sq_lock, flags); */
+
+	if (ret)
+		return ret;
+
+	/* We can have SRQ or RQ */
+	if (rqp->rq.queue) {
+		/* unsigned long producer_flags, consumer_flags; */
+
+		/* spin_lock_irqsave(&rqp->rq.consumer_lock, consumer_flags); */
+		/* spin_lock_irqsave(&rqp->rq.producer_lock, producer_flags); */
+		ret = rxe_restore_queue(rqp->rq.queue, &qp->rq);
+		if (ret)
+			return ret;
+		/* spin_unlock_irqrestore(&rqp->rq.producer_lock, producer_flags); */
+		/* spin_unlock_irqrestore(&rqp->rq.consumer_lock, consumer_flags); */
+	} else if (rqp->srq) {
+		return -ENOTSUPP;
+	} else {
+		pr_err("Skipping RQ of a QP %d\n", __LINE__);
+	}
+
+	rqp->req.wqe_index = qp->wqe_index;
+	rqp->req.opcode = qp->req_opcode;
+	rqp->comp.opcode = qp->comp_opcode;
+	rqp->comp.psn = qp->comp_psn;
+	rqp->resp.msn = qp->msn;
+	rqp->resp.opcode = qp->resp_opcode;
+	rqp->resp.wqe = queue_head(rqp->rq.queue);
+	PRINT_QUEUE(rqp);
+
+	return ret;
+}
+
+static int rxe_restore_qp(struct ib_qp *qp,
+			  u32 cmd, const void *args, ssize_t size)
+{
+	struct rxe_qp *rqp = to_rqp(qp);
+
+	if (!rqp)
+		return -EINVAL;
+
+	switch(cmd) {
+	case IB_RESTORE_QP_REFILL:
+		return rxe_restore_qp_refill(rqp, args, size);
+	default:
+		return -EINVAL;
+	}
+}
+
+static int rxe_restore_mr_keys(struct rxe_mem *mr,
+			       const struct rxe_dump_mr *args, ssize_t size)
+{
+	int ret = 0;
+
+	if (sizeof(*args) > size) {
+		return -EINVAL;
+	}
+
+	mr->ibmr.lkey = args->lkey;
+	mr->ibmr.rkey = args->rkey;
+
+	return ret;
+}
+
+static int rxe_restore_mr(struct ib_mr *mr,
+			  u32 cmd, const void *args, ssize_t size)
+{
+	struct rxe_mem *rmr = to_rmr(mr);
+
+	if (!rmr)
+		return -EINVAL;
+
+	switch (cmd) {
+	case IB_RESTORE_MR_KEYS:
+		return rxe_restore_mr_keys(rmr, args, size);
+	default:
+		return -EINVAL;
+	}
+}
+
+static int rxe_restore_object(void *object, u32 obj_type,
+			      u32 cmd, const void *args, ssize_t size)
+{
+	if (!object) {
+		return -EINVAL;
+	}
+
+	switch (obj_type) {
+	case IB_UVERBS_OBJECT_CQ:
+		return rxe_restore_cq(object, cmd, args, size);
+	case IB_UVERBS_OBJECT_QP:
+		return rxe_restore_qp(object, cmd, args, size);
+	case IB_UVERBS_OBJECT_MR:
+		return rxe_restore_mr(object, cmd, args, size);
+	default:
+		return -EINVAL;
+	}
+}
+
+static int rxe_pause_qp(struct rxe_qp *qp)
+{
+	switch (qp_type(qp)) {
+#if RXE_MIGRATION
+	case IB_QPT_RC:
+		qp->stopped = true;
+
+		rxe_run_task_wait(&qp->req.task);
+		rxe_run_task_wait(&qp->resp.task);
+		rxe_run_task_wait(&qp->comp.task);
+
+		return 0;
+#endif
+	default:
+		return -ENOTSUPP;
+	}
+}
+
+#if RXE_MIGRATION
+static int rxe_resume_qp_rc(struct rxe_qp *qp)
+{
+	/* Send an out-of-queue message and wait for an acknowledgement. */
+	struct rxe_send_wqe *wqe;
+	unsigned int mask;
+	unsigned int length = 0;
+	/* struct ib_drain_cqe sdrain; */
+	struct ib_rdma_wr swr = {
+		.wr = {
+			.next = NULL,
+			/* { .wr_cqe	= &sdrain.cqe, }, */
+			.opcode	= IB_WR_RESUME,
+			.send_flags = IB_SEND_INLINE,
+		},
+	};
+
+	RXE_DO_PRINT_DEBUG("Resuming qp#%d\n", qp_num(qp));
+
+	wqe = kmalloc(sizeof(*wqe), GFP_ATOMIC);
+	if (!wqe) {
+		return -ENOMEM;
+	}
+
+	mask = wr_opcode_mask(swr.wr.opcode, qp);
+	init_send_wqe(qp, &swr.wr, mask, length, wqe);
+
+	qp->req.resume_wqe = wqe;
+	qp->req.resume_posted = false;
+	BUG_ON(qp->paused);
+
+	rxe_run_task_wait(&qp->req.task);
+
+#if 0
+	if (cq->poll_ctx == IB_POLL_DIRECT)
+		while (wait_for_completion_timeout(&sdrain.done, HZ / 10) <= 0)
+			ib_process_cq_direct(cq, -1);
+	else
+		wait_for_completion(&sdrain.done);
+#endif
+
+	return 0;
+}
+#endif
+
+static int rxe_resume_qp(struct rxe_qp *qp)
+{
+	switch (qp_type(qp)) {
+#if RXE_MIGRATION
+	case IB_QPT_RC:
+		return rxe_resume_qp_rc(qp);
+#endif
+	default:
+		return -ENOTSUPP;
+	}
+}
+
+static int rxe_pause_resume_qp(struct ib_qp *qp, bool resume)
+{
+	struct rxe_qp *rqp = to_rqp(qp);
+
+	if (resume)
+		return rxe_resume_qp(rqp);
+	else
+		return rxe_pause_qp(rqp);
 }
 
 static int rxe_create_ah(struct ib_ah *ibah,
@@ -376,6 +789,8 @@ static int rxe_post_srq_recv(struct ib_srq *ibsrq, const struct ib_recv_wr *wr,
 	return err;
 }
 
+extern unsigned int last_qpn;
+
 static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 				   struct ib_qp_init_attr *init,
 				   struct ib_udata *udata)
@@ -410,7 +825,12 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 		qp->is_user = 1;
 	}
 
+	/* XXX: Hacky solution to control qpn */
+	rxe->qp_pool.last = last_qpn;
+
 	rxe_add_index(&qp->pelem);
+
+	last_qpn = rxe->qp_pool.last;
 
 	err = rxe_qp_from_init(rxe, qp, pd, init, uresp, ibpd, udata);
 	if (err)
@@ -870,6 +1290,8 @@ static int rxe_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 	return ret;
 }
 
+extern unsigned int last_mrn;
+
 static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 {
 	struct rxe_dev *rxe = to_rdev(ibpd->device);
@@ -880,7 +1302,13 @@ static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
+	/* XXX: Hacky solution to control mrn */
+	rxe->mr_pool.last = last_mrn;
+
 	rxe_add_index(&mr->pelem);
+
+	last_mrn = rxe->mr_pool.last;
+
 	rxe_add_ref(&pd->pelem);
 	rxe_mem_init_dma(pd, access, mr);
 
@@ -904,7 +1332,12 @@ static struct ib_mr *rxe_reg_user_mr(struct ib_pd *ibpd,
 		goto err2;
 	}
 
+	/* XXX: Hacky solution to control mrn */
+	rxe->mr_pool.last = last_mrn;
+
 	rxe_add_index(&mr->pelem);
+
+	last_mrn = rxe->mr_pool.last;
 
 	rxe_add_ref(&pd->pelem);
 
@@ -951,7 +1384,12 @@ static struct ib_mr *rxe_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 		goto err1;
 	}
 
+	/* XXX: Hacky solution to control mrn */
+	rxe->mr_pool.last = last_mrn;
+
 	rxe_add_index(&mr->pelem);
+
+	last_mrn = rxe->mr_pool.last;
 
 	rxe_add_ref(&pd->pelem);
 
@@ -1112,6 +1550,9 @@ static const struct ib_device_ops rxe_dev_ops = {
 	.reg_user_mr = rxe_reg_user_mr,
 	.req_notify_cq = rxe_req_notify_cq,
 	.resize_cq = rxe_resize_cq,
+	.dump_object = rxe_dump_object,
+	.restore_object = rxe_restore_object,
+	.pause_resume_qp = rxe_pause_resume_qp,
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, rxe_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, rxe_cq, ibcq),
@@ -1174,6 +1615,8 @@ int rxe_register_device(struct rxe_dev *rxe, const char *ibdev_name)
 	    | BIT_ULL(IB_USER_VERBS_CMD_DESTROY_AH)
 	    | BIT_ULL(IB_USER_VERBS_CMD_ATTACH_MCAST)
 	    | BIT_ULL(IB_USER_VERBS_CMD_DETACH_MCAST)
+	    | BIT_ULL(IB_USER_VERBS_CMD_DUMP_CONTEXT)
+	    | BIT_ULL(IB_USER_VERBS_CMD_RESTORE_OBJECT)
 	    ;
 
 	ib_set_device_ops(dev, &rxe_dev_ops);

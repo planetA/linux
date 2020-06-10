@@ -2791,6 +2791,41 @@ void ib_drain_sq(struct ib_qp *qp)
 }
 EXPORT_SYMBOL(ib_drain_sq);
 
+int ib_resume_qp(struct ib_qp *qp)
+{
+	int ret;
+
+	if (!qp->device->ops.pause_resume_qp) {
+		return -ENOTSUPP;
+	}
+
+	ret = qp->device->ops.pause_resume_qp(qp, true);
+	if (ret) {
+		return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(ib_resume_qp);
+
+int ib_pause_qp(struct ib_qp *qp)
+{
+	int ret;
+
+	if (!qp->device->ops.pause_resume_qp) {
+		return -ENOTSUPP;
+	}
+
+	ret = qp->device->ops.pause_resume_qp(qp, false);
+	if (ret) {
+		pr_err("Pausing a QP went wrong: %d.", ret);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(ib_pause_qp);
+
 /**
  * ib_drain_rq() - Block until all RQ CQEs have been consumed by the
  *		   application.

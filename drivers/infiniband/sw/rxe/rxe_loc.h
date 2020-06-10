@@ -59,6 +59,7 @@ struct rxe_mmap_info {
 	struct ib_ucontext	*context;
 	struct kref		ref;
 	void			*obj;
+	struct vm_area_struct	*vma;
 
 	struct mminfo info;
 };

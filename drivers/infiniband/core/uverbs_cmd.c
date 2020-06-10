@@ -42,6 +42,7 @@
 
 #include <rdma/uverbs_types.h>
 #include <rdma/uverbs_std_types.h>
+#include <rdma/ib_marshall.h>
 #include "rdma_core.h"
 
 #include "uverbs.h"
@@ -475,6 +476,403 @@ static int ib_uverbs_dealloc_pd(struct uverbs_attr_bundle *attrs)
 		return ret;
 
 	return uobj_perform_destroy(UVERBS_OBJECT_PD, cmd.pd_handle, attrs);
+}
+
+static int ib_uverbs_dump_pd(struct ib_device *ib_dev, struct ib_uobject *obj,
+			     struct ib_uverbs_dump_object *dump_obj, int remain)
+{
+	struct ib_uverbs_dump_object_pd *dump_pd;
+	struct ib_pd *pd = obj->object;
+	int ret;
+
+	if (sizeof(*dump_pd) > remain) {
+		return -ENOMEM;
+	}
+
+	dump_pd = container_of(dump_obj, struct ib_uverbs_dump_object_pd, obj);
+	ret = ib_dev->ops.dump_object(IB_UVERBS_OBJECT_PD, pd, dump_pd, remain);
+	if (ret != sizeof(*dump_pd)) {
+		return -EINVAL;
+	}
+
+	pr_debug("Parsed PD object (%d)\n",  obj->id);
+	return ret;
+}
+
+static int ib_uverbs_dump_mr(struct ib_device *ib_dev, struct ib_uobject *obj,
+			     struct ib_uverbs_dump_object *dump_obj, int remain)
+{
+	struct ib_uverbs_dump_object_mr *dump_mr;
+	struct ib_mr *mr = obj->object;
+	int ret;
+
+	if (sizeof(*dump_mr) > remain) {
+		return -ENOMEM;
+	}
+
+	dump_mr = container_of(dump_obj, struct ib_uverbs_dump_object_mr, obj);
+
+	dump_mr->pd_handle = mr->pd->uobject->id;
+	dump_mr->lkey = mr->lkey;
+	dump_mr->rkey = mr->rkey;
+
+	pr_debug("Parsed MR object (%d, %llx, %llx, %d)->(%d, %d, %d)\n",
+	       dump_mr->pd_handle, dump_mr->address, dump_mr->length, dump_mr->access,
+	       mr->lkey, mr->rkey, obj->id);
+
+	ret = ib_dev->ops.dump_object(IB_UVERBS_OBJECT_MR, mr, dump_mr, remain);
+	if (ret != sizeof(*dump_mr)) {
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+static int ib_uverbs_dump_cq(struct ib_device *ib_dev, struct ib_uobject *obj,
+			     struct ib_uverbs_dump_object *dump_obj, int remain)
+{
+	struct ib_uverbs_dump_object_cq *dump_cq;
+	struct ib_cq *cq = obj->object;
+	int ret;
+
+	if (sizeof(*dump_cq) > remain) {
+		return -ENOMEM;
+	}
+
+	dump_cq = container_of(dump_obj, struct ib_uverbs_dump_object_cq, obj);
+
+	dump_cq->cqe = cq->cqe;
+
+	if (cq->cq_context) {
+		struct ib_uverbs_completion_event_file *ev_file;
+		ev_file = container_of(cq->cq_context,
+				       struct ib_uverbs_completion_event_file,
+				       ev_queue);
+		dump_cq->comp_channel = ev_file->uobj.id;
+	} else {
+		dump_cq->comp_channel = -1;
+	}
+
+	ret = ib_dev->ops.dump_object(IB_UVERBS_OBJECT_CQ, cq, dump_cq, remain);
+	if (ret >= 0 && ret < sizeof(*dump_cq)) {
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+static int ib_uverbs_dump_qp(struct ib_device *ib_dev, struct ib_uobject *obj,
+			     struct ib_uverbs_dump_object *dump_obj, int remain)
+{
+	struct ib_uverbs_dump_object_qp *dump_qp;
+	struct ib_qp_init_attr *init_attr;
+	struct ib_qp_attr *attr;
+	struct ib_qp *qp;
+	int ret;
+
+	if (sizeof(*dump_qp) > remain) {
+		return -ENOMEM;
+	}
+
+	dump_qp = container_of(dump_obj, struct ib_uverbs_dump_object_qp, obj);
+
+	attr      = kmalloc(sizeof *attr, GFP_ATOMIC);
+	init_attr = kmalloc(sizeof *init_attr, GFP_ATOMIC);
+	if (!attr || !init_attr) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	qp = obj->object;
+	if (!qp) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* XXX: PD also needs to be protected, right? */
+	dump_qp->pd_handle = qp->pd ? qp->pd->uobject->id : U32_MAX;
+	dump_qp->scq_handle = qp->send_cq ? qp->send_cq->uobject->uevent.uobject.id : U32_MAX;
+	dump_qp->rcq_handle = qp->recv_cq ? qp->recv_cq->uobject->uevent.uobject.id : U32_MAX;
+	dump_qp->srq_handle = qp->srq ? qp->srq->uobject->uevent.uobject.id : U32_MAX;
+
+	dump_qp->qp_type		= qp->qp_type;
+
+	ret = ib_query_qp(qp, attr,
+			  IB_QP_STATE |
+			  IB_QP_PKEY_INDEX |
+			  IB_QP_PORT |
+			  IB_QP_ACCESS_FLAGS |
+			  IB_QP_AV |
+			  IB_QP_PATH_MTU |
+			  IB_QP_DEST_QPN |
+			  IB_QP_RQ_PSN |
+			  IB_QP_MAX_DEST_RD_ATOMIC |
+			  IB_QP_MIN_RNR_TIMER |
+			  IB_QP_SQ_PSN |
+			  IB_QP_MAX_QP_RD_ATOMIC |
+			  IB_QP_RETRY_CNT |
+			  IB_QP_RNR_RETRY |
+			  IB_QP_TIMEOUT,
+			  init_attr);
+
+	if (ret)
+		goto out;
+
+	dump_qp->attr.qp_state = attr->qp_state;
+
+	dump_qp->attr.pkey_index = attr->pkey_index;
+	dump_qp->attr.port_num = attr->port_num;
+	dump_qp->attr.qp_access_flags = attr->qp_access_flags;
+	dump_qp->attr.cap = init_attr->cap;
+
+	ib_copy_ah_attr_to_user(ib_dev, &dump_qp->attr.ah_attr, &attr->ah_attr);
+	ib_copy_ah_attr_to_user(ib_dev, &dump_qp->attr.alt_ah_attr, &attr->alt_ah_attr);
+
+	dump_qp->attr.sq_psn = attr->sq_psn;
+	dump_qp->attr.max_rd_atomic = attr->max_rd_atomic;
+	dump_qp->attr.retry_cnt = attr->retry_cnt;
+	dump_qp->attr.rnr_retry = attr->rnr_retry;
+	dump_qp->attr.timeout = attr->timeout;
+
+	dump_qp->attr.path_mtu = attr->path_mtu;
+	dump_qp->attr.dest_qp_num = attr->dest_qp_num;
+	dump_qp->attr.rq_psn = attr->rq_psn;
+	dump_qp->attr.max_dest_rd_atomic = attr->max_dest_rd_atomic;
+	dump_qp->attr.min_rnr_timer = attr->min_rnr_timer;
+
+	dump_qp->sq_sig_all = init_attr->sq_sig_type == IB_SIGNAL_ALL_WR;
+	dump_qp->qp_num = qp->qp_num;
+
+	ret = ib_dev->ops.dump_object(IB_UVERBS_OBJECT_QP, qp, dump_qp, remain);
+	if (ret >= 0 && ret < sizeof(*dump_qp)) {
+		ret = -EINVAL;
+	}
+
+  out:
+	kfree(attr);
+	kfree(init_attr);
+
+	return ret;
+}
+
+static int ib_uverbs_dump_context(struct uverbs_attr_bundle *attrs)
+{
+	struct ib_uverbs_dump_context cmd;
+	struct ib_uverbs_dump_context_resp resp = {};
+	struct ib_uverbs_file *ufile;
+	struct ib_uobject *obj, *next_obj;
+	struct ib_device *ib_dev;
+	struct ib_uverbs_device *ibudev = attrs->ufile->device;
+	void *dump;
+	int remain;
+	int ret = 0, dump_ret = 0;
+	char *kernel_tmp_object = NULL;
+
+	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
+	if (ret)
+		return ret;
+
+	remain = attrs->driver_udata.outlen;
+
+	ufile = attrs->ufile;
+	ibudev = ufile->device;
+	ib_dev = ibudev->ib_dev;
+
+	kernel_tmp_object = kzalloc(remain, GFP_KERNEL);
+	if (!kernel_tmp_object) {
+		return -ENOMEM;
+	}
+	dump = (struct ib_uverbs_dump_object *)kernel_tmp_object;
+
+	lockdep_assert_held(&ufile->device->disassociate_srcu);
+	down_write(&ufile->hw_destroy_rwsem);
+
+	/* Once dump is done without error, we can pause the queue pairs. */
+	list_for_each_entry_safe(obj, next_obj, &ufile->uobjects, list) {
+		int obj_type = ib_uverbs_dump_object_type(obj);
+		switch (obj_type) {
+		case IB_UVERBS_OBJECT_QP:
+			pr_debug("Pausing a queue pair qp#%d\n", obj->id);
+			dump_ret = ib_pause_qp(obj->object);
+			if (dump_ret) {
+				/* XXX: Implement safe unpause */
+				pr_err("Pausing gone terribly wrong. No attempt to unpause."
+				       "The target process probably will now hang.\n");
+				goto out;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	list_for_each_entry_safe(obj, next_obj, &ufile->uobjects, list) {
+		/* Temporary buffer for single object */
+		struct ib_uverbs_dump_object *dump_obj;
+		int obj_type = ib_uverbs_dump_object_type(obj);
+
+		pr_debug("Found object of type: %d\n", obj_type);
+
+		if (remain < sizeof(*dump_obj)) {
+			pr_err("Can't fit the dump into the buffer of size: %d\n", remain);
+			dump_ret = -ENOMEM;
+			goto out;
+		}
+
+		dump_obj = (struct ib_uverbs_dump_object *)dump;
+		dump_obj->handle = obj->id;
+		dump_obj->type = obj_type;
+
+		dump_ret = -1;
+		switch (dump_obj->type) {
+		case IB_UVERBS_OBJECT_PD:
+			pr_debug("Found a protection domain %x\n", obj->id);
+			dump_ret = ib_uverbs_dump_pd(ib_dev, obj, dump_obj, remain);
+			break;
+		case IB_UVERBS_OBJECT_MR:
+			pr_debug("Found a memory region %x\n", obj->id);
+			dump_ret = ib_uverbs_dump_mr(ib_dev, obj, dump_obj, remain);
+			break;
+		case IB_UVERBS_OBJECT_CQ:
+			pr_debug("Found a completion queue %x\n", obj->id);
+			dump_ret = ib_uverbs_dump_cq(ib_dev, obj, dump_obj, remain);
+			break;
+		case IB_UVERBS_OBJECT_QP:
+			pr_debug("Found a queue pair %x\n", obj->id);
+			dump_ret = ib_uverbs_dump_qp(ib_dev, obj, dump_obj, remain);
+			break;
+		default:
+			pr_err("Found an unknown object of type: %d\n", dump_obj->type);
+			break;
+		}
+
+		if (dump_ret < 0) {
+			pr_err("Dumping object (%d) of type %d failed: err %d\n", obj->id, dump_obj->type, dump_ret);
+			goto out;
+		}
+
+		pr_debug("Dumped object (%d) of type %d size %d\n", obj->id, dump_obj->type, dump_ret);
+
+		dump_obj->size = dump_ret;
+
+		resp.total++;
+		remain -= dump_ret;
+		dump += dump_ret;
+	}
+
+  out:
+	up_write(&ufile->hw_destroy_rwsem);
+
+	BUG_ON(remain < 0);
+	ret = copy_to_user(attrs->driver_udata.outbuf, kernel_tmp_object,
+			   attrs->driver_udata.outlen - remain);
+	if (ret) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	pr_debug("Found %d objects: %d\n", resp.total, dump_ret);
+	ret = uverbs_response(attrs, &resp, sizeof(resp));
+	if (ret) {
+		pr_err("Response_failed\n");
+	}
+
+  err:
+	kfree(kernel_tmp_object);
+
+	if (dump_ret < 0)
+		return dump_ret;
+	return ret;
+}
+
+static int ib_uverbs_restore_object(struct uverbs_attr_bundle *attrs)
+{
+	struct ib_uverbs_restore_object cmd;
+	struct ib_ucontext           *ucontext;
+	struct ib_uverbs_file *ufile;
+	struct ib_device *ib_dev;
+	struct ib_uverbs_device *ibudev = attrs->ufile->device;
+	void *args = NULL;
+	struct ib_uobject *uobject;
+	int length;
+	int ret = 0;
+	int srcu_key;
+	u32 obj_type;
+
+	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
+	if (ret)
+		return ret;
+
+	switch (cmd.object_type) {
+	case IB_UVERBS_OBJECT_CQ:
+		obj_type = UVERBS_OBJECT_CQ;
+		break;
+	case IB_UVERBS_OBJECT_QP:
+		obj_type = UVERBS_OBJECT_QP;
+		break;
+	case IB_UVERBS_OBJECT_MR:
+		obj_type = UVERBS_OBJECT_MR;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	length = attrs->driver_udata.inlen;
+	args = kmalloc(length, GFP_ATOMIC);
+	if (!args) {
+		return -ENOMEM;
+	}
+
+	ufile = attrs->ufile;
+	if (!ufile) {
+		return -EINVAL;
+	}
+
+	ibudev = ufile->device;
+	if (!ibudev) {
+		return -EINVAL;
+	}
+
+	ib_dev = ibudev->ib_dev;
+	if (!ib_dev) {
+		return -EINVAL;
+	}
+
+	uobject = uobj_get_read(obj_type, cmd.handle, attrs);
+	if (!uobject || !uobject->object) {
+		return -EINVAL;
+	}
+
+	if (copy_from_user(args, attrs->driver_udata.inbuf, length)) {
+		return -EFAULT;
+	}
+
+	srcu_key = srcu_read_lock(&ibudev->disassociate_srcu);
+	down_read(&ufile->hw_destroy_rwsem);
+	spin_lock_irq(&ufile->uobjects_lock);
+
+        ucontext = ib_uverbs_get_ucontext_file(ufile);
+        if (IS_ERR(ucontext)) {
+                ret = PTR_ERR(ucontext);
+                goto out;
+        }
+
+	ret = ib_dev->ops.restore_object(uobject->object, cmd.object_type, cmd.cmd, args, length);
+	if (ret)
+		goto out;
+
+
+  out:
+	pr_debug("Restore object type %d cmd %d ret %d\n", cmd.object_type, cmd.cmd, ret);
+
+	spin_unlock_irq(&ufile->uobjects_lock);
+	up_read(&ufile->hw_destroy_rwsem);
+        srcu_read_unlock(&ibudev->disassociate_srcu, srcu_key);
+
+	kfree(args);
+	uobj_put_read(uobject);
+
+	return ret;
 }
 
 struct xrcd_table_entry {
@@ -3773,6 +4171,15 @@ const struct uapi_definition uverbs_def_write_intf[] = {
 			UAPI_DEF_WRITE_IO(struct ib_uverbs_query_port,
 					  struct ib_uverbs_query_port_resp),
 			UAPI_DEF_METHOD_NEEDS_FN(query_port)),
+		DECLARE_UVERBS_WRITE(IB_USER_VERBS_CMD_DUMP_CONTEXT,
+				     ib_uverbs_dump_context,
+				     UAPI_DEF_WRITE_UDATA_IO(struct ib_uverbs_dump_context,
+							     struct ib_uverbs_dump_context_resp),
+			UAPI_DEF_METHOD_NEEDS_FN(dump_object)),
+		DECLARE_UVERBS_WRITE(IB_USER_VERBS_CMD_RESTORE_OBJECT,
+				     ib_uverbs_restore_object,
+				     UAPI_DEF_WRITE_UDATA_I(struct ib_uverbs_restore_object),
+				     UAPI_DEF_METHOD_NEEDS_FN(restore_object)),
 		DECLARE_UVERBS_WRITE_EX(
 			IB_USER_VERBS_EX_CMD_QUERY_DEVICE,
 			ib_uverbs_ex_query_device,

@@ -7,6 +7,7 @@
 #include <rdma/ib_pack.h>
 #include "rxe_opcode.h"
 #include "rxe_hdr.h"
+#include "rxe_migrate.h"
 
 /* useful information about work request opcodes and pkt opcodes in
  * table form
@@ -94,6 +95,18 @@ struct rxe_wr_opcode_info rxe_wr_opcode_info[] = {
 		.name	= "IB_WR_REG_MR",
 		.mask	= {
 			[IB_QPT_RC]	= WR_REG_MASK,
+		},
+	},
+	[IB_WR_PAUSE]					= {
+		.name	= "IB_WR_PAUSE",
+		.mask	= {
+			[IB_QPT_RC]	= WR_INLINE_MASK,
+		},
+	},
+	[IB_WR_RESUME]					= {
+		.name	= "IB_WR_RESUME",
+		.mask	= {
+			[IB_QPT_RC]	= WR_INLINE_MASK,
 		},
 	},
 };
@@ -372,6 +385,32 @@ struct rxe_opcode_info rxe_opcode[RXE_NUM_OPCODE] = {
 						+ RXE_IETH_BYTES,
 		}
 	},
+	[IB_OPCODE_RC_PAUSE]					= {
+		.name	= "IB_OPCODE_RC_PAUSE",
+		.mask	= RXE_AETH_MASK | RXE_ACK_MASK | RXE_START_MASK
+				| RXE_END_MASK,
+		.length = RXE_BTH_BYTES + RXE_AETH_BYTES,
+		.offset = {
+			[RXE_BTH]	= 0,
+			[RXE_AETH]	= RXE_BTH_BYTES,
+			[RXE_PAYLOAD]	= RXE_BTH_BYTES
+			+ RXE_AETH_BYTES,
+		}
+	},
+#if RXE_MIGRATION
+	[IB_OPCODE_RC_RESUME]					= {
+		.name	= "IB_OPCODE_RC_RESUME",
+		.mask	= RXE_AETH_MASK | RXE_REQ_MASK | RXE_START_MASK
+				| RXE_END_MASK,
+		.length = RXE_BTH_BYTES + RXE_AETH_BYTES,
+		.offset = {
+			[RXE_BTH]	= 0,
+			[RXE_AETH]	= RXE_BTH_BYTES,
+			[RXE_PAYLOAD]	= RXE_BTH_BYTES
+			+ RXE_AETH_BYTES,
+		}
+	},
+#endif
 
 	/* UC */
 	[IB_OPCODE_UC_SEND_FIRST]			= {

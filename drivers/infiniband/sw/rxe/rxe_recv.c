@@ -130,6 +130,14 @@ static int check_addr(struct rxe_dev *rxe, struct rxe_pkt_info *pkt,
 			goto err1;
 		}
 
+		/* Ignore source check for the paused QP, because the restored
+		 * QP may come from different source. Or if opcode is RESUME. */
+#if RXE_MIGRATION
+		if (qp->paused || pkt->opcode == IB_OPCODE_RC_RESUME) {
+			goto done;
+		}
+#endif
+
 		if (ip_hdr(skb)->saddr != daddr->s_addr) {
 			pr_warn_ratelimited("source addr %pI4 != qp dst addr %pI4\n",
 					    &ip_hdr(skb)->saddr,
@@ -148,6 +156,12 @@ static int check_addr(struct rxe_dev *rxe, struct rxe_pkt_info *pkt,
 					    &ipv6_hdr(skb)->daddr, saddr);
 			goto err1;
 		}
+
+#if RXE_MIGRATION
+		if (qp->paused || pkt->opcode == IB_OPCODE_RC_RESUME) {
+			goto done;
+		}
+#endif
 
 		if (memcmp(&ipv6_hdr(skb)->saddr, daddr, sizeof(*daddr))) {
 			pr_warn_ratelimited("source addr %pI6 != qp dst addr %pI6\n",

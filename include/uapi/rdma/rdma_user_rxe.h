@@ -181,4 +181,9 @@ struct rxe_modify_srq_cmd {
 	__aligned_u64 mmap_info_addr;
 };
 
+struct rxe_dump_pd_resp {
+	__u32 total;
+	__u8 dump[0];
+};
+
 #endif /* RDMA_USER_RXE_H */

@@ -38,59 +38,77 @@ static inline void retry_first_write_send(struct rxe_qp *qp,
 	}
 }
 
+static int req_retry_wqe(struct rxe_qp *qp, struct rxe_send_wqe *wqe, int *first)
+{
+	unsigned int mask;
+	int npsn;
+
+	if (wqe->state == wqe_state_posted)
+		return -1;
+
+	if (wqe->state == wqe_state_done)
+		return 0;
+
+	mask = wr_opcode_mask(wqe->wr.opcode, qp);
+	wqe->iova = (mask & WR_ATOMIC_MASK) ?
+		wqe->wr.wr.atomic.remote_addr :
+		(mask & WR_READ_OR_WRITE_MASK) ?
+		wqe->wr.wr.rdma.remote_addr :
+		0;
+
+	if (!*first || (mask & WR_READ_MASK) == 0) {
+		wqe->dma.resid = wqe->dma.length;
+		wqe->dma.cur_sge = 0;
+		wqe->dma.sge_offset = 0;
+	}
+
+	if (*first) {
+		*first = 0;
+
+		if (mask & WR_WRITE_OR_SEND_MASK) {
+			npsn = (qp->comp.psn - wqe->first_psn) &
+				BTH_PSN_MASK;
+			retry_first_write_send(qp, wqe, mask, npsn);
+		}
+
+		if (mask & WR_READ_MASK) {
+			npsn = (wqe->dma.length - wqe->dma.resid) /
+				qp->mtu;
+			wqe->iova += npsn * qp->mtu;
+		}
+	}
+
+	ARRAY_PUT(qp, req_retry_posted, (int) wqe->first_psn);
+	wqe->state = wqe_state_posted;
+
+	return 0;
+}
+
 static void req_retry(struct rxe_qp *qp)
 {
 	struct rxe_send_wqe *wqe;
 	unsigned int wqe_index;
-	unsigned int mask;
-	int npsn;
 	int first = 1;
 
 	qp->req.wqe_index	= consumer_index(qp->sq.queue);
 	qp->req.psn		= qp->comp.psn;
+	MINMAX_UPDATE(qp, req_psn_1, (int) qp->req.psn);
 	qp->req.opcode		= -1;
+
+#if RXE_MIGRATION
+	if (qp->req.resume_wqe && !qp->req.resume_posted) {
+		if (req_retry_wqe(qp, qp->req.resume_wqe, &first) < 0)
+			return;
+	}
+#endif
 
 	for (wqe_index = consumer_index(qp->sq.queue);
 		wqe_index != producer_index(qp->sq.queue);
 		wqe_index = next_index(qp->sq.queue, wqe_index)) {
 		wqe = addr_from_index(qp->sq.queue, wqe_index);
-		mask = wr_opcode_mask(wqe->wr.opcode, qp);
 
-		if (wqe->state == wqe_state_posted)
-			break;
-
-		if (wqe->state == wqe_state_done)
-			continue;
-
-		wqe->iova = (mask & WR_ATOMIC_MASK) ?
-			     wqe->wr.wr.atomic.remote_addr :
-			     (mask & WR_READ_OR_WRITE_MASK) ?
-			     wqe->wr.wr.rdma.remote_addr :
-			     0;
-
-		if (!first || (mask & WR_READ_MASK) == 0) {
-			wqe->dma.resid = wqe->dma.length;
-			wqe->dma.cur_sge = 0;
-			wqe->dma.sge_offset = 0;
-		}
-
-		if (first) {
-			first = 0;
-
-			if (mask & WR_WRITE_OR_SEND_MASK) {
-				npsn = (qp->comp.psn - wqe->first_psn) &
-					BTH_PSN_MASK;
-				retry_first_write_send(qp, wqe, mask, npsn);
-			}
-
-			if (mask & WR_READ_MASK) {
-				npsn = (wqe->dma.length - wqe->dma.resid) /
-					qp->mtu;
-				wqe->iova += npsn * qp->mtu;
-			}
-		}
-
-		wqe->state = wqe_state_posted;
+		if (req_retry_wqe(qp, wqe, &first) < 0)
+			return;
 	}
 }
 
@@ -144,21 +162,37 @@ static struct rxe_send_wqe *req_next_wqe(struct rxe_qp *qp)
 		} while (0);
 	}
 
-	if (qp->req.wqe_index == producer_index(qp->sq.queue))
-		return NULL;
-
-	wqe = addr_from_index(qp->sq.queue, qp->req.wqe_index);
-
-	if (unlikely((qp->req.state == QP_STATE_DRAIN ||
-		      qp->req.state == QP_STATE_DRAINED) &&
-		     (wqe->state != wqe_state_processing)))
-		return NULL;
-
-	if (unlikely((wqe->wr.send_flags & IB_SEND_FENCE) &&
-		     (qp->req.wqe_index != consumer_index(qp->sq.queue)))) {
-		qp->req.wait_fence = 1;
+#if RXE_MIGRATION
+	if (unlikely(qp->paused) || unlikely(qp->stopped)) {
 		return NULL;
 	}
+
+	if (unlikely(qp->req.resume_wqe)) {
+		if (qp->req.resume_wqe->state != wqe_state_posted) {
+			return NULL;
+		}
+
+		wqe = qp->req.resume_wqe;
+	} else {
+#endif
+		if (qp->req.wqe_index == producer_index(qp->sq.queue))
+			return NULL;
+
+		wqe = addr_from_index(qp->sq.queue, qp->req.wqe_index);
+
+		if (unlikely((qp->req.state == QP_STATE_DRAIN ||
+			      qp->req.state == QP_STATE_DRAINED) &&
+			     (wqe->state != wqe_state_processing)))
+			return NULL;
+
+		if (unlikely((wqe->wr.send_flags & IB_SEND_FENCE) &&
+			     (qp->req.wqe_index != consumer_index(qp->sq.queue)))) {
+			qp->req.wait_fence = 1;
+			return NULL;
+		}
+#if RXE_MIGRATION
+	}
+#endif
 
 	wqe->mask = wr_opcode_mask(wqe->wr.opcode, qp);
 	return wqe;
@@ -231,6 +265,12 @@ static int next_opcode_rc(struct rxe_qp *qp, u32 opcode, int fits)
 	case IB_WR_REG_MR:
 	case IB_WR_LOCAL_INV:
 		return opcode;
+#if RXE_MIGRATION
+	case IB_WR_PAUSE:
+		return IB_OPCODE_RC_PAUSE;
+	case IB_WR_RESUME:
+		return IB_OPCODE_RC_RESUME;
+#endif
 	}
 
 	return -EINVAL;
@@ -372,7 +412,14 @@ static struct sk_buff *init_req_packet(struct rxe_qp *qp,
 	 */
 	pkt->opcode	= opcode;
 	pkt->qp		= qp;
-	pkt->psn	= qp->req.psn;
+#if 1
+#if RXE_MIGRATION
+	if (opcode == IB_OPCODE_RC_RESUME)
+		pkt->psn = (qp->comp.psn) & BTH_PSN_MASK;
+	else
+#endif
+#endif
+		pkt->psn	= qp->req.psn;
 	pkt->mask	= rxe_opcode[opcode].mask;
 	pkt->paylen	= paylen;
 	pkt->offset	= 0;
@@ -508,15 +555,29 @@ static void update_wqe_psn(struct rxe_qp *qp,
 	if (num_pkt == 0)
 		num_pkt = 1;
 
+#if RXE_MIGRATION
+	if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+		wqe->first_psn = (qp->comp.psn - 1) & BTH_PSN_MASK;
+		wqe->last_psn = (qp->comp.psn + num_pkt - 2) & BTH_PSN_MASK;
+	} else 
+#endif
 	if (pkt->mask & RXE_START_MASK) {
 		wqe->first_psn = qp->req.psn;
 		wqe->last_psn = (qp->req.psn + num_pkt - 1) & BTH_PSN_MASK;
 	}
 
-	if (pkt->mask & RXE_READ_MASK)
+	if (pkt->mask & RXE_READ_MASK) {
 		qp->req.psn = (wqe->first_psn + num_pkt) & BTH_PSN_MASK;
-	else
+		MINMAX_UPDATE(qp, req_psn_2, (int) qp->req.psn);
+	} else
+#if RXE_MIGRATION
+	       	if (pkt->opcode != IB_OPCODE_RC_RESUME)
+#endif
+	{
 		qp->req.psn = (qp->req.psn + 1) & BTH_PSN_MASK;
+		MINMAX_UPDATE(qp, req_psn_3, (int) qp->req.psn);
+	}
+	MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 }
 
 static void save_state(struct rxe_send_wqe *wqe,
@@ -539,15 +600,25 @@ static void rollback_state(struct rxe_send_wqe *wqe,
 	wqe->first_psn = rollback_wqe->first_psn;
 	wqe->last_psn  = rollback_wqe->last_psn;
 	qp->req.psn    = rollback_psn;
+	MINMAX_UPDATE(qp, req_psn_4, (int) qp->req.psn);
 }
 
 static void update_state(struct rxe_qp *qp, struct rxe_send_wqe *wqe,
 			 struct rxe_pkt_info *pkt, int payload)
 {
-	qp->req.opcode = pkt->opcode;
+#if RXE_MIGRATION
+	if (qp->req.resume_wqe)
+		qp->req.resume_posted = true;
+	else {
+#endif
+		qp->req.opcode = pkt->opcode;
+		if (pkt->mask & RXE_END_MASK) {
+			qp->req.wqe_index = next_index(qp->sq.queue, qp->req.wqe_index);
+		}
+#if RXE_MIGRATION
+	}
+#endif
 
-	if (pkt->mask & RXE_END_MASK)
-		qp->req.wqe_index = next_index(qp->sq.queue, qp->req.wqe_index);
 
 	qp->need_req_skb = 0;
 
@@ -582,6 +653,12 @@ int rxe_requester(void *arg)
 		qp->req.need_retry = 0;
 		goto exit;
 	}
+
+#if RXE_MIGRATION
+	if (unlikely(qp->paused) || unlikely(qp->stopped)) {
+		goto exit;
+	}
+#endif
 
 	if (unlikely(qp->req.need_retry)) {
 		req_retry(qp);
@@ -631,12 +708,16 @@ int rxe_requester(void *arg)
 		goto out;
 	}
 
+	COUNTER_INC(qp, req_1);
 	if (unlikely(qp_type(qp) == IB_QPT_RC &&
 		     qp->req.psn > (qp->comp.psn + RXE_MAX_UNACKED_PSNS))) {
+		COUNTER_INC(qp, req_3);
 		qp->req.wait_psn = 1;
-		goto exit;
+		if (wqe->wr.opcode != IB_WR_RESUME)
+			goto exit;
 	}
 
+	COUNTER_INC(qp, req_2);
 	/* Limit the number of inflight SKBs per QP */
 	if (unlikely(atomic_read(&qp->skb_out) >
 		     RXE_INFLIGHT_SKBS_PER_QP_HIGH)) {
@@ -670,6 +751,8 @@ int rxe_requester(void *arg)
 			wqe->first_psn = qp->req.psn;
 			wqe->last_psn = qp->req.psn;
 			qp->req.psn = (qp->req.psn + 1) & BTH_PSN_MASK;
+			MINMAX_UPDATE(qp, req_psn_5, (int) qp->req.psn);
+			MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 			qp->req.opcode = IB_OPCODE_UD_SEND_ONLY;
 			qp->req.wqe_index = next_index(qp->sq.queue,
 						       qp->req.wqe_index);
@@ -699,6 +782,13 @@ int rxe_requester(void *arg)
 	 * rxe_xmit_packet().
 	 * Otherwise, completer might initiate an unjustified retry flow.
 	 */
+#if RXE_MIGRATION
+	if (pkt.opcode != IB_OPCODE_RC_RESUME)
+		MINMAX_UPDATE(qp, send_pkt_psn, (int) pkt.psn);
+	else
+		PRINT_QUEUE_PKT_WQE(qp, &pkt, wqe);
+#endif
+
 	save_state(wqe, qp, &rollback_wqe, &rollback_psn);
 	update_wqe_state(qp, wqe, &pkt);
 	update_wqe_psn(qp, wqe, &pkt, payload);

@@ -1309,6 +1309,8 @@ enum ib_wr_opcode {
 	/* These are kernel only and can not be issued by userspace */
 	IB_WR_REG_MR = 0x20,
 	IB_WR_REG_MR_INTEGRITY,
+	IB_WR_PAUSE,
+	IB_WR_RESUME,
 
 	/* reserve values for low level drivers' internal use.
 	 * These values will not be used at all in the ib core layer.
@@ -2243,6 +2245,27 @@ struct ib_counters_read_attr {
 	u32	flags; /* use enum ib_read_counters_flags */
 };
 
+struct ib_dump_mr {
+	struct ib_mr *mr;
+	u64 start;
+	u64 length;
+	int access;
+};
+
+enum ibv_restore_cq_cmd {
+	IB_RESTORE_CQ_CREATE,
+	IB_RESTORE_CQ_REFILL,
+};
+
+enum ib_restore_qp_cmd {
+	IB_RESTORE_QP_CREATE,
+	IB_RESTORE_QP_REFILL,
+};
+
+enum ib_restore_mr_cmd {
+	IB_RESTORE_MR_KEYS,
+};
+
 struct uverbs_attr_bundle;
 struct iw_cm_id;
 struct iw_cm_conn_param;
@@ -2592,6 +2615,9 @@ struct ib_device_ops {
 	 * counter_update_stats - Query the stats value of this counter
 	 */
 	int (*counter_update_stats)(struct rdma_counter *counter);
+	int (*dump_object)(u32 obj_type, void *req, void *data, ssize_t size);
+	int (*restore_object)(void *obj, u32 obj_type, u32 cmd, const void *args, ssize_t size);
+	int (*pause_resume_qp)(struct ib_qp *qp, bool resume);
 
 	/**
 	 * Allows rdma drivers to add their own restrack attributes
@@ -4324,6 +4350,9 @@ void ib_drain_sq(struct ib_qp *qp);
 void ib_drain_qp(struct ib_qp *qp);
 
 int ib_get_eth_speed(struct ib_device *dev, u8 port_num, u16 *speed, u8 *width);
+
+int ib_pause_qp(struct ib_qp *qp);
+int ib_resume_qp(struct ib_qp *qp);
 
 static inline u8 *rdma_ah_retrieve_dmac(struct rdma_ah_attr *attr)
 {

@@ -21,6 +21,7 @@ static const char * const rxe_counter_name[] = {
 	[RXE_CNT_LINK_DOWNED]         =  "link_downed",
 	[RXE_CNT_RDMA_SEND]           =  "rdma_sends",
 	[RXE_CNT_RDMA_RECV]           =  "rdma_recvs",
+	[RXE_CNT_RCV_PAUSE]           =  "rcvd_pause",
 };
 
 int rxe_ib_get_hw_stats(struct ib_device *ibdev,

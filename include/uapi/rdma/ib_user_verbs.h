@@ -88,6 +88,9 @@ enum ib_uverbs_write_cmds {
 	IB_USER_VERBS_CMD_CLOSE_XRCD,
 	IB_USER_VERBS_CMD_CREATE_XSRQ,
 	IB_USER_VERBS_CMD_OPEN_QP,
+
+	IB_USER_VERBS_CMD_DUMP_CONTEXT,
+	IB_USER_VERBS_CMD_RESTORE_OBJECT,
 };
 
 enum {
@@ -318,6 +321,24 @@ struct ib_uverbs_alloc_pd_resp {
 
 struct ib_uverbs_dealloc_pd {
 	__u32 pd_handle;
+};
+
+struct ib_uverbs_dump_context {
+	__aligned_u64 response;
+	__aligned_u64 skip;
+	__aligned_u64 driver_data[0];
+};
+
+struct ib_uverbs_dump_context_resp {
+	__u32 total;
+	__u32 driver_data[0];
+};
+
+struct ib_uverbs_restore_object {
+	__u32 handle;
+	__u32 object_type;
+	__u32 cmd;
+	__aligned_u64 driver_data[0];
 };
 
 struct ib_uverbs_open_xrcd {
