@@ -4,17 +4,17 @@ int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 		     struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
-	struct ib_device *parent;
+	int ret;
 
 	if (udata->inlen || udata->outlen)
 		return -EINVAL;
 
-	parent = ib_device_get_by_netdev(ovey_dev->parent_netdev, RDMA_DRIVER_UNKNOWN);
-	if (!parent) {
-		return -EINVAL;
-	}
-
 	memset(attr, 0, sizeof(*attr));
+
+	ret = ovey_dev->parent->ops.query_device(ovey_dev->parent, attr, udata);
+	if (ret < 0) {
+		return ret;
+	}
 
 	/* /\* Revisit atomic caps if RFC 7306 gets supported *\/ */
 	/* attr->atomic_cap = 0; */
@@ -44,55 +44,29 @@ int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 
 	/* memcpy(&attr->sys_image_guid, ovey_dev->netdev->dev_addr, 6); */
 
-	ib_device_put(parent);
 	return 0;
-}
-
-void ovey_device_cleanup(struct ib_device *base_dev)
-{
 }
 
 int ovey_query_port(struct ib_device *base_dev, u8 port,
 		   struct ib_port_attr *attr)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
-	int rv;
+	int ret;
 
-	/* memset(attr, 0, sizeof(*attr)); */
+	memset(attr, 0, sizeof(*attr));
+	ret = ovey_dev->parent->ops.query_port(ovey_dev->parent, port, attr);
+	if (ret < 0) {
+		return ret;
+	}
 
-	/* rv = ib_get_eth_speed(base_dev, port, &attr->active_speed, */
-	/* 		      &attr->active_width); */
-	/* attr->gid_tbl_len = 1; */
-	/* attr->max_msg_sz = -1; */
-	/* attr->max_mtu = ib_mtu_int_to_enum(ovey_dev->netdev->mtu); */
-	/* attr->active_mtu = ib_mtu_int_to_enum(ovey_dev->netdev->mtu); */
-	/* attr->phys_state = ovey_dev->state == IB_PORT_ACTIVE ? */
-	/* 	IB_PORT_PHYS_STATE_LINK_UP : IB_PORT_PHYS_STATE_DISABLED; */
-	/* attr->pkey_tbl_len = 1; */
-	/* attr->port_cap_flags = IB_PORT_CM_SUP | IB_PORT_DEVICE_MGMT_SUP; */
-	/* attr->state = ovey_dev->state; */
-	/* /\* */
-	/*  * All zero */
-	/*  * */
-	/*  * attr->lid = 0; */
-	/*  * attr->bad_pkey_cntr = 0; */
-	/*  * attr->qkey_viol_cntr = 0; */
-	/*  * attr->sm_lid = 0; */
-	/*  * attr->lmc = 0; */
-	/*  * attr->max_vl_num = 0; */
-	/*  * attr->sm_sl = 0; */
-	/*  * attr->subnet_timeout = 0; */
-	/*  * attr->init_type_repy = 0; */
-	/*  *\/ */
-	/* return rv; */
-
-	return -EINVAL;
+	/* Here I will need to update the ids */
+	return ret;
 }
 
 int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
 		  union ib_gid *gid)
 {
-	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
+	/* struct ovey_device *ovey_dev = to_ovey_dev(base_dev); */
 
 	return -EINVAL;
 	/* /\* subnet_prefix == interface_id == 0; *\/ */
@@ -104,24 +78,38 @@ int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
 
 int ovey_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pkey)
 {
-	return -EINVAL;
+	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
+	int ret;
+
+	ret = ovey_dev->parent->ops.query_pkey(ovey_dev->parent, port, idx, pkey);
+	if (ret < 0) {
+		return ret;
+	}
+
+	return ret;
 }
 
 int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
 			    struct ib_port_immutable *port_immutable)
 {
-	return -EINVAL;
-	/* struct ib_port_attr attr; */
-	/* int rv = ovey_query_port(base_dev, port, &attr); */
+	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
+	int ret;
 
-	/* if (rv) */
-	/* 	return rv; */
+	ret = ovey_dev->parent->ops.get_port_immutable(ovey_dev->parent, port, port_immutable);
+	if (ret < 0) {
+		return ret;
+	}
 
-	/* port_immutable->pkey_tbl_len = attr.pkey_tbl_len; */
-	/* port_immutable->gid_tbl_len = attr.gid_tbl_len; */
-	/* port_immutable->core_cap_flags = RDMA_CORE_PORT_IWARP; */
+	port_immutable->core_cap_flags &=
+		~(RDMA_CORE_CAP_IB_MAD |
+		  RDMA_CORE_CAP_IB_SMI |
+		  RDMA_CORE_CAP_IB_CM |
+		  RDMA_CORE_CAP_IW_CM |
+		  RDMA_CORE_CAP_IB_SA |
+		  RDMA_CORE_CAP_OPA_MAD);
+	port_immutable->max_mad_size = 0;
 
-	/* return 0; */
+	return 0;
 }
 
 int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
@@ -171,23 +159,28 @@ void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx)
 int ovey_alloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
+	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
 
-	/* if (atomic_inc_return(&ovey_dev->num_pd) > OVEY_MAX_PD) { */
-	/* 	atomic_dec(&ovey_dev->num_pd); */
-	/* 	return -ENOMEM; */
-	/* } */
-	/* ovey_dbg_pd(pd, "now %d PD's(s)\n", atomic_read(&ovey_dev->num_pd)); */
+	pr_err("Alloc pd");
+	ovey_dbg_pd(pd, "alloc PD\n");
+	ovey_pd->parent = ib_alloc_pd(ovey_dev->parent, pd->flags);
+	pr_err("Alloc pd %px %lx", ovey_dev->parent, PTR_ERR(ovey_pd->parent));
+	if (IS_ERR(ovey_pd->parent)) {
+		pr_err("Alloc pd bad");
+		return PTR_ERR(ovey_pd->parent);
+	}
+	pr_err("Alloc pd good");
 
-	/* return 0; */
-
-	return -EINVAL;
+	return 0;
 }
 
 void ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
-	/* struct ovey_device *ovey_dev = to_ovey_dev(pd->device); */
+	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
 
-	/* ovey_dbg_pd(pd, "free PD\n"); */
+	ib_dealloc_pd_user(ovey_pd->parent, udata);
+
+	ovey_dbg_pd(pd, "free PD\n");
 	/* atomic_dec(&ovey_dev->num_pd); */
 }
 
@@ -271,7 +264,35 @@ int ovey_map_mr_sg(struct ib_mr *base_mr, struct scatterlist *sl, int num_sle,
  */
 struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 {
-	return ERR_PTR(-EINVAL);
+	/* struct ovey_device *ovey_dev = to_ovey_dev(pd->device); */
+	/* struct ovey_pd *ovey_pd = to_ovey_pd(pd); */
+	struct ovey_mr *ovey_mr = NULL;
+	/* struct ib_mr *parent_mr; */
+	int ret;
+
+	ovey_mr = kzalloc(sizeof(*ovey_mr), GFP_KERNEL);
+	if (!ovey_mr) {
+		ret = -ENOMEM;
+		goto err_out;
+	}
+
+	/* parent_mr = ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights); */
+	/* if (IS_ERR(parent_mr)) { */
+	/* 	ret = PTR_ERR(parent_mr); */
+	/* 	goto err_out; */
+	/* } */
+
+	/* ovey_mr->parent = parent_mr; */
+	/* pr_err("ALLOCATED MR ovey %px parent %px parent device %px\n", ovey_mr, parent_mr, parent_mr->device); */
+
+	return &ovey_mr->base_mr;
+
+  err_out:
+	if (ret) {
+		kfree(ovey_mr);
+	}
+
+	return ERR_PTR(ret);
 }
 
 /*
@@ -284,7 +305,15 @@ struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
  */
 int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 {
-	return -EINVAL;
+	/* struct ovey_device *ovey_dev = to_ovey_dev(base_mr->device); */
+	struct ovey_mr *ovey_mr = to_ovey_mr(base_mr);
+	int ret = 0;
+
+	/* pr_err("DEALLOCATING MR ovey %px parent %px parent device %px\n", ovey_mr, ovey_mr->parent, ovey_mr->parent->device); */
+	/* ret = ovey_dev->parent->ops.dereg_mr(ovey_mr->parent, udata); */
+	kfree(ovey_mr);
+
+	return ret;
 }
 
 /*
@@ -300,7 +329,17 @@ int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 int ovey_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
 		  struct ib_udata *udata)
 {
-	return -EINVAL;
+	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
+	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
+	struct ib_cq *parent_cq;
+
+	parent_cq = ib_create_cq(ovey_dev->parent, base_cq->comp_handler, base_cq->event_handler, base_cq->cq_context, attr);
+	if (IS_ERR(parent_cq)) {
+		return PTR_ERR(parent_cq);
+	}
+	ovey_cq->parent = parent_cq;
+
+	return 0;
 }
 
 /*
@@ -341,6 +380,9 @@ int ovey_req_notify_cq(struct ib_cq *base_cq, enum ib_cq_notify_flags flags)
 
 void ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 {
+	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
+
+	ib_destroy_cq_user(ovey_cq->parent, udata);
 }
 
 /*
@@ -356,7 +398,56 @@ struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 			    struct ib_qp_init_attr *attrs,
 			    struct ib_udata *udata)
 {
-	return ERR_PTR(-EINVAL);
+	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
+	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
+	struct ovey_qp *qp = NULL;
+	int ret;
+
+	if (attrs->qp_type != IB_QPT_RC) {
+		return ERR_PTR(-EOPNOTSUPP);
+	}
+
+	pr_err("CREATE_QP WAH %d", __LINE__);
+	if (udata) {
+		pr_err("udata is not supported\n");
+		return ERR_PTR(-ENOTSUPP);
+	}
+
+	pr_err("CREATE_QP WAH %d", __LINE__);
+	qp = kzalloc(sizeof(*qp), GFP_KERNEL);
+	pr_err("CREATE_QP WAH %d", __LINE__);
+	if (!qp) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	pr_err("CREATE_QP WAH %d", __LINE__);
+
+	ret = ovey_qp_add(ovey_dev, qp);
+	if (ret < 0) {
+		goto err_free;
+	}
+	pr_err("CREATE_QP WAH %d", __LINE__);
+
+	if (attrs->qp_type == IB_QPT_SMI || attrs->qp_type == IB_QPT_GSI) {
+		/* These two QPs are created when the device is create */
+	}
+#if 0
+	qp->parent = ib_create_qp(ovey_pd->parent, attrs);
+	if (IS_ERR(qp->parent)) {
+		ret = PTR_ERR(qp->parent);
+		goto err_free;
+	}
+
+#endif
+
+	pr_err("CREATE_QP WAH %d", __LINE__);
+	return &qp->base_qp;
+
+  err_free:
+	kfree(qp);
+  err:
+	pr_err("CREATE_QP WAH %d %d == %x", __LINE__, ret, ret);
+	return ERR_PTR(ret);
 }
 
 /*
@@ -408,7 +499,23 @@ int ovey_post_receive(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 
 int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 {
-	return -EINVAL;
+	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
+	int ret;
+
+	if (udata) {
+		pr_err("qp_destroy: udata is not supported\n");
+		return -EINVAL;
+	}
+
+#if 0
+	pr_err("DESTROY_QP: %d", __LINE__);
+	ret = ib_destroy_qp(ovey_qp->parent);
+#endif
+
+	pr_err("DESTROY_QP: %d ret %d", __LINE__, ret);
+	ovey_qp_put(ovey_qp);
+
+	return ret;
 }
 
 
