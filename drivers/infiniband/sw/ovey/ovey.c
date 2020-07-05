@@ -14,7 +14,7 @@ MODULE_LICENSE("GPL");
 enum {
 	OVEY_A_UNSPEC,
 	OVEY_A_MSG,
-	OVEY_A_NEW_DEVICE,
+	OVEY_A_VIRT_DEVICE,
 	OVEY_A_PARENT_DEVICE,
 	__OVEY_A_MAX,
 };
@@ -25,17 +25,19 @@ enum {
 	OVEY_C_UNSPEC,
 	OVEY_C_ECHO,
 	OVEY_C_NEW_DEVICE,
+	OVEY_C_DELETE_DEVICE,
 	__OVEY_C_ECHO,
 };
 #define OVEY_C_MAX (__OVEY_C_MAX - 1)
 
-int ovey_echo(struct sk_buff *skb, struct genl_info *info);
-int ovey_new_device(struct sk_buff *skb, struct genl_info *info);
+int ovey_gnl_echo(struct sk_buff *skb, struct genl_info *info);
+int ovey_gnl_new_device(struct sk_buff *skb, struct genl_info *info);
+int ovey_gnl_delete_device(struct sk_buff *skb, struct genl_info *info);
 
 /* attribute policy */
 static struct nla_policy ovey_genl_policy[OVEY_A_MAX + 1] = {
 	[OVEY_A_MSG] = { .type = NLA_NUL_STRING },
-	[OVEY_A_NEW_DEVICE] = { .type = NLA_NUL_STRING },
+	[OVEY_A_VIRT_DEVICE] = { .type = NLA_NUL_STRING },
 	[OVEY_A_PARENT_DEVICE] = { .type = NLA_NUL_STRING },
 };
 
@@ -44,14 +46,21 @@ static const struct genl_ops ovey_gnl_ops[] = {
 		.cmd = OVEY_C_ECHO,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.flags = 0,
-		.doit = ovey_echo,
+		.doit = ovey_gnl_echo,
 		.dumpit = NULL
 	},
 	{
 		.cmd = OVEY_C_NEW_DEVICE,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.flags = 0,
-		.doit = ovey_new_device,
+		.doit = ovey_gnl_new_device,
+		.dumpit = NULL
+	},
+	{
+		.cmd = OVEY_C_DELETE_DEVICE,
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+		.flags = 0,
+		.doit = ovey_gnl_delete_device,
 		.dumpit = NULL
 	},
 };
@@ -67,114 +76,6 @@ static struct genl_family ovey_gnl_family = {
 	.ops = ovey_gnl_ops,
 	.n_ops = ARRAY_SIZE(ovey_gnl_ops),
 };
-
-/* handler */
-int ovey_echo(struct sk_buff *skb, struct genl_info *info)
-{
-	struct sk_buff *reply_skb;
-	void *msg_head;
-	int ret = 0;
-
-	pr_info("Got echo\n");
-	reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
-	if (reply_skb == NULL) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-
-	/* create the message headers */
-	msg_head = genlmsg_put_reply(reply_skb, info, &ovey_gnl_family, 0, OVEY_C_ECHO);
-	if (msg_head == NULL) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	/* add a OVEY_A_MSG attribute */
-	ret = nla_put_string(reply_skb, OVEY_A_MSG, "Generic Netlink Rocks");
-	if (ret < 0) {
-		goto err_free;
-	}
-	/* finalize the message */
-	genlmsg_end(reply_skb, msg_head);
-
-	return genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid);
-
-  err_free:
-	nlmsg_free(reply_skb);
-
-  err:
-	return ret;
-}
-
-int ovey_new_device(struct sk_buff *skb, struct genl_info *info)
-{
-	struct sk_buff *reply_skb;
-	void *msg_head;
-	int ret = 0;
-	char new_iface_name[IFNAMSIZ];
-	char parent_iface_name[IFNAMSIZ];
-	struct net *net = genl_info_net(info);
-
-	if (!info->attrs[OVEY_A_NEW_DEVICE]) {
-		ret = -EINVAL;
-		goto err;
-	}
-	ret = nla_strlcpy(new_iface_name, info->attrs[OVEY_A_NEW_DEVICE], IFNAMSIZ);
-	if (ret < 0) {
-		ret = -EINVAL;
-		goto err;
-	}
-
-	if (!info->attrs[OVEY_A_PARENT_DEVICE]) {
-		ret = -EINVAL;
-		goto err;
-	}
-	ret = nla_strlcpy(parent_iface_name, info->attrs[OVEY_A_PARENT_DEVICE], IFNAMSIZ);
-	if (ret < 0) {
-		ret = -EINVAL;
-		goto err;
-	}
-
-	pr_info("Request to create a device: %s (parent %s)\n", new_iface_name, parent_iface_name);
-
-	reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
-	if (reply_skb == NULL) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-
-	/* create the message headers */
-	msg_head = genlmsg_put_reply(reply_skb, info, &ovey_gnl_family, 0, OVEY_C_NEW_DEVICE);
-	if (msg_head == NULL) {
-		ret = -ENOMEM;
-		goto err;
-	}
-	/* finalize the message */
-	genlmsg_end(reply_skb, msg_head);
-
-	return genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid);
-
-  err_free:
-	nlmsg_free(reply_skb);
-
-  err:
-	return ret;
-}
-
-static int ovey_dev_qualified(struct net_device *netdev)
-{
-	/*
-	 * Additional hardware support can be added here
-	 * (e.g. ARPHRD_FDDI, ARPHRD_ATM, ...) - see
-	 * <linux/if_arp.h> for type identifiers.
-	 */
-	if (netdev->type == ARPHRD_INFINIBAND)
-		return 1;
-
-	return 0;
-}
 
 static const struct ib_device_ops ovey_device_ops = {
 	.owner = THIS_MODULE,
@@ -214,28 +115,54 @@ static const struct ib_device_ops ovey_device_ops = {
 	INIT_RDMA_OBJ_SIZE(ib_ucontext, ovey_ucontext, base_ucontext),
 };
 
-static struct ovey_device *ovey_device_create(struct net_device *netdev)
+/* handler */
+int ovey_gnl_echo(struct sk_buff *skb, struct genl_info *info)
+{
+	struct sk_buff *reply_skb;
+	void *msg_head;
+	int ret = 0;
+
+	pr_info("Got echo\n");
+	reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+	if (reply_skb == NULL) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+
+	/* create the message headers */
+	msg_head = genlmsg_put_reply(reply_skb, info, &ovey_gnl_family, 0, OVEY_C_ECHO);
+	if (msg_head == NULL) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	/* add a OVEY_A_MSG attribute */
+	ret = nla_put_string(reply_skb, OVEY_A_MSG, "Generic Netlink Rocks");
+	if (ret < 0) {
+		goto err_free;
+	}
+	/* finalize the message */
+	genlmsg_end(reply_skb, msg_head);
+
+	return genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid);
+
+  err_free:
+	nlmsg_free(reply_skb);
+
+  err:
+	return ret;
+}
+
+static struct ovey_device *ovey_new_device(struct ib_device *parent)
 {
 	struct ovey_device *ovey_dev = NULL;
-	struct ib_device *parent;
-	int ret;
 
-	if (!netdev->dev.parent) {
-		pr_warn("ovey: device %s error: no parent device\n",
-			netdev->name);
-		return NULL;
-	}
 	ovey_dev = ib_alloc_device(ovey_device, base);
 	if (!ovey_dev)
 		return NULL;
 
-	parent = ib_device_get_by_netdev(netdev, RDMA_DRIVER_UNKNOWN);
-	if (!parent) {
-		ret = -EINVAL;
-		goto error;
-	}
-
-	ovey_dev->parent_netdev = netdev;
+	ovey_dev->parent = parent;
 
 	ovey_dev->base.node_guid = parent->node_guid;
 
@@ -274,23 +201,12 @@ static struct ovey_device *ovey_device_create(struct net_device *netdev)
 	ovey_dev->base.dev.dma_parms = parent->dev.dma_parms;
 	ovey_dev->base.num_comp_vectors = parent->num_comp_vectors;
 
+	xa_init_flags(&ovey_dev->qp_xa, XA_FLAGS_ALLOC1);
+
 	ib_set_device_ops(&ovey_dev->base, &ovey_device_ops);
-	ret = ib_device_set_netdev(&ovey_dev->base, netdev, 1);
-	if (ret)
-		goto error_put;
-
-	memcpy(ovey_dev->base.iw_ifname, netdev->name,
-	       sizeof(ovey_dev->base.iw_ifname));
-
-	/* Disable TCP port mapping */
-	ovey_dev->base.iw_driver_flags = parent->iw_driver_flags;
-
-	ib_device_put(parent);
 
 	return ovey_dev;
 
-  error_put:
-	ib_device_put(parent);
   error:
 	ib_dealloc_device(&ovey_dev->base);
 
@@ -308,48 +224,179 @@ static int ovey_device_register(struct ovey_device *ovey_dev, const char *name)
 		return ret;
 	}
 
-	ovey_dbg(&ovey_dev->base, "HWaddr=%pM\n", ovey_dev->parent_netdev->dev_addr);
+	ovey_dbg(&ovey_dev->base, "Registered\n");
 
 	return 0;
 }
 
-static int ovey_newlink(const char *basedev_name, struct net_device *netdev)
+static int ovey_new_device_if_not_exists(const char *basedev_name, struct ib_device *parent)
 {
-	struct ib_device *base_dev;
+	struct ib_device *ovey_ib_dev;
 	struct ovey_device *ovey_dev = NULL;
 	int ret = -ENOMEM;
 
-	if (!ovey_dev_qualified(netdev))
-		return -EINVAL;
+	pr_err("Attempt to create link\n");
 
-	pr_err("Attempt to create link");
-	return -EINVAL;
-
-	base_dev = ib_device_get_by_netdev(netdev, RDMA_DRIVER_OVEY);
-	if (base_dev) {
-		ib_device_put(base_dev);
+	ovey_ib_dev = ib_device_get_by_name(basedev_name, RDMA_DRIVER_OVEY);
+	if (ovey_ib_dev) {
+		ib_device_put(ovey_ib_dev);
 		return -EEXIST;
 	}
-	ovey_dev = ovey_device_create(netdev);
-	if (ovey_dev) {
-		dev_dbg(&netdev->dev, "ovey: new device\n");
 
-		if (netif_running(netdev) && netif_carrier_ok(netdev))
-			ovey_dev->state = IB_PORT_ACTIVE;
-		else
-			ovey_dev->state = IB_PORT_DOWN;
+	ovey_dev = ovey_new_device(parent);
+	if (ovey_dev) {
+		ovey_dbg(parent, "ovey: new device\n");
+		pr_err("WAH %s %d\n", __FILE__, __LINE__);
 
 		ret = ovey_device_register(ovey_dev, basedev_name);
+		pr_err("WAH %s %d\n", __FILE__, __LINE__);
 		if (ret)
 			ib_dealloc_device(&ovey_dev->base);
 	}
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
 	return ret;
 }
 
-static struct rdma_link_ops ovey_link_ops = {
-	.type = "ovey",
-	.newlink = ovey_newlink,
-};
+int ovey_gnl_new_device(struct sk_buff *skb, struct genl_info *info)
+{
+	struct sk_buff *reply_skb;
+	void *msg_head;
+	int ret = 0;
+	struct ib_device *parent;
+	char new_iface_name[IFNAMSIZ];
+	char parent_iface_name[IFNAMSIZ];
+
+	if (!info->attrs[OVEY_A_VIRT_DEVICE]) {
+		ret = -EINVAL;
+		goto err;
+	}
+	ret = nla_strlcpy(new_iface_name, info->attrs[OVEY_A_VIRT_DEVICE], IFNAMSIZ);
+	if (ret < 0) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	if (!info->attrs[OVEY_A_PARENT_DEVICE]) {
+		ret = -EINVAL;
+		goto err;
+	}
+	ret = nla_strlcpy(parent_iface_name, info->attrs[OVEY_A_PARENT_DEVICE], IFNAMSIZ);
+	if (ret < 0) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	parent = ib_device_get_by_name(parent_iface_name, RDMA_DRIVER_UNKNOWN);
+	if (!parent) {
+		ret = -EINVAL;
+		goto err;
+	}
+	pr_info("Request to create a device: %s (parent %s)\n", new_iface_name, parent_iface_name);
+
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	ret = ovey_new_device_if_not_exists(new_iface_name, parent);
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	if (ret < 0) {
+		goto err_put;
+	}
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+
+	reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	if (reply_skb == NULL) {
+		ret = -ENOMEM;
+		goto err_put;
+	}
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+
+
+	/* create the message headers */
+	msg_head = genlmsg_put_reply(reply_skb, info, &ovey_gnl_family, 0, OVEY_C_NEW_DEVICE);
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	if (msg_head == NULL) {
+		ret = -ENOMEM;
+		goto err_put;
+	}
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	/* finalize the message */
+	genlmsg_end(reply_skb, msg_head);
+
+	return genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid);
+
+  err_put:
+	ib_device_put(parent);
+
+  err:
+	return ret;
+}
+
+void ovey_device_cleanup(struct ib_device *base_dev)
+{
+	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
+
+	xa_destroy(&ovey_dev->qp_xa);
+
+	ib_device_put(ovey_dev->parent);
+}
+
+int ovey_delete_device(char *device_name)
+{
+	struct ib_device *ovey_ib_dev;
+
+	ovey_ib_dev = ib_device_get_by_name(device_name, RDMA_DRIVER_OVEY);
+	if (!ovey_ib_dev) {
+		return -ENOENT;
+	}
+
+	ib_unregister_device_and_put(ovey_ib_dev);
+
+	return 0;
+}
+
+int ovey_gnl_delete_device(struct sk_buff *skb, struct genl_info *info)
+{
+	struct sk_buff *reply_skb;
+	void *msg_head;
+	int ret = 0;
+	char device_name[IFNAMSIZ];
+
+	if (!info->attrs[OVEY_A_VIRT_DEVICE]) {
+		ret = -EINVAL;
+		goto err;
+	}
+	ret = nla_strlcpy(device_name, info->attrs[OVEY_A_VIRT_DEVICE], IFNAMSIZ);
+	if (ret < 0) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	pr_info("Request to delete a device: %s\n", device_name);
+
+	ret = ovey_delete_device(device_name);
+	if (ret < 0) {
+		goto err;
+	}
+
+	reply_skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+	if (reply_skb == NULL) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	/* create the message headers */
+	msg_head = genlmsg_put_reply(reply_skb, info, &ovey_gnl_family, 0, OVEY_C_DELETE_DEVICE);
+	if (msg_head == NULL) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	/* finalize the message */
+	genlmsg_end(reply_skb, msg_head);
+
+	return genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid);
+
+  err:
+	return ret;
+}
 
 static int __init ovey_module_init(void)
 {
@@ -360,8 +407,6 @@ static int __init ovey_module_init(void)
 		return -EINVAL;
 	}
 
-	rdma_link_register(&ovey_link_ops);
-
 #pragma GCC diagnostic ignored "-Wdate-time"
 	pr_info("loaded version %s-%s\n", __DATE__, __TIME__);
 	return 0;
@@ -371,7 +416,6 @@ static void __exit ovey_module_exit(void)
 {
 	genl_unregister_family(&ovey_gnl_family);
 
-	rdma_link_unregister(&ovey_link_ops);
 	pr_info("unloaded\n");
 }
 
