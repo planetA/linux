@@ -34,6 +34,8 @@ int ovey_gnl_echo(struct sk_buff *skb, struct genl_info *info);
 int ovey_gnl_new_device(struct sk_buff *skb, struct genl_info *info);
 int ovey_gnl_delete_device(struct sk_buff *skb, struct genl_info *info);
 
+void ovey_dealloc_driver(struct ib_device *base_dev);
+
 /* attribute policy */
 static struct nla_policy ovey_genl_policy[OVEY_A_MAX + 1] = {
 	[OVEY_A_MSG] = { .type = NLA_NUL_STRING },
@@ -82,7 +84,7 @@ static const struct ib_device_ops ovey_device_ops = {
 	.uverbs_abi_ver = OVEY_ABI_VERSION,
 	.driver_id = RDMA_DRIVER_OVEY,
 
-	.dealloc_driver = ovey_device_cleanup,
+	.dealloc_driver = ovey_dealloc_driver,
 	.query_device = ovey_query_device,
 	.query_port = ovey_query_port,
 	.query_gid = ovey_query_gid,
@@ -105,9 +107,9 @@ static const struct ib_device_ops ovey_device_ops = {
 	.destroy_cq = ovey_destroy_cq,
 	.create_qp = ovey_create_qp,
 	.query_qp = ovey_query_qp,
-	.modify_qp = ovey_verbs_modify_qp,
+	.modify_qp = ovey_modify_qp,
 	.post_send = ovey_post_send,
-	.post_recv = ovey_post_receive,
+	.post_recv = ovey_post_recv,
 	.destroy_qp = ovey_destroy_qp,
 
 	INIT_RDMA_OBJ_SIZE(ib_cq, ovey_cq, base_cq),
@@ -330,7 +332,7 @@ int ovey_gnl_new_device(struct sk_buff *skb, struct genl_info *info)
 	return ret;
 }
 
-void ovey_device_cleanup(struct ib_device *base_dev)
+void ovey_dealloc_driver(struct ib_device *base_dev)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 
