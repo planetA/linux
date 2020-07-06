@@ -461,8 +461,8 @@ int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 	return -EINVAL;
 }
 
-int ovey_verbs_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
-			int attr_mask, struct ib_udata *udata)
+int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
+		   int attr_mask, struct ib_udata *udata)
 {
 	return -EINVAL;
 }
@@ -483,7 +483,7 @@ int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 }
 
 /*
- * ovey_post_receive()
+ * ovey_post_recv()
  *
  * Post a list of R-WR's to a RQ.
  *
@@ -491,8 +491,8 @@ int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
  * @wr:		Null terminated list of user WR's
  * @bad_wr:	Points to failing WR in case of synchronous failure.
  */
-int ovey_post_receive(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
-		     const struct ib_recv_wr **bad_wr)
+int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
+		   const struct ib_recv_wr **bad_wr)
 {
 	return -EINVAL;
 }

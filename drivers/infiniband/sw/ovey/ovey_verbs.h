@@ -39,12 +39,12 @@ struct ib_qp *ovey_create_qp(struct ib_pd *base_pd,
 			    struct ib_udata *udata);
 int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		 int qp_attr_mask, struct ib_qp_init_attr *qp_init_attr);
-int ovey_verbs_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
-                         int attr_mask, struct ib_udata *udata);
+int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
+                   int attr_mask, struct ib_udata *udata);
 int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
                    const struct ib_send_wr **bad_wr);
-int ovey_post_receive(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
-                      const struct ib_recv_wr **bad_wr);
+int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
+                   const struct ib_recv_wr **bad_wr);
 int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata);
 
 void ovey_qp_event(struct ovey_qp *qp, enum ib_event_type type);
