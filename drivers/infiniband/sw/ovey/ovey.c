@@ -220,17 +220,17 @@ static struct ovey_device *ovey_new_device(struct ib_device *parent)
 /* 			INIT_RDMA_OBJ_SIZE(ib_##name, ovey_##name, base_##name); \ */
 /* 	} while (0) */
 
-	UNSET_OVEY_OP(query_gid);
-	UNSET_OVEY_OP(alloc_ucontext);
-	UNSET_OVEY_OP(dealloc_ucontext);
-	UNSET_OVEY_OP(mmap);
-	UNSET_OVEY_OP(mmap_free);
-	UNSET_OVEY_OP(alloc_mr);
-	UNSET_OVEY_OP(reg_user_mr);
-	UNSET_OVEY_OP(map_mr_sg);
-	UNSET_OVEY_OP(get_dma_mr);
-	UNSET_OVEY_OP(poll_cq);
-	UNSET_OVEY_OP(query_qp);
+	/* UNSET_OVEY_OP(query_gid); */
+	/* UNSET_OVEY_OP(alloc_ucontext); */
+	/* UNSET_OVEY_OP(dealloc_ucontext); */
+	/* UNSET_OVEY_OP(mmap); */
+	/* UNSET_OVEY_OP(mmap_free); */
+	/* UNSET_OVEY_OP(alloc_mr); */
+	/* UNSET_OVEY_OP(reg_user_mr); */
+	/* UNSET_OVEY_OP(map_mr_sg); */
+	/* UNSET_OVEY_OP(get_dma_mr); */
+	/* UNSET_OVEY_OP(poll_cq); */
+	/* UNSET_OVEY_OP(query_qp); */
 
 	/* SET_OVEY_OBJ_SIZE(ah); */
 	/* SET_OVEY_OBJ_SIZE(cq); */

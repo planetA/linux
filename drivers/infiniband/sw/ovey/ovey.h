@@ -50,7 +50,7 @@ struct ovey_device {
 
 struct ovey_ucontext {
 	struct ib_ucontext base_ucontext;
-	struct ovey_device *ovey_dev;
+	struct ib_ucontext *parent;
 };
 
 struct ovey_pd {
@@ -94,6 +94,11 @@ static inline void ovey_qp_get(struct ovey_qp *qp)
 static inline void ovey_qp_put(struct ovey_qp *qp)
 {
 	kref_put(&qp->ref, ovey_free_qp);
+}
+
+static inline struct ovey_ucontext *to_ovey_ctx(struct ib_ucontext *base_ctx)
+{
+	return container_of(base_ctx, struct ovey_ucontext, base_ucontext);
 }
 
 static inline struct ovey_device *to_ovey_dev(struct ib_device *base_dev)

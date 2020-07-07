@@ -117,46 +117,49 @@ int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
 
 int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
 {
-  /* 	struct ovey_device *ovey_dev = to_ovey_dev(base_ctx->device); */
-  /* 	struct ovey_ucontext *ctx = to_ovey_ctx(base_ctx); */
-  /* 	struct ovey_uresp_alloc_ctx uresp = {}; */
-  /* 	int rv; */
+	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->base_ucontext.device);
+	struct ib_ucontext *parent_ucontext;
+	int ret;
 
-  /* 	if (atomic_inc_return(&ovey_dev->num_ctx) > OVEY_MAX_CONTEXT) { */
-  /* 		rv = -ENOMEM; */
-  /* 		goto err_out; */
-  /* 	} */
-  /* 	ctx->ovey_dev = ovey_dev; */
+	pr_err("WAH alloc ucontext %d\n", __LINE__);
+	parent_ucontext = rdma_zalloc_drv_obj(ovey_dev->parent, ib_ucontext);
+	if (!parent_ucontext)
+		return -ENOMEM;
 
-  /* 	uresp.dev_id = ovey_dev->vendor_part_id; */
+	pr_err("WAH alloc ucontext %d\n", __LINE__);
+	parent_ucontext->res.type = RDMA_RESTRACK_CTX;
+	parent_ucontext->device = ovey_dev->parent;
+	pr_err("WAH alloc ucontext %d\n", __LINE__);
+	parent_ucontext->ufile = base_ctx->ufile;
+	xa_init_flags(&parent_ucontext->mmap_xa, XA_FLAGS_ALLOC);
+	pr_err("WAH alloc ucontext %d\n", __LINE__);
+	ovey_ctx->parent = parent_ucontext;
 
-  /* 	if (udata->outlen < sizeof(uresp)) { */
-  /* 		rv = -EINVAL; */
-  /* 		goto err_out; */
-  /* 	} */
-  /* 	rv = ib_copy_to_udata(udata, &uresp, sizeof(uresp)); */
-  /* 	if (rv) */
-  /* 		goto err_out; */
+	pr_err("WAH alloc ucontext %d\n", __LINE__);
+	ret = ovey_dev->parent->ops.alloc_ucontext(ovey_ctx->parent, udata);
+	if (ret < 0) {
+		goto err;
+	}
+	pr_err("WAH alloc ucontext\n");
+	return 0;
 
-  /* 	ovey_dbg(base_ctx->device, "success. now %d context(s)\n", */
-  /* 		 atomic_read(&ovey_dev->num_ctx)); */
-
-  /* 	return 0; */
-
-  /* err_out: */
-  /* 	atomic_dec(&ovey_dev->num_ctx); */
-  /* 	ovey_dbg(base_ctx->device, "failure %d. now %d context(s)\n", rv, */
-  /* 		 atomic_read(&ovey_dev->num_ctx)); */
-
-  /* 	return rv; */
-	return -EINVAL;
+  err:
+	pr_err("WAH alloc ucontext %d %d\n", __LINE__, ret);
+	kfree(parent_ucontext);
+	return ret;
 }
 
 void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx)
 {
-	/* struct ovey_ucontext *uctx = to_ovey_ctx(base_ctx); */
+	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->base_ucontext.device);
 
-	/* atomic_dec(&uctx->ovey_dev->num_ctx); */
+	ovey_dev->parent->ops.dealloc_ucontext(ovey_ctx->parent);
+
+	kfree(ovey_ctx->parent);
+
+	pr_err("WAH dealloc ucontext\n");
 }
 
 int ovey_alloc_pd(struct ib_pd *pd, struct ib_udata *udata)
