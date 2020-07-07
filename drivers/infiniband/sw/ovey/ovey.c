@@ -208,6 +208,7 @@ static struct ovey_device *ovey_new_device(struct ib_device *parent)
 	ib_set_device_ops(&ovey_dev->base, &ovey_device_ops);
 
 	ovey_dev->base.ops.uverbs_abi_ver = parent->ops.uverbs_abi_ver;
+	ovey_dev->base.ops.driver_id = parent->ops.driver_id;
 #define UNSET_OVEY_OP(name)					\
 	do {							\
 		if (!parent->ops.name)				\
@@ -219,33 +220,17 @@ static struct ovey_device *ovey_new_device(struct ib_device *parent)
 /* 			INIT_RDMA_OBJ_SIZE(ib_##name, ovey_##name, base_##name); \ */
 /* 	} while (0) */
 
-	UNSET_OVEY_OP(dealloc_driver);
-	UNSET_OVEY_OP(query_device);
-	UNSET_OVEY_OP(query_port);
 	UNSET_OVEY_OP(query_gid);
-	UNSET_OVEY_OP(query_pkey);
-	UNSET_OVEY_OP(get_port_immutable);
 	UNSET_OVEY_OP(alloc_ucontext);
 	UNSET_OVEY_OP(dealloc_ucontext);
-	UNSET_OVEY_OP(alloc_pd);
-	UNSET_OVEY_OP(dealloc_pd);
 	UNSET_OVEY_OP(mmap);
 	UNSET_OVEY_OP(mmap_free);
 	UNSET_OVEY_OP(alloc_mr);
 	UNSET_OVEY_OP(reg_user_mr);
 	UNSET_OVEY_OP(map_mr_sg);
 	UNSET_OVEY_OP(get_dma_mr);
-	UNSET_OVEY_OP(dereg_mr);
-	UNSET_OVEY_OP(create_cq);
 	UNSET_OVEY_OP(poll_cq);
-	UNSET_OVEY_OP(req_notify_cq);
-	UNSET_OVEY_OP(destroy_cq);
-	UNSET_OVEY_OP(create_qp);
 	UNSET_OVEY_OP(query_qp);
-	UNSET_OVEY_OP(modify_qp);
-	UNSET_OVEY_OP(post_send);
-	UNSET_OVEY_OP(post_recv);
-	UNSET_OVEY_OP(destroy_qp);
 
 	/* SET_OVEY_OBJ_SIZE(ah); */
 	/* SET_OVEY_OBJ_SIZE(cq); */
@@ -455,8 +440,6 @@ static int __init ovey_module_init(void)
 		return -EINVAL;
 	}
 
-#pragma GCC diagnostic ignored "-Wdate-time"
-	pr_info("loaded version %s-%s\n", __DATE__, __TIME__);
 	return 0;
 }
 
