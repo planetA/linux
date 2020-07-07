@@ -6,6 +6,7 @@ int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	int ret;
 
+	pr_err("FAIL: %s\n", __func__);
 	if (udata->inlen || udata->outlen)
 		return -EINVAL;
 
@@ -44,6 +45,7 @@ int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 
 	/* memcpy(&attr->sys_image_guid, ovey_dev->netdev->dev_addr, 6); */
 
+	pr_err("FAIL: %s\n", __func__);
 	return 0;
 }
 
@@ -68,6 +70,7 @@ int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
 {
 	/* struct ovey_device *ovey_dev = to_ovey_dev(base_dev); */
 
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 	/* /\* subnet_prefix == interface_id == 0; *\/ */
 	/* memset(gid, 0, sizeof(*gid)); */
@@ -217,6 +220,7 @@ int ovey_mmap(struct ib_ucontext *ctx, struct vm_area_struct *vma)
 /* 	rdma_user_mmap_entry_put(rdma_entry); */
 
 /* 	return rv; */
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
@@ -230,6 +234,7 @@ void ovey_mmap_free(struct rdma_user_mmap_entry *rdma_entry)
 struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
 			   u32 max_sge, struct ib_udata *udata)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return ERR_PTR(-EINVAL);
 }
 
@@ -248,12 +253,14 @@ struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
 struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
 			      u64 rnic_va, int rights, struct ib_udata *udata)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return ERR_PTR(-EINVAL);
 }
 
 int ovey_map_mr_sg(struct ib_mr *base_mr, struct scatterlist *sl, int num_sle,
 		  unsigned int *sg_off)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
@@ -354,6 +361,7 @@ int ovey_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
  */
 int ovey_poll_cq(struct ib_cq *base_cq, int num_cqe, struct ib_wc *wc)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
@@ -375,6 +383,7 @@ int ovey_poll_cq(struct ib_cq *base_cq, int num_cqe, struct ib_wc *wc)
  */
 int ovey_req_notify_cq(struct ib_cq *base_cq, enum ib_cq_notify_flags flags)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
@@ -458,12 +467,14 @@ struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		 int qp_attr_mask, struct ib_qp_init_attr *qp_init_attr)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
 int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
 		   int attr_mask, struct ib_udata *udata)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
@@ -479,6 +490,7 @@ int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
 int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 		  const struct ib_send_wr **bad_wr)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
@@ -494,6 +506,7 @@ int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 		   const struct ib_recv_wr **bad_wr)
 {
+	pr_err("FAIL: %s\n", __func__);
 	return -EINVAL;
 }
 
