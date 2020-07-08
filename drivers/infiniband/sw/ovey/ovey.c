@@ -206,6 +206,9 @@ static struct ovey_device *ovey_new_device(struct ib_device *parent)
 	xa_init_flags(&ovey_dev->qp_xa, XA_FLAGS_ALLOC1);
 
 	ib_set_device_ops(&ovey_dev->base, &ovey_device_ops);
+	ovey_dev->base.uverbs_ex_cmd_mask = (
+		parent->uverbs_ex_cmd_mask &
+		(1ull << IB_USER_VERBS_EX_CMD_QUERY_DEVICE));
 
 	ovey_dev->base.ops.uverbs_abi_ver = parent->ops.uverbs_abi_ver;
 	ovey_dev->base.ops.driver_id = parent->ops.driver_id;
