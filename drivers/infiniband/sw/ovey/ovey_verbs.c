@@ -1,4 +1,5 @@
 #include "ovey.h"
+#include "ovey_verbs.h"
 
 int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 		     struct ib_udata *udata)
@@ -6,14 +7,12 @@ int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	int ret;
 
-	pr_err("FAIL: %s\n", __func__);
-	if (udata->inlen || udata->outlen)
-		return -EINVAL;
-
-	memset(attr, 0, sizeof(*attr));
-
+	pr_err("QUERY DEVICE: %s %px\n", __func__, ovey_dev);
+	pr_err("QUERY DEVICE: %s %px\n", __func__, ovey_dev->parent);
+	pr_err("QUERY DEVICE: %s %pF %pF %pF\n", __func__, ovey_query_device, ovey_dev->parent->ops.query_device, ovey_alloc_ucontext);
 	ret = ovey_dev->parent->ops.query_device(ovey_dev->parent, attr, udata);
 	if (ret < 0) {
+		pr_err("WAH: %s %d\n", __func__, ret);
 		return ret;
 	}
 
@@ -45,7 +44,7 @@ int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 
 	/* memcpy(&attr->sys_image_guid, ovey_dev->netdev->dev_addr, 6); */
 
-	pr_err("FAIL: %s\n", __func__);
+	pr_err("WAH: %s\n", __func__);
 	return 0;
 }
 
@@ -190,48 +189,19 @@ void ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	/* atomic_dec(&ovey_dev->num_pd); */
 }
 
-int ovey_mmap(struct ib_ucontext *ctx, struct vm_area_struct *vma)
+int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 {
-/* 	struct ovey_ucontext *uctx = to_ovey_ctx(ctx); */
-/* 	size_t size = vma->vm_end - vma->vm_start; */
-/* 	struct rdma_user_mmap_entry *rdma_entry; */
-/* 	struct ovey_user_mmap_entry *entry; */
-/* 	int rv = -EINVAL; */
+	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->base_ucontext.device);
 
-/* 	/\* */
-/* 	 * Must be page aligned */
-/* 	 *\/ */
-/* 	if (vma->vm_start & (PAGE_SIZE - 1)) { */
-/* 		pr_warn("ovey: mmap not page aligned\n"); */
-/* 		return -EINVAL; */
-/* 	} */
-/* 	rdma_entry = rdma_user_mmap_entry_get(&uctx->base_ucontext, vma); */
-/* 	if (!rdma_entry) { */
-/* 		ovey_dbg(&uctx->ovey_dev->base_dev, "mmap lookup failed: %lu, %#zx\n", */
-/* 			vma->vm_pgoff, size); */
-/* 		return -EINVAL; */
-/* 	} */
-/* 	entry = to_ovey_mmap_entry(rdma_entry); */
-
-/* 	rv = remap_vmalloc_range(vma, entry->address, 0); */
-/* 	if (rv) { */
-/* 		pr_warn("remap_vmalloc_range failed: %lu, %zu\n", vma->vm_pgoff, */
-/* 			size); */
-/* 		goto out; */
-/* 	} */
-/* out: */
-/* 	rdma_user_mmap_entry_put(rdma_entry); */
-
-/* 	return rv; */
-	pr_err("FAIL: %s\n", __func__);
-	return -EINVAL;
+	return ovey_dev->parent->ops.mmap(ovey_ctx->parent, vma);
 }
 
 void ovey_mmap_free(struct rdma_user_mmap_entry *rdma_entry)
 {
-	/* struct ovey_user_mmap_entry *entry = to_ovey_mmap_entry(rdma_entry); */
+	struct ib_ucontext *parent_ctx = rdma_entry->ucontext;
 
-	/* kfree(entry); */
+	return parent_ctx->device->ops.mmap_free(rdma_entry);
 }
 
 struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
@@ -415,6 +385,7 @@ struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 	struct ovey_qp *qp = NULL;
 	int ret;
 
+	pr_err("CREATE_QP WAH %d", __LINE__);
 	if (attrs->qp_type != IB_QPT_RC) {
 		return ERR_PTR(-EOPNOTSUPP);
 	}
