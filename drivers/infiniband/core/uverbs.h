@@ -355,6 +355,8 @@ static inline int ib_uverbs_dump_object_type(struct ib_uobject *obj)
 		return IB_UVERBS_OBJECT_DM;
 	case UVERBS_OBJECT_COUNTERS:
 		return IB_UVERBS_OBJECT_COUNTERS;
+	case UVERBS_OBJECT_ASYNC_EVENT:
+		return IB_UVERBS_OBJECT_ASYNC_EVENT;
 	default:
 		return -1;
 	}
