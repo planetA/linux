@@ -21,6 +21,7 @@ enum ib_uverbs_objects_types {
 	IB_UVERBS_OBJECT_FLOW_ACTION,
 	IB_UVERBS_OBJECT_DM,
 	IB_UVERBS_OBJECT_COUNTERS,
+	IB_UVERBS_OBJECT_ASYNC_EVENT,
 	IB_UVERBS_OBJECT_TOTAL,
 };
 
@@ -139,6 +140,10 @@ struct ib_uverbs_dump_object_qp {
 	struct ib_qp_dump_attr attr;
 
 	struct rxe_dump_qp rxe;
+} __packed;
+
+struct ib_uverbs_dump_object_async_event {
+	struct ib_uverbs_dump_object obj;
 } __packed;
 
 #endif
