@@ -321,6 +321,16 @@ static int rxe_dump_pd(struct ib_pd *pd, struct ib_uverbs_dump_object_pd *dump_p
 	return sizeof(*dump_pd);
 }
 
+static int rxe_dump_async(struct ib_uverbs_async_event_file *async,
+			  struct ib_uverbs_dump_object_async_event *dump_async, ssize_t size)
+{
+	if (size < sizeof(*dump_async)) {
+		return -ENOMEM;
+	}
+
+	return sizeof(*dump_async);
+}
+
 static int rxe_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
 {
 	switch (obj_type) {
@@ -332,6 +342,8 @@ static int rxe_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
 		return rxe_dump_cq(req, dump, size);
 	case IB_UVERBS_OBJECT_QP:
 		return rxe_dump_qp(req, dump, size);
+	case IB_UVERBS_OBJECT_ASYNC_EVENT:
+		return rxe_dump_async(req, dump, size);
 	default:
 		return -ENOTSUPP;
 	}
