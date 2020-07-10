@@ -142,8 +142,4 @@ struct ib_uverbs_dump_object_qp {
 	struct rxe_dump_qp rxe;
 } __packed;
 
-struct ib_uverbs_dump_object_async_event {
-	struct ib_uverbs_dump_object obj;
-} __packed;
-
 #endif

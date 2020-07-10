@@ -655,27 +655,6 @@ static int ib_uverbs_dump_qp(struct ib_device *ib_dev, struct ib_uobject *obj,
 	return ret;
 }
 
-static int ib_uverbs_dump_async(struct ib_device *ib_dev, struct ib_uobject *obj,
-				struct ib_uverbs_dump_object *dump_obj, int remain)
-{
-	struct ib_uverbs_dump_object_async_event *dump_async;
-	struct ib_uverbs_async_event_file *async = obj->object;
-	int ret;
-
-	if (sizeof(*dump_async) > remain) {
-		return -ENOMEM;
-	}
-
-	dump_async = container_of(dump_obj, struct ib_uverbs_dump_object_async_event, obj);
-	ret = ib_dev->ops.dump_object(IB_UVERBS_OBJECT_ASYNC_EVENT, async, dump_async, remain);
-	if (ret != sizeof(*dump_async)) {
-		return -EINVAL;
-	}
-
-	pr_debug("Parsed async event object (%d)\n",  obj->id);
-	return ret;
-}
-
 static int ib_uverbs_dump_context(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_dump_context cmd;
@@ -763,8 +742,9 @@ static int ib_uverbs_dump_context(struct uverbs_attr_bundle *attrs)
 			dump_ret = ib_uverbs_dump_qp(ib_dev, obj, dump_obj, remain);
 			break;
 		case IB_UVERBS_OBJECT_ASYNC_EVENT:
-			pr_debug("Found an async event %x\n", obj->id);
-			dump_ret = ib_uverbs_dump_async(ib_dev, obj, dump_obj, remain);
+			pr_debug("Found an async event %x. Skipping.\n", obj->id);
+			dump_ret = 0;
+			continue;
 			break;
 		default:
 			pr_err("Found an unknown object of type: %d\n", dump_obj->type);
