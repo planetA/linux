@@ -18,8 +18,6 @@
 #include "rxe_net.h"
 #include "rxe_loc.h"
 
-static struct rxe_recv_sockets recv_sockets;
-
 struct device *rxe_dma_device(struct rxe_dev *rxe)
 {
 	struct net_device *ndev;
@@ -67,7 +65,7 @@ static struct dst_entry *rxe_find_route4(struct net_device *ndev,
 	memcpy(&fl.daddr, daddr, sizeof(*daddr));
 	fl.flowi4_proto = IPPROTO_UDP;
 
-	rt = ip_route_output_key(&init_net, &fl);
+	rt = ip_route_output_key(dev_net(ndev), &fl);
 	if (IS_ERR(rt)) {
 		pr_err_ratelimited("no route to %pI4\n", &daddr->s_addr);
 		return NULL;
@@ -81,6 +79,7 @@ static struct dst_entry *rxe_find_route6(struct net_device *ndev,
 					 struct in6_addr *saddr,
 					 struct in6_addr *daddr)
 {
+	struct rxe_dev *rxe = rxe_get_dev_from_net(ndev);
 	struct dst_entry *ndst;
 	struct flowi6 fl6 = { { 0 } };
 
@@ -90,8 +89,8 @@ static struct dst_entry *rxe_find_route6(struct net_device *ndev,
 	memcpy(&fl6.daddr, daddr, sizeof(*daddr));
 	fl6.flowi6_proto = IPPROTO_UDP;
 
-	ndst = ipv6_stub->ipv6_dst_lookup_flow(sock_net(recv_sockets.sk6->sk),
-					       recv_sockets.sk6->sk, &fl6,
+	ndst = ipv6_stub->ipv6_dst_lookup_flow(sock_net(rxe->recv_sockets.sk6->sk),
+					       rxe->recv_sockets.sk6->sk, &fl6,
 					       NULL);
 	if (IS_ERR(ndst)) {
 		pr_err_ratelimited("no route to %pI6\n", daddr);
@@ -236,12 +235,6 @@ static struct socket *rxe_setup_udp_tunnel(struct net *net, __be16 port,
 	setup_udp_tunnel_sock(net, sock, &tnl_cfg);
 
 	return sock;
-}
-
-static void rxe_release_udp_tunnel(struct socket *sk)
-{
-	if (sk)
-		udp_tunnel_sock_release(sk);
 }
 
 static void prepare_udp_hdr(struct sk_buff *skb, __be16 src_port,
@@ -511,13 +504,23 @@ int rxe_net_add(const char *ibdev_name, struct net_device *ndev)
 
 	rxe->ndev = ndev;
 
+	err = rxe_net_dev_init(rxe);
+	if (err) {
+		goto err;
+	}
+
 	err = rxe_add(rxe, ndev->mtu, ibdev_name);
 	if (err) {
-		ib_dealloc_device(&rxe->ib_dev);
-		return err;
+		goto err_net;
 	}
 
 	return 0;
+
+  err_net:
+	rxe_net_dev_exit(rxe);
+  err:
+	ib_dealloc_device(&rxe->ib_dev);
+	return err;
 }
 
 static void rxe_port_event(struct rxe_dev *rxe,
@@ -611,60 +614,93 @@ static struct notifier_block rxe_net_notifier = {
 	.notifier_call = rxe_notify,
 };
 
-static int rxe_net_ipv4_init(void)
+static int rxe_net_ipv4_init(struct rxe_dev *rxe)
 {
-	recv_sockets.sk4 = rxe_setup_udp_tunnel(&init_net,
+	struct socket *socket = NULL;
+
+	socket = rxe_setup_udp_tunnel(dev_net(rxe->ndev),
 				htons(ROCE_V2_UDP_DPORT), false);
-	if (IS_ERR(recv_sockets.sk4)) {
-		recv_sockets.sk4 = NULL;
+	if (IS_ERR(socket)) {
 		pr_err("Failed to create IPv4 UDP tunnel\n");
-		return -1;
+		return PTR_ERR(socket);
 	}
+
+	rxe->recv_sockets.sk4 = socket;
 
 	return 0;
 }
 
-static int rxe_net_ipv6_init(void)
+static void rxe_net_ipv4_exit(struct rxe_dev *rxe)
 {
+	struct socket *socket = rxe->recv_sockets.sk4;
+	if (socket)
+		udp_tunnel_sock_release(socket);
+}
+
+static int rxe_net_ipv6_init(struct rxe_dev *rxe)
+{
+	struct socket *socket = NULL;
 #if IS_ENABLED(CONFIG_IPV6)
 
-	recv_sockets.sk6 = rxe_setup_udp_tunnel(&init_net,
-						htons(ROCE_V2_UDP_DPORT), true);
-	if (IS_ERR(recv_sockets.sk6)) {
-		recv_sockets.sk6 = NULL;
+	socket = rxe_setup_udp_tunnel(dev_net(rxe->ndev),
+				      htons(ROCE_V2_UDP_DPORT), true);
+	if (IS_ERR(socket)) {
 		pr_err("Failed to create IPv6 UDP tunnel\n");
-		return -1;
+		return PTR_ERR(socket);
 	}
+
 #endif
+	rxe->recv_sockets.sk6 = socket;
+
 	return 0;
 }
 
-void rxe_net_exit(void)
+static void rxe_net_ipv6_exit(struct rxe_dev *rxe)
 {
-	rxe_release_udp_tunnel(recv_sockets.sk6);
-	rxe_release_udp_tunnel(recv_sockets.sk4);
-	unregister_netdevice_notifier(&rxe_net_notifier);
+#if IS_ENABLED(CONFIG_IPV6)
+	struct socket *socket = rxe->recv_sockets.sk6;
+	if (socket)
+		udp_tunnel_sock_release(socket);
+#endif
+}
+
+int rxe_net_dev_init(struct rxe_dev *rxe)
+{
+	int ret;
+
+	ret = rxe_net_ipv4_init(rxe);
+	if (ret)
+		return ret;
+	ret = rxe_net_ipv6_init(rxe);
+	if (ret) {
+		goto err;
+	}
+	return 0;
+
+  err:
+	rxe_net_ipv4_exit(rxe);
+	return ret;
+}
+
+void rxe_net_dev_exit(struct rxe_dev *rxe)
+{
+	rxe_net_ipv4_exit(rxe);
+	rxe_net_ipv6_exit(rxe);
 }
 
 int rxe_net_init(void)
 {
 	int err;
 
-	recv_sockets.sk6 = NULL;
-
-	err = rxe_net_ipv4_init();
-	if (err)
-		return err;
-	err = rxe_net_ipv6_init();
-	if (err)
-		goto err_out;
 	err = register_netdevice_notifier(&rxe_net_notifier);
 	if (err) {
 		pr_err("Failed to register netdev notifier\n");
-		goto err_out;
 	}
-	return 0;
-err_out:
-	rxe_net_exit();
 	return err;
 }
+
+void rxe_net_exit(void)
+{
+	unregister_netdevice_notifier(&rxe_net_notifier);
+}
+

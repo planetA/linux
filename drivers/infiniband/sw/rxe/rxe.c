@@ -22,6 +22,8 @@ void rxe_dealloc(struct ib_device *ib_dev)
 {
 	struct rxe_dev *rxe = container_of(ib_dev, struct rxe_dev, ib_dev);
 
+	rxe_net_dev_exit(rxe);
+
 	rxe_pool_cleanup(&rxe->uc_pool);
 	rxe_pool_cleanup(&rxe->pd_pool);
 	rxe_pool_cleanup(&rxe->ah_pool);

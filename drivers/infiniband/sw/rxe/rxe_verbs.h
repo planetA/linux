@@ -369,6 +369,7 @@ struct rxe_dev {
 	struct mutex	usdev_lock;
 
 	struct net_device	*ndev;
+	struct rxe_recv_sockets recv_sockets;
 
 	int			xmit_errors;
 
