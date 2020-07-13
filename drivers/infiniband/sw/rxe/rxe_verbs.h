@@ -391,6 +391,7 @@ struct rxe_dev {
 	struct mutex	usdev_lock;
 
 	struct net_device	*ndev;
+	struct rxe_recv_sockets recv_sockets;
 
 	struct rxe_pool		uc_pool;
 	struct rxe_pool		pd_pool;
