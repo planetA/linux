@@ -38,6 +38,8 @@
 #include <net/if_inet6.h>
 #include <linux/module.h>
 
+struct rxe_dev;
+
 struct rxe_recv_sockets {
 	struct socket *sk4;
 	struct socket *sk6;
@@ -47,5 +49,8 @@ int rxe_net_add(const char *ibdev_name, struct net_device *ndev);
 
 int rxe_net_init(void);
 void rxe_net_exit(void);
+
+int rxe_net_dev_init(struct rxe_dev *rxe);
+void rxe_net_dev_exit(struct rxe_dev *rxe);
 
 #endif /* RXE_NET_H */
