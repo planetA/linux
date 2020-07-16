@@ -142,4 +142,11 @@ struct ib_uverbs_dump_object_qp {
 	struct rxe_dump_qp rxe;
 } __packed;
 
+struct ib_uverbs_dump_object_ah {
+	struct ib_uverbs_dump_object obj;
+
+	u32 pd_handle;
+	struct ib_uverbs_ah_attr attr;
+} __packed;
+
 #endif

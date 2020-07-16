@@ -655,6 +655,52 @@ static int ib_uverbs_dump_qp(struct ib_device *ib_dev, struct ib_uobject *obj,
 	return ret;
 }
 
+static int ib_uverbs_dump_ah(struct ib_device *ib_dev, struct ib_uobject *obj,
+			     struct ib_uverbs_dump_object *dump_obj, int remain)
+{
+	struct ib_uverbs_dump_object_ah *dump_ah;
+	struct rdma_ah_attr *rdma_attr;
+	struct ib_ah *ah;
+	int ret;
+
+	if (sizeof(*dump_ah) > remain) {
+		return -ENOMEM;
+	}
+
+	dump_ah = container_of(dump_obj, struct ib_uverbs_dump_object_ah, obj);
+
+
+	rdma_attr = kmalloc(sizeof *rdma_attr, GFP_ATOMIC);
+	if (!rdma_attr) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	ah = obj->object;
+	if (!ah) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	dump_ah->pd_handle = ah->pd ? ah->pd->uobject->id : U32_MAX;
+	ret = rdma_query_ah(ah, rdma_attr);
+	if (ret < 0) {
+		goto out;
+	}
+
+	ib_copy_ah_attr_to_user(ib_dev, &dump_ah->attr, rdma_attr);
+
+	ret = ib_dev->ops.dump_object(IB_UVERBS_OBJECT_AH, ah, dump_ah, remain);
+	if (ret >= 0 && ret < sizeof(*dump_ah)) {
+		ret = -EINVAL;
+	}
+
+  out:
+	kfree(rdma_attr);
+
+	return ret;
+}
+
 static int ib_uverbs_dump_context(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_dump_context cmd;
@@ -740,6 +786,10 @@ static int ib_uverbs_dump_context(struct uverbs_attr_bundle *attrs)
 		case IB_UVERBS_OBJECT_QP:
 			pr_debug("Found a queue pair %x\n", obj->id);
 			dump_ret = ib_uverbs_dump_qp(ib_dev, obj, dump_obj, remain);
+			break;
+		case IB_UVERBS_OBJECT_AH:
+			pr_debug("Found an address handle %x\n", obj->id);
+			dump_ret = ib_uverbs_dump_ah(ib_dev, obj, dump_obj, remain);
 			break;
 		case IB_UVERBS_OBJECT_ASYNC_EVENT:
 			pr_debug("Found an async event %x. Skipping.\n", obj->id);

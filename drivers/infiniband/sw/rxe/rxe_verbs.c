@@ -200,6 +200,15 @@ static int rxe_restore_queue(struct rxe_queue *queue, const struct rxe_dump_queu
 	return 0;
 }
 
+static int rxe_dump_ah(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_ah *dump_ah, ssize_t size)
+{
+	if (size < sizeof(*dump_ah)) {
+		return -ENOMEM;
+	}
+
+	return sizeof(*dump_ah);
+}
+
 static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dump_qp, ssize_t size)
 {
 	int ret;
@@ -224,16 +233,18 @@ static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dum
 		return -EINVAL;
 	}
 
-	if (!qp->rq.queue) {
-		return -EINVAL;
-	}
+	if (qp->rq.queue) {
+		if (qp->rq.queue->ip) {
+			dump_qp->rq_start = qp->rq.queue->ip->vma->vm_start;
+			dump_qp->rq_size = qp->rq.queue->ip->info.size;
+		} else {
+			dump_qp->rq_start = 0;
+			dump_qp->rq_size = 0;
+		}
 
-	if (qp->rq.queue->ip) {
-		dump_qp->rq_start = qp->rq.queue->ip->vma->vm_start;
-		dump_qp->rq_size = qp->rq.queue->ip->info.size;
-	} else {
-		dump_qp->rq_start = 0;
-		dump_qp->rq_size = 0;
+		ret = rxe_save_queue(&dump_qp->rxe.rq, qp->rq.queue);
+		if (ret)
+			return ret;
 	}
 
 	if (!qp->sq.queue) {
@@ -256,10 +267,6 @@ static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dum
 	dump_qp->rxe.resp_opcode = qp->resp.opcode;
 
 	ret = rxe_save_queue(&dump_qp->rxe.sq, qp->sq.queue);
-	if (ret)
-		return ret;
-
-	ret = rxe_save_queue(&dump_qp->rxe.rq, qp->rq.queue);
 	if (ret)
 		return ret;
 
@@ -332,6 +339,8 @@ static int rxe_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
 		return rxe_dump_cq(req, dump, size);
 	case IB_UVERBS_OBJECT_QP:
 		return rxe_dump_qp(req, dump, size);
+	case IB_UVERBS_OBJECT_AH:
+		return rxe_dump_ah(req, dump, size);
 	default:
 		return -ENOTSUPP;
 	}
