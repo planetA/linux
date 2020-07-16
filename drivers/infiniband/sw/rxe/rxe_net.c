@@ -667,7 +667,7 @@ static int rxe_net_ipv6_init(struct rxe_dev *rxe)
 	socket = rxe_setup_udp_tunnel(dev_net(rxe->ndev),
 				      htons(ROCE_V2_UDP_DPORT), true);
 	if (PTR_ERR(socket) == -EAFNOSUPPORT) {
-		recv_sockets.sk6 = NULL;
+		rxe->recv_sockets.sk6 = NULL;
 		pr_warn("IPv6 is not supported, can not create a UDPv6 socket\n");
 		return 0;
 	}
