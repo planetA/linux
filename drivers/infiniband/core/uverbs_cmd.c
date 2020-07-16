@@ -701,6 +701,82 @@ static int ib_uverbs_dump_ah(struct ib_device *ib_dev, struct ib_uobject *obj,
 	return ret;
 }
 
+static int ib_uverbs_dump_srq(struct ib_device *ib_dev, struct ib_uobject *obj,
+			      struct ib_uverbs_dump_object *dump_obj, int remain)
+{
+	struct ib_uverbs_dump_object_srq *dump_srq;
+	struct ib_srq_attr attr;
+	struct ib_srq *srq;
+	int ret;
+
+	if (sizeof(*dump_srq) > remain) {
+		return -ENOMEM;
+	}
+
+	dump_srq = container_of(dump_obj, struct ib_uverbs_dump_object_srq, obj);
+
+	srq = obj->object;
+	if (!srq) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+
+	dump_srq->pd_handle = srq->pd ? srq->pd->uobject->id : U32_MAX;
+
+	switch (srq->srq_type) {
+	case IB_SRQT_BASIC:
+		dump_srq->srq_type = IB_SRQT_BASIC;
+		dump_srq->cq_handle = U32_MAX;
+		break;
+	default:
+		// For other SRQ types:
+		// dump_srq->cq_handle = srq->ext.cq ? srq->ext.cq->uobject->uevent.uobject.id : U32_MAX;
+		ret = -EOPNOTSUPP;
+		goto err_out;
+	}
+
+	ret = ib_query_srq(srq, &attr);
+	if (ret) {
+		goto err_out;
+	}
+	dump_srq->max_wr = attr.max_wr;
+	dump_srq->max_sge = attr.max_sge;
+	dump_srq->srq_limit = attr.srq_limit;
+
+	ret = ib_dev->ops.dump_object(IB_UVERBS_OBJECT_SRQ, srq, dump_srq, remain);
+	if (ret >= 0 && ret < sizeof(*dump_srq)) {
+		ret = -EINVAL;
+	}
+
+  err_out:
+	return ret;
+}
+
+static int ib_uverbs_dump_comp_channel(struct ib_device *ib_dev, struct ib_uobject *obj,
+				       struct ib_uverbs_dump_object *dump_obj, int remain)
+{
+	struct ib_uverbs_dump_object_comp_channel *dump_comp_channel;
+	struct ib_uverbs_completion_event_file	  *ev_file;
+	int ret;
+
+	if (sizeof(*dump_comp_channel) > remain) {
+		return -ENOMEM;
+	}
+
+	ev_file = obj->object;
+	if (!ev_file) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+
+	pr_err("Notice that we don't dump actual events\n");
+	dump_comp_channel = container_of(dump_obj, struct ib_uverbs_dump_object_comp_channel, obj);
+	ret = sizeof(*dump_comp_channel);
+
+  err_out:
+	return ret;
+}
+
 static int ib_uverbs_dump_context(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_dump_context cmd;
@@ -791,6 +867,14 @@ static int ib_uverbs_dump_context(struct uverbs_attr_bundle *attrs)
 			pr_debug("Found an address handle %x\n", obj->id);
 			dump_ret = ib_uverbs_dump_ah(ib_dev, obj, dump_obj, remain);
 			break;
+		case IB_UVERBS_OBJECT_SRQ:
+			pr_debug("Found an shared receive queue %x\n", obj->id);
+			dump_ret = ib_uverbs_dump_srq(ib_dev, obj, dump_obj, remain);
+			break;
+		case IB_UVERBS_OBJECT_COMP_CHANNEL:
+			pr_debug("Found a completion channel %x\n", obj->id);
+			dump_ret = ib_uverbs_dump_comp_channel(ib_dev, obj, dump_obj, remain);
+			break;
 		case IB_UVERBS_OBJECT_ASYNC_EVENT:
 			pr_debug("Found an async event %x. Skipping.\n", obj->id);
 			dump_ret = 0;
@@ -867,6 +951,9 @@ static int ib_uverbs_restore_object(struct uverbs_attr_bundle *attrs)
 		break;
 	case IB_UVERBS_OBJECT_MR:
 		obj_type = UVERBS_OBJECT_MR;
+		break;
+	case IB_UVERBS_OBJECT_SRQ:
+		obj_type = UVERBS_OBJECT_SRQ;
 		break;
 	default:
 		return -EINVAL;

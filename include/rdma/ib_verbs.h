@@ -2262,6 +2262,11 @@ enum ib_restore_qp_cmd {
 	IB_RESTORE_QP_REFILL,
 };
 
+enum ibv_restore_srq_cmd {
+	IB_RESTORE_SRQ_CREATE,
+	IB_RESTORE_SRQ_REFILL,
+};
+
 enum ib_restore_mr_cmd {
 	IB_RESTORE_MR_KEYS,
 };

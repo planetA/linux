@@ -396,7 +396,6 @@ static enum resp_states get_srq_wqe(struct rxe_qp *qp)
 
 	wqe = queue_head(q);
 	if (!wqe) {
-		PRINT_QUEUE(qp);
 		spin_unlock_bh(&srq->rq.consumer_lock);
 		return RESPST_ERR_RNR;
 	}

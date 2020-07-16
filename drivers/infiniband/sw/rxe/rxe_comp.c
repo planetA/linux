@@ -474,7 +474,11 @@ static void do_complete(struct rxe_qp *qp, struct rxe_send_wqe *wqe)
 		qp->req.resume_wqe = NULL;
 		qp->req.resume_posted = false;
 
-		qp->resp.wqe = queue_head(qp->rq.queue);
+		if (qp->rq.queue) {
+			qp->resp.wqe = queue_head(qp->rq.queue);
+		} else if (qp->srq){
+			qp->resp.wqe = &qp->resp.srq_wqe.wqe;
+		}
 		if (!qp->resp.wqe) {
 			RXE_DO_PRINT_DEBUG_ALWAYS("Restored resp wqe to NULL qp#%d\n", qp_num(qp));
 		}

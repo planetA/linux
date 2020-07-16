@@ -171,6 +171,16 @@ static int rxe_save_queue(struct rxe_dump_queue *dump_queue, struct rxe_queue *q
 		return -EINVAL;
 	}
 
+	if (queue->ip) {
+		dump_queue->start = queue->ip->vma->vm_start;
+		dump_queue->size = queue->ip->info.size;
+		if (queue->ip->vma->vm_end - queue->ip->vma->vm_start != dump_queue->size) {
+			pr_warn("Found discrepancy in queue size\n");
+		}
+	} else {
+		dump_queue->start = 0;
+		dump_queue->size = 0;
+	}
 	dump_queue->log2_elem_size	= queue->log2_elem_size;
 	dump_queue->index_mask	= queue->index_mask;
 	dump_queue->producer_index	= queue->buf->producer_index;
@@ -212,20 +222,13 @@ static int rxe_dump_ah(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_ah *dum
 static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dump_qp, ssize_t size)
 {
 	int ret;
+	int offset = 0;
+	int remain = size - sizeof(*dump_qp);
 	struct rxe_qp *qp;
-	struct ib_qp_attr attr;
 
-	if (size < sizeof(*dump_qp)) {
+	if (remain < 0) {
 		return -ENOMEM;
 	}
-
-	attr.qp_state = IB_QPS_SQD;
-	/* ret = ib_modify_qp(ib_qp, &attr, IB_QP_STATE); */
-	/* if (ret) { */
-	/* 	pr_err("Failed to drain send queue: %d\n", ret); */
-	/* 	return ret; */
-	/* } */
-	/* pr_err("Drained QP\n"); */
 
 	qp = to_rqp(ib_qp);
 
@@ -234,30 +237,28 @@ static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dum
 	}
 
 	if (qp->rq.queue) {
-		if (qp->rq.queue->ip) {
-			dump_qp->rq_start = qp->rq.queue->ip->vma->vm_start;
-			dump_qp->rq_size = qp->rq.queue->ip->info.size;
-		} else {
-			dump_qp->rq_start = 0;
-			dump_qp->rq_size = 0;
-		}
-
 		ret = rxe_save_queue(&dump_qp->rxe.rq, qp->rq.queue);
 		if (ret)
 			return ret;
-	}
+		dump_qp->rxe.srq_wqe_offset = 0;
+	} else if (qp->srq) {
+		if (remain < sizeof(qp->resp.srq_wqe)) {
+			return -ENOMEM;
+		}
 
-	if (!qp->sq.queue) {
+		dump_qp->rxe.srq_wqe_offset = offset;
+		dump_qp->rxe.srq_wqe_size = sizeof(qp->resp.srq_wqe);
+		pr_err("Dumping QP with SRQ\n");
+		memcpy(&dump_qp->rxe.data[dump_qp->rxe.srq_wqe_offset], &qp->resp.srq_wqe, dump_qp->rxe.srq_wqe_size);
+		remain -= dump_qp->rxe.srq_wqe_size;
+		offset += dump_qp->rxe.srq_wqe_size;
+	} else {
 		return -EINVAL;
 	}
 
-	if (qp->sq.queue->ip) {
-		dump_qp->sq_start = qp->sq.queue->ip->vma->vm_start;
-		dump_qp->sq_size = qp->sq.queue->ip->info.size;
-	} else {
-		dump_qp->sq_start = 0;
-		dump_qp->sq_size = 0;
-	}
+	ret = rxe_save_queue(&dump_qp->rxe.sq, qp->sq.queue);
+	if (ret)
+		return ret;
 
 	dump_qp->rxe.wqe_index = qp->req.wqe_index;
 	dump_qp->rxe.req_opcode = qp->req.opcode;
@@ -266,18 +267,35 @@ static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dum
 	dump_qp->rxe.msn = qp->resp.msn;
 	dump_qp->rxe.resp_opcode = qp->resp.opcode;
 
-	ret = rxe_save_queue(&dump_qp->rxe.sq, qp->sq.queue);
+	return sizeof(*dump_qp) + offset;
+}
+
+static int rxe_dump_srq(struct ib_srq *ib_srq, struct ib_uverbs_dump_object_srq *dump_srq, ssize_t size)
+{
+	int ret;
+	struct rxe_srq *srq;
+
+	if (size < sizeof(*dump_srq)) {
+		return -ENOMEM;
+	}
+
+	srq = to_rsrq(ib_srq);
+
+	if (!srq) {
+		return -EINVAL;
+	}
+
+	ret = rxe_save_queue(&dump_srq->queue, srq->rq.queue);
 	if (ret)
 		return ret;
 
-	return sizeof(*dump_qp);
+	return sizeof(*dump_srq);
 }
 
 static int rxe_dump_cq(struct ib_cq *ib_cq, struct ib_uverbs_dump_object_cq *dump_cq, ssize_t size)
 {
 	int ret;
 	struct rxe_cq *cq;
-	unsigned long vm_start = 0, vm_size = 0;
 
 	if (size < sizeof(*dump_cq)) {
 		return -ENOMEM;
@@ -287,12 +305,6 @@ static int rxe_dump_cq(struct ib_cq *ib_cq, struct ib_uverbs_dump_object_cq *dum
 
 	/* Unimportant */
 	dump_cq->comp_vector = 0;
-	if (cq->queue->ip) {
-		vm_start = cq->queue->ip->vma->vm_start;
-		vm_size = cq->queue->ip->vma->vm_end - cq->queue->ip->vma->vm_start;
-	}
-	dump_cq->vm_start = vm_start;
-	dump_cq->vm_size = vm_size;
 
 	ret = rxe_save_queue(&dump_cq->rxe, cq->queue);
 	if (ret)
@@ -341,6 +353,8 @@ static int rxe_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
 		return rxe_dump_qp(req, dump, size);
 	case IB_UVERBS_OBJECT_AH:
 		return rxe_dump_ah(req, dump, size);
+	case IB_UVERBS_OBJECT_SRQ:
+		return rxe_dump_srq(req, dump, size);
 	default:
 		return -ENOTSUPP;
 	}
@@ -409,9 +423,17 @@ static int rxe_restore_qp_refill(struct rxe_qp *rqp,
 			return ret;
 		/* spin_unlock_irqrestore(&rqp->rq.producer_lock, producer_flags); */
 		/* spin_unlock_irqrestore(&rqp->rq.consumer_lock, consumer_flags); */
+		rqp->resp.wqe = queue_head(rqp->rq.queue);
 	} else if (rqp->srq) {
-		return -ENOTSUPP;
+		pr_err("Restoring RQ with an SRQ %d size %d <> size %ld total %ld\n", __LINE__, qp->srq_wqe_size, sizeof(rqp->resp.srq_wqe), size);
+		if (qp->srq_wqe_size != sizeof(rqp->resp.srq_wqe)) {
+			return -EINVAL;
+		}
+		rqp->resp.wqe = &rqp->resp.srq_wqe.wqe;
+		memcpy(&rqp->resp.srq_wqe, &qp->data[qp->srq_wqe_offset], sizeof(rqp->resp.srq_wqe));
+		ret = 0;
 	} else {
+		ret = 0;
 		pr_err("Skipping RQ of a QP %d\n", __LINE__);
 	}
 
@@ -421,8 +443,6 @@ static int rxe_restore_qp_refill(struct rxe_qp *rqp,
 	rqp->comp.psn = qp->comp_psn;
 	rqp->resp.msn = qp->msn;
 	rqp->resp.opcode = qp->resp_opcode;
-	rqp->resp.wqe = queue_head(rqp->rq.queue);
-	PRINT_QUEUE(rqp);
 
 	return ret;
 }
@@ -438,6 +458,47 @@ static int rxe_restore_qp(struct ib_qp *qp,
 	switch(cmd) {
 	case IB_RESTORE_QP_REFILL:
 		return rxe_restore_qp_refill(rqp, args, size);
+	default:
+		return -EINVAL;
+	}
+}
+
+static int rxe_restore_srq_refill(struct rxe_srq *rsrq,
+				  const struct rxe_dump_queue *queue, ssize_t size)
+{
+	int ret = 0;
+
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	if (!rsrq->rq.queue)
+		return -EINVAL;
+
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	if (!queue)
+		return -EINVAL;
+
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	ret = rxe_restore_queue(rsrq->rq.queue, queue);
+	if (ret) {
+		pr_err("WAH %s %d\n", __FILE__, __LINE__);
+		return ret;
+	}
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+
+	return ret;
+}
+
+static int rxe_restore_srq(struct ib_srq *srq,
+			   u32 cmd, const void *args, ssize_t size)
+{
+	struct rxe_srq *rsrq = to_rsrq(srq);
+
+	pr_err("WAH %s %d\n", __FILE__, __LINE__);
+	if (!rsrq)
+		return -EINVAL;
+
+	switch(cmd) {
+	case IB_RESTORE_SRQ_REFILL:
+		return rxe_restore_srq_refill(rsrq, args, size);
 	default:
 		return -EINVAL;
 	}
@@ -488,6 +549,8 @@ static int rxe_restore_object(void *object, u32 obj_type,
 		return rxe_restore_qp(object, cmd, args, size);
 	case IB_UVERBS_OBJECT_MR:
 		return rxe_restore_mr(object, cmd, args, size);
+	case IB_UVERBS_OBJECT_SRQ:
+		return rxe_restore_srq(object, cmd, args, size);
 	default:
 		return -EINVAL;
 	}

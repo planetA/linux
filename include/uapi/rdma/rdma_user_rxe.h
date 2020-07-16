@@ -186,4 +186,8 @@ struct rxe_dump_pd_resp {
 	__u8 dump[0];
 };
 
+enum rxe_dump_device_param {
+	RXE_DUMP_MAX_SGE = 32,
+};
+
 #endif /* RDMA_USER_RXE_H */

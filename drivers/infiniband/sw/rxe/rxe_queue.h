@@ -222,6 +222,10 @@ static inline int PRINT_CLOSE(char *cur, int n) {
 static inline int __PRINT_SQ_QUEUE_INFO(char *cur, int n, struct rxe_queue *q) {
 	int read, total = 0;
 
+	if (!q) {
+		return snprintf(cur, n, "{SEND_WQE: null}");
+	}
+
 	PRINT_APPEND(OPEN);
 	PRINT_APPEND(SEND_WQE_INFO, queue_head(q));
 	PRINT_APPEND(COMMA);
@@ -233,7 +237,13 @@ static inline int __PRINT_SQ_QUEUE_INFO(char *cur, int n, struct rxe_queue *q) {
 
 static inline int __PRINT_RQ_QUEUE_INFO(char *cur, int n, struct rxe_queue *q) {
 	int read, total = 0;
-	struct rxe_recv_wqe *wqe = queue_head(q);
+	struct rxe_recv_wqe *wqe;
+
+	if (!q) {
+		return snprintf(cur, n, "null");
+	}
+
+	wqe = queue_head(q);
 	if (!wqe) {
 		return snprintf(cur, n, "null");
 	}
@@ -335,6 +345,7 @@ static inline int __PRINT_QUEUE_PKT_WQE_CNT(const char *file, int line, const ch
 	return total;
 }
 
+#if 0
 #define PRINT_QUEUE_PKT_WQE_CNT(qp, pkt, wqe, cnt) ({ \
 		int *__cnt = cnt; \
 		char buf[600]; \
@@ -352,16 +363,23 @@ static inline int __PRINT_QUEUE_PKT_WQE_CNT(const char *file, int line, const ch
 		} \
 	})
 
-#define PRINT_QUEUE_PKT_WQE(qp, pkt, wqe) ({ \
-		static int cnt = 50; \
-		PRINT_QUEUE_PKT_WQE_CNT(qp, pkt, wqe, &cnt); \
+#define PRINT_QUEUE_PKT_WQE(qp, pkt, wqe) ({				\
+			static int cnt = 50;				\
+			PRINT_QUEUE_PKT_WQE_CNT(qp, pkt, wqe, &cnt);	\
 		})
 
-#define PRINT_QUEUE_PKT(qp, pkt) ({ \
-		static int cnt = 50; \
-		PRINT_QUEUE_PKT_WQE_CNT(qp, pkt, NULL, &cnt); \
+#define PRINT_QUEUE_PKT(qp, pkt) ({					\
+			static int cnt = 50;				\
+			PRINT_QUEUE_PKT_WQE_CNT(qp, pkt, NULL, &cnt);	\
 		})
 
 #define PRINT_QUEUE(qp) PRINT_QUEUE_PKT(qp, NULL)
+#else
+#define PRINT_QUEUE_PKT_WQE_CNT(qp, pkt, wqe, cnt)
+#define PRINT_QUEUE_PKT_WQE(qp, pkt, wqe)
+#define PRINT_QUEUE_PKT(qp, pkt)
+#define PRINT_QUEUE(qp)
+#endif
+
 
 #endif /* RXE_QUEUE_H */
