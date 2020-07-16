@@ -563,6 +563,9 @@ static int rxe_resume_qp(struct rxe_qp *qp)
 #if RXE_MIGRATION
 	case IB_QPT_RC:
 		return rxe_resume_qp_rc(qp);
+	case IB_QPT_UD:
+		pr_err("Unpausing UD -- doing nothing");
+		return 0;
 #endif
 	default:
 		return -ENOTSUPP;
