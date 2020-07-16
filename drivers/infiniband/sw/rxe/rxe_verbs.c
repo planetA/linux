@@ -505,6 +505,13 @@ static int rxe_pause_qp(struct rxe_qp *qp)
 		rxe_run_task_wait(&qp->comp.task);
 
 		return 0;
+	case IB_QPT_UD:
+		qp->stopped = true;
+
+		rxe_run_task_wait(&qp->req.task);
+		rxe_run_task_wait(&qp->resp.task);
+		rxe_run_task_wait(&qp->comp.task);
+		return 0;
 #endif
 	default:
 		return -ENOTSUPP;
@@ -562,6 +569,9 @@ static int rxe_resume_qp(struct rxe_qp *qp)
 #if RXE_MIGRATION
 	case IB_QPT_RC:
 		return rxe_resume_qp_rc(qp);
+	case IB_QPT_UD:
+		pr_err("Unpausing UD -- doing nothing");
+		return 0;
 #endif
 	default:
 		return -ENOTSUPP;
