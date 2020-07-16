@@ -227,20 +227,10 @@ static enum resp_states resume_request(struct rxe_qp *qp,
 	}
 
 	if (skb->protocol == htons(ETH_P_IP)) {
-		struct in_addr *daddr =
-			&qp->pri_av.dgid_addr._sockaddr_in.sin_addr;
-
 		ipv6_addr_set_v4mapped(ip_hdr(skb)->saddr,
 				(struct in6_addr *)&grh->dgid);
-		RXE_DO_PRINT_DEBUG("Remembering the new address of the source QP: %pI4 -> (%pI4) %pI6c\n",
-				&daddr->s_addr, &ip_hdr(skb)->saddr, &grh->dgid);
 	} else if (skb->protocol == htons(ETH_P_IPV6)) {
-		struct in6_addr *daddr =
-			&qp->pri_av.dgid_addr._sockaddr_in6.sin6_addr;
 		memcpy(&grh->dgid, &ipv6_hdr(skb)->saddr, sizeof(grh->dgid));
-
-		RXE_DO_PRINT_DEBUG("Remembering the new address of the source QP: %pI6c -> %pI6c\n",
-				daddr, &grh->dgid);
 	} else {
 		pr_err("Unknown protocol\n");
 		return RESPST_ERROR;
@@ -254,7 +244,7 @@ static enum resp_states resume_request(struct rxe_qp *qp,
 
 	qp->paused = false;
 	qp->resp.sent_psn_nak = 0;
-	rxe_run_task(&qp->req.task);
+	rxe_run_task(&qp->req.task, 1);
 	return RESPST_CHK_RESOURCE;
 }
 #endif
