@@ -177,6 +177,11 @@ struct rxe_create_srq_resp {
 	__u32 reserved;
 };
 
+struct rxe_create_ah_resp {
+	__u8	dmac[6];
+	__u16	reserved;
+};
+
 struct rxe_modify_srq_cmd {
 	__aligned_u64 mmap_info_addr;
 };

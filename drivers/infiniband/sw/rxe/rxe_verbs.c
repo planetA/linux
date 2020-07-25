@@ -659,6 +659,13 @@ static int rxe_create_ah(struct ib_ah *ibah,
 	int err;
 	struct rxe_dev *rxe = to_rdev(ibah->device);
 	struct rxe_ah *ah = to_rah(ibah);
+	struct rxe_create_ah_resp __user *uresp = NULL;
+
+	if (udata) {
+		if (udata->outlen < sizeof(*uresp))
+			return -EINVAL;
+		uresp = udata->outbuf;
+	}
 
 	err = rxe_av_chk_attr(rxe, init_attr->ah_attr);
 	if (err)
@@ -669,6 +676,9 @@ static int rxe_create_ah(struct ib_ah *ibah,
 		return err;
 
 	rxe_init_av(init_attr->ah_attr, &ah->av);
+	if (copy_to_user(uresp->dmac, ah->av.dmac, sizeof(uresp->dmac))) {
+		return -EFAULT;
+	};
 	return 0;
 }
 
