@@ -585,8 +585,6 @@ static int rxe_resume_qp_rc(struct rxe_qp *qp)
 		},
 	};
 
-	RXE_DO_PRINT_DEBUG("Resuming qp#%d\n", qp_num(qp));
-
 	wqe = kmalloc(sizeof(*wqe), GFP_ATOMIC);
 	if (!wqe) {
 		return -ENOMEM;

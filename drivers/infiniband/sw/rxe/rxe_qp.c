@@ -659,8 +659,6 @@ int rxe_qp_from_attr(struct rxe_qp *qp, struct ib_qp_attr *attr, int mask,
 	if (mask & IB_QP_SQ_PSN) {
 		qp->attr.sq_psn = (attr->sq_psn & BTH_PSN_MASK);
 		qp->req.psn = qp->attr.sq_psn;
-		MINMAX_UPDATE(qp, req_psn_6, (int) qp->req.psn);
-		MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 		qp->comp.psn = qp->attr.sq_psn;
 		rxe_dbg_qp(qp, "set req psn = 0x%x\n", qp->req.psn);
 	}

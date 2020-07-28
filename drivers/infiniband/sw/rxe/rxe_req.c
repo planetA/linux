@@ -96,7 +96,6 @@ static void req_retry(struct rxe_qp *qp)
 
 	qp->req.wqe_index	= cons;
 	qp->req.psn		= qp->comp.psn;
-	MINMAX_UPDATE(qp, req_psn_1, (int) qp->req.psn);
 	qp->req.opcode		= -1;
 
 #if RXE_MIGRATION
@@ -631,16 +630,13 @@ static void update_wqe_psn(struct rxe_qp *qp,
 
 	if (pkt->mask & RXE_READ_MASK) {
 		qp->req.psn = (wqe->first_psn + num_pkt) & BTH_PSN_MASK;
-		MINMAX_UPDATE(qp, req_psn_2, (int) qp->req.psn);
 	} else
 #if RXE_MIGRATION
 	       	if (pkt->opcode != IB_OPCODE_RC_RESUME)
 #endif
 	{
 		qp->req.psn = (qp->req.psn + 1) & BTH_PSN_MASK;
-		MINMAX_UPDATE(qp, req_psn_3, (int) qp->req.psn);
 	}
-	MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 }
 
 static void save_state(struct rxe_send_wqe *wqe,
@@ -663,7 +659,6 @@ static void rollback_state(struct rxe_send_wqe *wqe,
 	wqe->first_psn = rollback_wqe->first_psn;
 	wqe->last_psn  = rollback_wqe->last_psn;
 	qp->req.psn    = rollback_psn;
-	MINMAX_UPDATE(qp, req_psn_4, (int) qp->req.psn);
 }
 
 static void update_state(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
@@ -820,17 +815,14 @@ int rxe_requester(void *arg)
 			goto done;
 	}
 
-	COUNTER_INC(qp, req_1);
 	if (unlikely(qp_type(qp) == IB_QPT_RC &&
 		psn_compare(qp->req.psn, (qp->comp.psn +
 				RXE_MAX_UNACKED_PSNS)) > 0)) {
-		COUNTER_INC(qp, req_3);
 		qp->req.wait_psn = 1;
 		if (wqe->wr.opcode != IB_WR_RESUME)
 			goto exit;
 	}
 
-	COUNTER_INC(qp, req_2);
 	/* Limit the number of inflight SKBs per QP */
 	if (unlikely(atomic_read(&qp->skb_out) >
 		     RXE_INFLIGHT_SKBS_PER_QP_HIGH)) {
@@ -866,8 +858,6 @@ int rxe_requester(void *arg)
 			wqe->first_psn = qp->req.psn;
 			wqe->last_psn = qp->req.psn;
 			qp->req.psn = (qp->req.psn + 1) & BTH_PSN_MASK;
-			MINMAX_UPDATE(qp, req_psn_5, (int) qp->req.psn);
-			MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 			qp->req.opcode = IB_OPCODE_UD_SEND_ONLY;
 			qp->req.wqe_index = queue_next_index(qp->sq.queue,
 						       qp->req.wqe_index);
@@ -924,10 +914,6 @@ int rxe_requester(void *arg)
 	 * rxe_xmit_packet().
 	 * Otherwise, completer might initiate an unjustified retry flow.
 	 */
-#if RXE_MIGRATION
-	if (pkt.opcode != IB_OPCODE_RC_RESUME)
-		MINMAX_UPDATE(qp, send_pkt_psn, (int) pkt.psn);
-#endif
 
 	save_state(wqe, qp, &rollback_wqe, &rollback_psn);
 	update_wqe_state(qp, wqe, &pkt);
