@@ -290,31 +290,6 @@ unsigned int last_mrn;
 unsigned int last_mrn_min = RXE_MIN_MR_INDEX;
 unsigned int last_mrn_max = RXE_MAX_MR_INDEX - 1;
 
-#define xstr(a) str(a)
-#define str(a) #a
-
-#define NEW_COUNTER_ITEM(name, suffix) \
-	{ \
-		.procname = "qp_" xstr(name) "_" xstr(suffix), \
-		.data = &RXE_DEBUG_COUNTER(name, suffix)[0], \
-		.maxlen = sizeof(RXE_DEBUG_COUNTER(name, suffix)), \
-		.mode = 0444, \
-		.proc_handler = proc_dointvec, \
-	}
-
-#define NEW_COUNTER_TABLE(name) NEW_COUNTER_ITEM(name, var)
-
-#define NEW_ARRAY_TABLE(name) NEW_COUNTER_ITEM(name, array)
-
-#define NEW_MINMAX_TABLE(name) \
-	NEW_COUNTER_ITEM(name, max), \
-	NEW_COUNTER_ITEM(name, min)
-
-#define RXE_DEBUG_MODE RXE_DEBUG_MODE_DEF
-#include "rxe_debug_vars.h"
-
-int COUNTER_ACTIVE = 1;
-
 static struct ctl_table_header *rxe_ctl_table_hdr;
 static struct ctl_table rxe_ctl_table[] = {
 	{
@@ -335,65 +310,12 @@ static struct ctl_table rxe_ctl_table[] = {
 		.extra1 = &last_mrn_min,
 		.extra2 = &last_mrn_max,
 	},
-	NEW_COUNTER_TABLE(send_ack),
-	NEW_COUNTER_TABLE(req_1),
-	NEW_COUNTER_TABLE(req_2),
-	NEW_COUNTER_TABLE(req_3),
-	NEW_COUNTER_TABLE(comp_1),
-	NEW_COUNTER_TABLE(comp_2),
-	NEW_COUNTER_TABLE(comp_3),
-	NEW_COUNTER_TABLE(comp_4),
-	NEW_COUNTER_TABLE(comp_5),
-	NEW_COUNTER_TABLE(comp_error_retry),
-	NEW_COUNTER_TABLE(comp_queue_pkt),
-	NEW_COUNTER_TABLE(comp_done),
-	NEW_COUNTER_TABLE(comp_exit),
-	NEW_COUNTER_TABLE(comp_get_wqe),
-	NEW_MINMAX_TABLE(rcv_psn),
-	NEW_MINMAX_TABLE(rcv_psn_1),
-	NEW_MINMAX_TABLE(rcv_psn_2),
-	NEW_MINMAX_TABLE(rcv_psn_3),
-	NEW_MINMAX_TABLE(rcv_psn_4),
-	NEW_MINMAX_TABLE(rcv_psn_5),
-	NEW_MINMAX_TABLE(send_ack_psn),
-	NEW_MINMAX_TABLE(recv_ack_psn),
-	NEW_MINMAX_TABLE(comp_psn),
-	NEW_MINMAX_TABLE(comp_psn_1),
-	NEW_MINMAX_TABLE(comp_psn_2),
-	NEW_MINMAX_TABLE(comp_psn_3),
-	NEW_MINMAX_TABLE(comp_psn_5),
-	NEW_MINMAX_TABLE(resp_psn),
-	NEW_MINMAX_TABLE(resp_psn_1),
-	NEW_MINMAX_TABLE(resp_psn_2),
-	NEW_MINMAX_TABLE(resp_psn_3),
-	NEW_MINMAX_TABLE(resp_psn_4),
-	NEW_MINMAX_TABLE(resp_psn_5),
-	NEW_MINMAX_TABLE(resp_psn_6),
-	NEW_MINMAX_TABLE(req_psn),
-	NEW_MINMAX_TABLE(req_psn_1),
-	NEW_MINMAX_TABLE(req_psn_2),
-	NEW_MINMAX_TABLE(req_psn_3),
-	NEW_MINMAX_TABLE(req_psn_4),
-	NEW_MINMAX_TABLE(req_psn_5),
-	NEW_MINMAX_TABLE(req_psn_6),
-	NEW_MINMAX_TABLE(psn_diff),
-	NEW_MINMAX_TABLE(send_pkt_psn),
-	NEW_ARRAY_TABLE(comp_psn_put),
-	NEW_ARRAY_TABLE(comp_psn_get),
-	NEW_ARRAY_TABLE(comp_psn_done),
-	NEW_ARRAY_TABLE(comp_psn_comp_wqe),
-	NEW_ARRAY_TABLE(comp_psn_check_psn),
-	NEW_ARRAY_TABLE(comp_psn_error),
-	NEW_ARRAY_TABLE(req_retry_posted),
 	{}
 };
 
 static int __init rxe_module_init(void)
 {
 	int err;
-
-#define RXE_DEBUG_MODE RXE_DEBUG_MODE_INIT
-#include "rxe_debug_vars.h"
 
 	rxe_ctl_table_hdr = register_net_sysctl(&init_net, "net/rdma_rxe", rxe_ctl_table);
 	if (!rxe_ctl_table_hdr) {

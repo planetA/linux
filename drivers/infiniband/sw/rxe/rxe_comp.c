@@ -127,12 +127,7 @@ void retransmit_timer(struct timer_list *t)
 
 void rxe_comp_queue_pkt(struct rxe_qp *qp, struct sk_buff *skb)
 {
-	struct rxe_pkt_info *pkt = SKB_TO_PKT(skb);
 	skb_queue_tail(&qp->resp_pkts, skb);
-
-	ARRAY_PUT(qp, comp_psn_put, (int) pkt->psn);
-	COUNTER_INC(qp, comp_queue_pkt);
-	MINMAX_UPDATE(qp, comp_psn_2, (int) pkt->psn);
 
 	rxe_run_task(&qp->comp.task);
 }
@@ -150,44 +145,27 @@ static inline enum comp_state get_wqe(struct rxe_qp *qp,
 #if RXE_MIGRATION
 	if (!wqe) {
 		wqe = qp->req.resume_wqe;
-		PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
 	} else if (qp->req.resume_posted) {
 		s32 diff;
 		diff = psn_compare(qp->req.resume_wqe->first_psn, wqe->last_psn);
-		if (diff <= 0) {
+		if (diff <= 0)
 			wqe = qp->req.resume_wqe;
-			PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
-		} else {
-			// let older wqes to complete
-			PRINT_QUEUE_PKT_WQE(qp, pkt, qp->req.resume_wqe);
-		}
 	}
 #endif
 	*wqe_p = wqe;
 
 	/* no WQE or requester has not started it yet */
-	if (!wqe || wqe->state == wqe_state_posted) {
-		if (pkt)
-			MINMAX_UPDATE(qp, comp_psn_3, (int) pkt->psn);
-		if (pkt)
-			ARRAY_PUT(qp, comp_psn_done, (int) pkt->psn);
+	if (!wqe || wqe->state == wqe_state_posted)
 		return pkt ? COMPST_DONE : COMPST_EXIT;
-	}
 
 	/* WQE does not require an ack */
-	if (wqe->state == wqe_state_done) {
-		if (pkt)
-			ARRAY_PUT(qp, comp_psn_comp_wqe, (int) pkt->psn);
-		COUNTER_INC(qp, comp_4);
+	if (wqe->state == wqe_state_done)
 		return COMPST_COMP_WQE;
-	}
 
 	/* WQE caused an error */
 	if (wqe->state == wqe_state_error)
 		return COMPST_ERROR;
 
-	if (pkt)
-		ARRAY_PUT(qp, comp_psn_check_psn, (int) pkt->psn);
 	/* we have a WQE, if we also have an ack check its PSN */
 	return pkt ? COMPST_CHECK_PSN : COMPST_EXIT;
 }
@@ -206,14 +184,8 @@ static inline enum comp_state check_psn(struct rxe_qp *qp,
 	s32 diff;
 
 #if RXE_MIGRATION
-	if (qp->stopped || qp->paused) {
+	if (qp->stopped || qp->paused)
 		return COMPST_DONE;
-	}
-
-	MINMAX_UPDATE(qp, recv_ack_psn, (int) pkt->psn);
-	if (wqe->wr.opcode == IB_WR_RESUME) {
-		PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
-	}
 #endif
 	/* check to see if response is past the oldest WQE. if it is, complete
 	 * send/write or error read/atomic
@@ -225,7 +197,6 @@ static inline enum comp_state check_psn(struct rxe_qp *qp,
 				return COMPST_ERROR_RETRY;
 
 			reset_retry_counters(qp);
-			COUNTER_INC(qp, comp_5);
 			return COMPST_COMP_WQE;
 		} else {
 			return COMPST_DONE;
@@ -343,10 +314,8 @@ static inline enum comp_state check_ack(struct rxe_qp *qp,
 					rxe_counter_inc(rxe,
 							RXE_CNT_RCV_SEQ_ERR);
 					qp->comp.psn = pkt->psn;
-					MINMAX_UPDATE(qp, comp_psn, (int) qp->comp.psn);
 					if (qp->req.wait_psn) {
 						qp->req.wait_psn = 0;
-						MINMAX_UPDATE(qp, psn_diff, (int) (qp->req.psn - qp->comp.psn));
 						rxe_run_task(&qp->req.task);
 					}
 				}
@@ -468,8 +437,6 @@ static void do_complete(struct rxe_qp *qp, struct rxe_send_wqe *wqe)
 
 #if RXE_MIGRATION
 	if (wqe->wr.opcode == IB_WR_RESUME) {
-		PRINT_QUEUE_PKT_WQE(qp, NULL, wqe);
-		PRINT_QUEUE_PKT_WQE(qp, NULL, qp->req.resume_wqe);
 		kfree(qp->req.resume_wqe);
 		qp->req.resume_wqe = NULL;
 		qp->req.resume_posted = false;
@@ -479,15 +446,10 @@ static void do_complete(struct rxe_qp *qp, struct rxe_send_wqe *wqe)
 		} else if (qp->srq){
 			qp->resp.wqe = &qp->resp.srq_wqe.wqe;
 		}
-		if (!qp->resp.wqe) {
-			RXE_DO_PRINT_DEBUG_ALWAYS("Restored resp wqe to NULL qp#%d\n", qp_num(qp));
-		}
-
 		qp->req.wait_psn = 0;
 
 		rxe_run_task(&qp->req.task);
 		rxe_run_task(&qp->resp.task);
-		COUNTER_INC(qp, comp_3);
 
 		/* Out-of-queue message. Do nothing. */
 		return;
@@ -557,15 +519,6 @@ static inline enum comp_state complete_ack(struct rxe_qp *qp,
 		}
 	}
 
-#if RXE_MIGRATION
-	if (qp->req.resume_posted) {
-		PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
-		//do_complete(qp, wqe);
-		/* Can't use wqe after do_complete */
-		//return COMPST_GET_WQE;
-	}
-#endif
-
 	do_complete(qp, wqe);
 
 	if (psn_compare(pkt->psn, qp->comp.psn) >= 0)
@@ -580,27 +533,18 @@ static inline enum comp_state complete_wqe(struct rxe_qp *qp,
 {
 	if (pkt && wqe->state == wqe_state_pending) {
 		if (psn_compare(wqe->last_psn, qp->comp.psn) >= 0 && wqe->wr.opcode != IB_WR_RESUME) {
-			if (qp_num(qp) < 100) {
-				PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
-			}
 			qp->comp.psn = (wqe->last_psn + 1) & BTH_PSN_MASK;
-			MINMAX_UPDATE(qp, comp_psn, (int) qp->comp.psn);
 			qp->comp.opcode = -1;
 		}
 
 		if (qp->req.wait_psn) {
 			qp->req.wait_psn = 0;
-			MINMAX_UPDATE(qp, psn_diff, (int) (qp->req.psn - qp->comp.psn));
 			rxe_run_task(&qp->req.task);
 		}
 	}
 
-	if (wqe->wr.opcode == IB_WR_RESUME) {
-		PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
-	}
 	do_complete(qp, wqe);
 
-	COUNTER_INC(qp, comp_1);
 	return COMPST_GET_WQE;
 }
 
@@ -631,7 +575,6 @@ int rxe_completer(void *arg)
 	struct rxe_send_wqe *wqe = NULL;
 	struct sk_buff *skb = NULL;
 	struct rxe_pkt_info *pkt = NULL;
-	int counter = 0;
 	enum comp_state state;
 
 	if (!qp->valid || qp->req.state == QP_STATE_ERROR ||
@@ -661,24 +604,12 @@ int rxe_completer(void *arg)
 			skb = skb_dequeue(&qp->resp_pkts);
 			if (skb) {
 				pkt = SKB_TO_PKT(skb);
-				ARRAY_PUT(qp, comp_psn_get, (int) pkt->psn);
-				MINMAX_UPDATE(qp, comp_psn_1, (int) pkt->psn);
 				qp->comp.timeout_retry = 0;
 			}
-			COUNTER_INC(qp, comp_2);
 			state = COMPST_GET_WQE;
 			break;
 
 		case COMPST_GET_WQE:
-			COUNTER_INC(qp, comp_get_wqe);
-			counter = counter + 1;
-			if (counter > 10000) {
-				PRINT_QUEUE_PKT(qp, pkt);
-				pr_err("Stuck in rxe_completer. Dropping packet\n");
-				state = COMPST_DONE;
-				break;
-			}
-
 			state = get_wqe(qp, pkt, &wqe);
 			break;
 
@@ -711,36 +642,20 @@ int rxe_completer(void *arg)
 			break;
 
 		case COMPST_COMP_WQE:
-			if (counter > 9000) {
-				PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
-			}
 			state = complete_wqe(qp, pkt, wqe);
 			break;
 
 		case COMPST_UPDATE_COMP:
-#if RXE_MIGRATION
-			if (pkt->opcode == IB_OPCODE_RC_RESUME) {
-				PRINT_QUEUE_PKT(qp, pkt);
-				pr_err("UNEXPECTED SITUATION\n");
-			}
-#endif
-
 			if (pkt->mask & RXE_END_MASK)
 				qp->comp.opcode = -1;
 			else
 				qp->comp.opcode = pkt->opcode;
 
-			if (psn_compare(pkt->psn, qp->comp.psn) >= 0) {
+			if (psn_compare(pkt->psn, qp->comp.psn) >= 0)
 				qp->comp.psn = (pkt->psn + 1) & BTH_PSN_MASK;
-				if (qp_num(qp) < 100) {
-					PRINT_QUEUE_PKT_WQE(qp, pkt, wqe);
-				}
-				MINMAX_UPDATE(qp, comp_psn, (int) qp->comp.psn);
-			}
 
 			if (qp->req.wait_psn) {
 				qp->req.wait_psn = 0;
-				MINMAX_UPDATE(qp, psn_diff, (int) (qp->req.psn - qp->comp.psn));
 				rxe_run_task(&qp->req.task);
 			}
 
@@ -748,7 +663,6 @@ int rxe_completer(void *arg)
 			break;
 
 		case COMPST_DONE:
-			COUNTER_INC(qp, comp_done);
 			if (pkt) {
 				rxe_drop_ref(&pkt->qp->pelem);
 				kfree_skb(skb);
@@ -757,7 +671,6 @@ int rxe_completer(void *arg)
 			goto done;
 
 		case COMPST_EXIT:
-			COUNTER_INC(qp, comp_exit);
 			if (qp->comp.timeout_retry && wqe) {
 				state = COMPST_ERROR_RETRY;
 				break;
@@ -780,7 +693,6 @@ int rxe_completer(void *arg)
 			goto exit;
 
 		case COMPST_ERROR_RETRY:
-			COUNTER_INC(qp, comp_error_retry);
 			/* we come here if the retry timer fired and we did
 			 * not receive a response packet. try to retry the send
 			 * queue if that makes sense and the limits have not
@@ -871,8 +783,6 @@ int rxe_completer(void *arg)
 
 #if RXE_MIGRATION
 		case COMPST_PAUSE:
-			RXE_DO_PRINT_DEBUG_ALWAYS("qp#%d received pause request from (%pI4)",
-			       qp_num(qp), &qp->pri_av.dgid_addr._sockaddr_in.sin_addr.s_addr);
 			qp->paused = true;
 
 			state = COMPST_DONE;
@@ -885,7 +795,6 @@ int rxe_completer(void *arg)
 			rxe_qp_error(qp);
 
 			if (pkt) {
-				ARRAY_PUT(qp, comp_psn_error, (int) pkt->psn);
 				rxe_drop_ref(&pkt->qp->pelem);
 				kfree_skb(skb);
 				skb = NULL;
