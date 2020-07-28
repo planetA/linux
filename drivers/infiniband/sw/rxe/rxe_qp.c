@@ -676,7 +676,6 @@ int rxe_qp_from_attr(struct rxe_qp *qp, struct ib_qp_attr *attr, int mask,
 		qp->resp.psn = qp->attr.rq_psn;
 		pr_debug("qp#%d set resp psn = 0x%x\n", qp_num(qp),
 			 qp->resp.psn);
-		MINMAX_UPDATE(qp, resp_psn, (int) qp->resp.psn);
 	}
 
 	if (mask & IB_QP_MIN_RNR_TIMER) {
@@ -688,8 +687,6 @@ int rxe_qp_from_attr(struct rxe_qp *qp, struct ib_qp_attr *attr, int mask,
 	if (mask & IB_QP_SQ_PSN) {
 		qp->attr.sq_psn = (attr->sq_psn & BTH_PSN_MASK);
 		qp->req.psn = qp->attr.sq_psn;
-		MINMAX_UPDATE(qp, req_psn_6, (int) qp->req.psn);
-		MINMAX_UPDATE(qp, req_psn, (int) qp->req.psn);
 		qp->comp.psn = qp->attr.sq_psn;
 		pr_debug("qp#%d set req psn = 0x%x\n", qp_num(qp), qp->req.psn);
 	}
@@ -809,7 +806,6 @@ static void rxe_qp_do_cleanup(struct work_struct *work)
 {
 	struct rxe_qp *qp = container_of(work, typeof(*qp), cleanup_work.work);
 
-	RXE_DO_PRINT_DEBUG("rxe_qp_do_cleanup qp#%d\n", qp_num(qp));
 	rxe_drop_all_mcast_groups(qp);
 
 	if (qp->sq.queue)

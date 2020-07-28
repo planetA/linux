@@ -138,22 +138,17 @@ static enum resp_states check_psn(struct rxe_qp *qp,
 	switch (qp_type(qp)) {
 	case IB_QPT_RC:
 #if RXE_MIGRATION
-		MINMAX_UPDATE(qp, rcv_psn, (int) pkt->psn);
-
-		MINMAX_UPDATE(qp, rcv_psn_1, (int) pkt->psn);
 		if (pkt->opcode == IB_OPCODE_RC_RESUME) {
 			return RESPST_RESUME_REQUEST;
 		}
 #endif
 
 		if (diff < 0) {
-			MINMAX_UPDATE(qp, rcv_psn_2, (int) pkt->psn);
 			rxe_counter_inc(rxe, RXE_CNT_DUP_REQ);
 			return RESPST_DUPLICATE_REQUEST;
 		}
 
 #if RXE_MIGRATION
-		MINMAX_UPDATE(qp, rcv_psn_3, (int) pkt->psn);
 		if (diff == 0 && qp->stopped) {
 			return RESPST_STOPPED;
 		}
@@ -164,13 +159,11 @@ static enum resp_states check_psn(struct rxe_qp *qp,
 			if (qp->resp.sent_psn_nak)
 				return RESPST_CLEANUP;
 
-			MINMAX_UPDATE(qp, rcv_psn_4, (int) pkt->psn);
 			qp->resp.sent_psn_nak = 1;
 			rxe_counter_inc(rxe, RXE_CNT_OUT_OF_SEQ_REQ);
 			return RESPST_ERR_PSN_OUT_OF_SEQ;
 
 		}
-		MINMAX_UPDATE(qp, rcv_psn_5, (int) pkt->psn);
 
 		if (qp->resp.sent_psn_nak)
 			qp->resp.sent_psn_nak = 0;
@@ -218,8 +211,6 @@ static enum resp_states resume_request(struct rxe_qp *qp,
 		.outlen = 0,
 	};
 
-	RXE_DO_PRINT_DEBUG("Resuming from pause at qp#%d paused=%d\n", qp_num(qp), qp->paused);
-
 	ret = ib_query_qp(&qp->ibqp, &qp_attr, IB_QP_AV, &qp_init_attr);
 	if (ret) {
 		pr_err("Failed to query address: %d\n", ret);
@@ -264,7 +255,6 @@ static enum resp_states check_op_seq(struct rxe_qp *qp,
 			case IB_OPCODE_RC_SEND_LAST_WITH_INVALIDATE:
 				return RESPST_CHK_OP_VALID;
 			default:
-				pr_err("OPCODE %d\n", pkt->opcode);
 				return RESPST_ERR_MISSING_OPCODE_LAST_C;
 			}
 
@@ -288,7 +278,6 @@ static enum resp_states check_op_seq(struct rxe_qp *qp,
 			case IB_OPCODE_RC_RDMA_WRITE_MIDDLE:
 			case IB_OPCODE_RC_RDMA_WRITE_LAST:
 			case IB_OPCODE_RC_RDMA_WRITE_LAST_WITH_IMMEDIATE:
-				pr_err("OPCODE %s %d %d\n", __FILE__, __LINE__, pkt->opcode);
 				return RESPST_ERR_MISSING_OPCODE_FIRST;
 			default:
 				return RESPST_CHK_OP_VALID;
@@ -456,9 +445,8 @@ static enum resp_states check_resource(struct rxe_qp *qp,
 			if (qp->resp.wqe) {
 				qp->resp.status = IB_WC_WR_FLUSH_ERR;
 				return RESPST_COMPLETE;
-			} else {
+			} else
 				return RESPST_EXIT;
-			}
 		} else {
 			return RESPST_EXIT;
 		}
@@ -625,9 +613,8 @@ static enum resp_states send_data_in(struct rxe_qp *qp, void *data_addr,
 {
 	int err;
 
-	if (!qp->resp.wqe) {
+	if (!qp->resp.wqe)
 		return RESPST_ERR_MALFORMED_WQE;
-	}
 
 	err = copy_data(qp->pd, IB_ACCESS_LOCAL_WRITE, &qp->resp.wqe->dma,
 			data_addr, data_len, RXE_TO_MR_OBJ);
@@ -856,7 +843,6 @@ static enum resp_states read_reply(struct rxe_qp *qp,
 			qp->resp.opcode = -1;
 		if (psn_compare(res->cur_psn, qp->resp.psn) >= 0)
 			qp->resp.psn = res->cur_psn;
-		MINMAX_UPDATE(qp, resp_psn, (int) qp->resp.psn);
 		state = RESPST_CLEANUP;
 	}
 
@@ -898,9 +884,8 @@ static enum resp_states execute(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
 				return err;
 		}
 		err = send_data_in(qp, payload_addr(pkt), payload_size(pkt));
-		if (err) {
+		if (err)
 			return err;
-		}
 	} else if (pkt->mask & RXE_WRITE_MASK) {
 		err = write_data_in(qp, pkt);
 		if (err)
@@ -915,20 +900,6 @@ static enum resp_states execute(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
 			return err;
 #if RXE_MIGRATION
 	} else if (pkt->opcode == IB_OPCODE_RC_RESUME) {
-		RXE_DO_PRINT_DEBUG("Received a resume command at qp#%d\n", qp_num(qp));
-		MINMAX_RESET(qp, send_ack_psn);
-		MINMAX_RESET(qp, resp_psn);
-		MINMAX_RESET(qp, resp_psn_1);
-		MINMAX_RESET(qp, resp_psn_2);
-		MINMAX_RESET(qp, resp_psn_3);
-		MINMAX_RESET(qp, resp_psn_4);
-		MINMAX_RESET(qp, resp_psn_5);
-		MINMAX_RESET(qp, resp_psn_6);
-		MINMAX_RESET(qp, rcv_psn_1);
-		MINMAX_RESET(qp, rcv_psn_2);
-		MINMAX_RESET(qp, rcv_psn_3);
-		MINMAX_RESET(qp, rcv_psn_4);
-		MINMAX_RESET(qp, rcv_psn_5);
 		return RESPST_ACKNOWLEDGE;
 #endif
 	} else {
@@ -946,7 +917,6 @@ static enum resp_states execute(struct rxe_qp *qp, struct rxe_pkt_info *pkt)
 
 	/* next expected psn, read handles this separately */
 	qp->resp.psn = (pkt->psn + 1) & BTH_PSN_MASK;
-	MINMAX_UPDATE(qp, resp_psn, (int) qp->resp.psn);
 	qp->resp.ack_psn = qp->resp.psn;
 
 	qp->resp.opcode = pkt->opcode;
@@ -1088,8 +1058,6 @@ static int send_ack(struct rxe_qp *qp, struct rxe_pkt_info *pkt,
 		goto err1;
 	}
 
-	COUNTER_INC(qp, send_ack);
-
 	err = rxe_xmit_packet(qp, &ack_pkt, skb);
 	if (err)
 		pr_err_ratelimited("Failed sending ack\n");
@@ -1140,7 +1108,6 @@ static enum resp_states acknowledge(struct rxe_qp *qp,
 	if (qp_type(qp) != IB_QPT_RC)
 		return RESPST_CLEANUP;
 
-	MINMAX_UPDATE(qp, send_ack_psn, (int) pkt->psn);
 	if (qp->resp.aeth_syndrome != AETH_ACK_UNLIMITED) {
 #if RXE_MIGRATION
 		if (pkt->opcode == IB_OPCODE_RC_RESUME) {
@@ -1377,35 +1344,23 @@ int rxe_responder(void *arg)
 			state = get_req(qp, &pkt);
 			break;
 		case RESPST_CHK_PSN:
-			if (pkt)
-				MINMAX_UPDATE(qp, resp_psn_1, (int) pkt->psn);
 			state = check_psn(qp, pkt);
 			break;
 #if RXE_MIGRATION
 		case RESPST_RESUME_REQUEST:
-			if (pkt)
-				MINMAX_UPDATE(qp, resp_psn_2, (int) pkt->psn);
 			state = resume_request(qp, pkt);
 			break;
 #endif
 		case RESPST_CHK_OP_SEQ:
-			if (pkt)
-				MINMAX_UPDATE(qp, resp_psn_3, (int) pkt->psn);
 			state = check_op_seq(qp, pkt);
 			break;
 		case RESPST_CHK_OP_VALID:
-			if (pkt)
-				MINMAX_UPDATE(qp, resp_psn_4, (int) pkt->psn);
 			state = check_op_valid(qp, pkt);
 			break;
 		case RESPST_CHK_RESOURCE:
-			if (pkt)
-				MINMAX_UPDATE(qp, resp_psn_5, (int) pkt->psn);
 			state = check_resource(qp, pkt);
 			break;
 		case RESPST_CHK_LENGTH:
-			if (pkt)
-				MINMAX_UPDATE(qp, resp_psn_6, (int) pkt->psn);
 			state = check_length(qp, pkt);
 			break;
 		case RESPST_CHK_RKEY:
@@ -1446,7 +1401,6 @@ int rxe_responder(void *arg)
 		case RESPST_ERR_UNSUPPORTED_OPCODE:
 		case RESPST_ERR_MISALIGNED_ATOMIC:
 			/* RC Only - Class C. */
-			pr_err("state %s\n", resp_state_name[state]);
 			do_class_ac_error(qp, AETH_NAK_INVALID_REQ,
 					  IB_WC_REM_INV_REQ_ERR);
 			state = RESPST_COMPLETE;
