@@ -88,6 +88,15 @@ struct ib_uverbs_dump_object_cq {
 	/* Set by generic code */
 	u32 cqe;
 	u32 comp_channel;
+	u32 comp_events_reported;
+	u32 async_events_reported;
+
+	struct rxe_dump_queue rxe;
+} __packed;
+
+struct ib_uverbs_restore_object_cq_refill {
+	u32 comp_events_reported;
+	u32 async_events_reported;
 
 	struct rxe_dump_queue rxe;
 } __packed;
