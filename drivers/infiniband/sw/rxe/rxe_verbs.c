@@ -246,7 +246,7 @@ static int rxe_dump_qp(struct ib_qp *ib_qp, struct ib_uverbs_dump_object_qp *dum
 
 		dump_qp->rxe.srq_wqe_offset = offset;
 		dump_qp->rxe.srq_wqe_size = sizeof(qp->resp.srq_wqe);
-		pr_err("Dumping QP with SRQ\n");
+		pr_err("Dumping QP %d with SRQ\n", qp_num(qp));
 		memcpy(&dump_qp->rxe.data[dump_qp->rxe.srq_wqe_offset], &qp->resp.srq_wqe, dump_qp->rxe.srq_wqe_size);
 		remain -= dump_qp->rxe.srq_wqe_size;
 		offset += dump_qp->rxe.srq_wqe_size;
@@ -487,7 +487,6 @@ static int rxe_restore_srq(struct ib_srq *srq,
 {
 	struct rxe_srq *rsrq = to_rsrq(srq);
 
-	pr_err("WAH %s %d\n", __FILE__, __LINE__);
 	if (!rsrq)
 		return -EINVAL;
 
@@ -626,7 +625,7 @@ static int rxe_resume_qp(struct rxe_qp *qp)
 	case IB_QPT_RC:
 		return rxe_resume_qp_rc(qp);
 	case IB_QPT_UD:
-		pr_err("Unpausing UD -- doing nothing");
+		pr_err("Unpausing UD qp#%d -- doing nothing", qp_num(qp));
 		return 0;
 #endif
 	default:
