@@ -399,7 +399,7 @@ static struct sk_buff *init_req_packet(struct rxe_qp *qp,
 	int			paylen;
 	int			solicited;
 	u16			pkey;
-	u32			qp_num;
+	u32			qpn;
 	int			ack_req;
 
 	/* length from start of bth to end of icrc */
@@ -438,7 +438,7 @@ static struct sk_buff *init_req_packet(struct rxe_qp *qp,
 
 	pkey = IB_DEFAULT_PKEY_FULL;
 
-	qp_num = (pkt->mask & RXE_DETH_MASK) ? ibwr->wr.ud.remote_qpn :
+	qpn = (pkt->mask & RXE_DETH_MASK) ? ibwr->wr.ud.remote_qpn :
 					 qp->attr.dest_qp_num;
 
 	ack_req = ((pkt->mask & RXE_END_MASK) ||
@@ -446,7 +446,7 @@ static struct sk_buff *init_req_packet(struct rxe_qp *qp,
 	if (ack_req)
 		qp->req.noack_pkts = 0;
 
-	bth_init(pkt, pkt->opcode, solicited, 0, pad, pkey, qp_num,
+	bth_init(pkt, pkt->opcode, solicited, 0, pad, pkey, qpn,
 		 ack_req, pkt->psn);
 
 	/* init optional headers */

@@ -752,7 +752,6 @@ void rxe_qp_do_cleanup(struct work_struct *work)
 	int pending;
 	struct rxe_qp *qp = container_of(work, typeof(*qp), cleanup_work);
 
-	RXE_DO_PRINT_DEBUG("rxe_qp_do_cleanup qp#%d\n", qp_num(qp));
 	rxe_drop_all_mcast_groups(qp);
 
 	if (qp->sq.queue)
