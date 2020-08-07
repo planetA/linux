@@ -413,7 +413,7 @@ static struct sk_buff *init_req_packet(struct rxe_qp *qp,
 #if 1
 #if RXE_MIGRATION
 	if (opcode == IB_OPCODE_RC_RESUME)
-		pkt->psn = (qp->comp.psn) & BTH_PSN_MASK;
+		pkt->psn = (qp->comp.psn - 1) & BTH_PSN_MASK;
 	else
 #endif
 #endif
