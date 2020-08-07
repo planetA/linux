@@ -8,6 +8,8 @@
 #include <net/addrconf.h>
 #include <rdma/uverbs_ioctl.h>
 #include <rdma/ib_user_ioctl_verbs_dump.h>
+/* XXX: Hack must be removed */
+#include "../../core/uverbs.h"
 #include "rxe.h"
 #include "rxe_loc.h"
 #include "rxe_queue.h"
@@ -361,16 +363,22 @@ static int rxe_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
 	/* Not reached */
 }
 
-static int rxe_restore_cq_refill(struct rxe_cq *rcq,
-				 const struct rxe_dump_queue *queue, ssize_t size)
+static int
+rxe_restore_cq_refill(struct rxe_cq *rcq,
+		      const struct ib_uverbs_restore_object_cq_refill *queue,
+		      ssize_t size)
 {
 	int ret = 0;
 	/* unsigned long flags; */
 	if (rcq->queue) {
 		/* spin_lock_irqsave(&rcq->cq_lock, flags); */
-		ret = rxe_restore_queue(rcq->queue, queue);
+		ret = rxe_restore_queue(rcq->queue, &queue->rxe);
 		/* spin_unlock_irqrestore(&rcq->cq_lock, flags); */
 	}
+
+
+	rcq->ibcq.uobject->comp_events_reported = queue->comp_events_reported;
+	rcq->ibcq.uobject->uevent.events_reported = queue->async_events_reported;
 
 	return ret;
 }
