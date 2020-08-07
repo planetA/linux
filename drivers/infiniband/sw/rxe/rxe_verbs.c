@@ -600,6 +600,8 @@ static int rxe_resume_qp_rc(struct rxe_qp *qp)
 		},
 	};
 
+	if (qp->attr.dest_qp_num == qp_num(qp))
+		return 0;
 
 	wqe = kmalloc(sizeof(*wqe), GFP_ATOMIC);
 	if (!wqe) {
