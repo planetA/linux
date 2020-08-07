@@ -772,7 +772,6 @@ static int ib_uverbs_dump_comp_channel(struct ib_device *ib_dev, struct ib_uobje
 		goto err_out;
 	}
 
-	pr_err("Notice that we don't dump actual events\n");
 	dump_comp_channel = container_of(dump_obj, struct ib_uverbs_dump_object_comp_channel, obj);
 	ret = sizeof(*dump_comp_channel);
 
