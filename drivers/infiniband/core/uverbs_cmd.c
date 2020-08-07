@@ -542,6 +542,9 @@ static int ib_uverbs_dump_cq(struct ib_device *ib_dev, struct ib_uobject *obj,
 	dump_cq = container_of(dump_obj, struct ib_uverbs_dump_object_cq, obj);
 
 	dump_cq->cqe = cq->cqe;
+	dump_cq->comp_events_reported = cq->uobject->comp_events_reported;
+	dump_cq->async_events_reported = cq->uobject->uevent.events_reported;
+
 
 	if (cq->cq_context) {
 		struct ib_uverbs_completion_event_file *ev_file;
