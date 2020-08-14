@@ -602,6 +602,14 @@ static int rxe_restore_object(void *object, u32 obj_type,
 
 static int rxe_pause_qp(struct rxe_qp *qp)
 {
+	/* pr_err("PAUSING qp=%d dest_qp=%d line=%d req_psn=%d resp_psn=%d" */
+	/*        " comp_psn=%d qp_type=%d res=%px" */
+	/*        " res_first=%d res_last=%d res_cur=%d", */
+	/*        qp_num(qp), qp->attr.dest_qp_num, __LINE__, qp->req.psn, */
+	/*        qp->resp.psn, qp->comp.psn, qp_type(qp), qp->resp.res, */
+	/*        qp->resp.res ? qp->resp.res->first_psn : -1, */
+	/*        qp->resp.res ? qp->resp.res->last_psn : -1, */
+	/*        qp->resp.res ? qp->resp.res->cur_psn : -1); */
 	switch (qp_type(qp)) {
 #if RXE_MIGRATION
 	case IB_QPT_RC:

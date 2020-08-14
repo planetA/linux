@@ -554,6 +554,8 @@ void rxe_qp_error(struct rxe_qp *qp)
 	rxe_run_task(&qp->req.task);
 }
 
+void rxe_init_av_xxx(struct rdma_ah_attr *attr, struct rxe_av *av);
+
 /* called by the modify qp verb */
 int rxe_qp_from_attr(struct rxe_qp *qp, struct ib_qp_attr *attr, int mask,
 		     struct ib_udata *udata)
@@ -599,7 +601,10 @@ int rxe_qp_from_attr(struct rxe_qp *qp, struct ib_qp_attr *attr, int mask,
 	if (mask & IB_QP_QKEY)
 		qp->attr.qkey = attr->qkey;
 
-	if (mask & IB_QP_AV) {
+	/* XXX: This is *VERY* hacky */
+	if ((mask & (IB_QP_AV | IB_QP_DEST_QPN)) && (qp_num(qp) == attr->dest_qp_num)) {
+		rxe_init_av_xxx(&attr->ah_attr, &qp->pri_av);
+	} else if (mask & IB_QP_AV) {
 		rxe_init_av(&attr->ah_attr, &qp->pri_av);
 	}
 

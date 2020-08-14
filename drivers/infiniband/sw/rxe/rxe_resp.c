@@ -1101,23 +1101,58 @@ out:
 static enum resp_states acknowledge(struct rxe_qp *qp,
 				    struct rxe_pkt_info *pkt)
 {
+	/* if (qp->debug) */
+	/* 	pr_err("SEND_ACK qp=%d line=%d req_psn=%d resp_psn=%d comp_psn=%d", */
+	/* 	       qp_num(qp), __LINE__, qp->req.psn, qp->resp.psn, */
+	/* 	       qp->comp.psn); */
 	if (qp_type(qp) != IB_QPT_RC)
 		return RESPST_CLEANUP;
 
+	/* if (qp->debug) */
+	/* 	pr_err("SEND_ACK qp=%d line=%d req_psn=%d resp_psn=%d comp_psn=%d", */
+	/* 	       qp_num(qp), __LINE__, qp->req.psn, qp->resp.psn, */
+	/* 	       qp->comp.psn); */
 	if (qp->resp.aeth_syndrome != AETH_ACK_UNLIMITED) {
 #if RXE_MIGRATION
 		if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+			if (qp->debug)
+				pr_err("SEND_ACK qp=%d line=%d req_psn=%d resp_psn=%d comp_psn=%d",
+				       qp_num(qp), __LINE__, qp->req.psn,
+				       qp->resp.psn, qp->comp.psn);
+
 			send_ack(qp, pkt, qp->resp.aeth_syndrome, qp->resp.psn - 1);
 		} else {
+			if (qp->debug)
+				pr_err("SEND_ACK qp=%d line=%d req_psn=%d resp_psn=%d comp_psn=%d",
+				       qp_num(qp), __LINE__, qp->req.psn,
+				       qp->resp.psn, qp->comp.psn);
 #endif
 			send_ack(qp, pkt, qp->resp.aeth_syndrome, pkt->psn);
 #if RXE_MIGRATION
 		}
 #endif
-	} else if (pkt->mask & RXE_ATOMIC_MASK)
+	} else if (pkt->mask & RXE_ATOMIC_MASK) {
+		if (qp->debug)
+			pr_err("SEND_ACK qp=%d line=%d req_psn=%d resp_psn=%d comp_psn=%d",
+			       qp_num(qp), __LINE__, qp->req.psn, qp->resp.psn,
+			       qp->comp.psn);
 		send_atomic_ack(qp, pkt, AETH_ACK_UNLIMITED);
-	else if (bth_ack(pkt))
-		send_ack(qp, pkt, AETH_ACK_UNLIMITED, pkt->psn);
+	}  else if (bth_ack(pkt)) {
+		if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+			if (qp->debug)
+				pr_err("SEND_ACK qp=%d line=%d req_psn=%d resp_psn=%d comp_psn=%d",
+				       qp_num(qp), __LINE__, qp->req.psn,
+				       qp->resp.psn, qp->comp.psn);
+
+			send_ack(qp, pkt, AETH_ACK_UNLIMITED, qp->resp.psn - 1);
+		} else {
+			/* if (qp->debug) */
+			/* 	pr_err("SEND_ACK qp=%d line=%d req_psn=%d resp_psn=%d comp_psn=%d", */
+			/* 	       qp_num(qp), __LINE__, qp->req.psn, */
+			/* 	       qp->resp.psn, qp->comp.psn); */
+			send_ack(qp, pkt, AETH_ACK_UNLIMITED, pkt->psn);
+		}
+	}
 
 	return RESPST_CLEANUP;
 }

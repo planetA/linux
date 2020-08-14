@@ -247,6 +247,7 @@ struct rxe_qp {
 #if RXE_MIGRATION
 	bool			paused;
 	bool			stopped;
+	int	debug;
 #endif
 
 	struct rxe_pd		*pd;
