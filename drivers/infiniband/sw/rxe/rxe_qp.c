@@ -560,6 +560,8 @@ void rxe_qp_error(struct rxe_qp *qp)
 	rxe_sched_task(&qp->req.task);
 }
 
+void rxe_init_av_xxx(struct rdma_ah_attr *attr, struct rxe_av *av);
+
 /* called by the modify qp verb */
 int rxe_qp_from_attr(struct rxe_qp *qp, struct ib_qp_attr *attr, int mask,
 		     struct ib_udata *udata)
