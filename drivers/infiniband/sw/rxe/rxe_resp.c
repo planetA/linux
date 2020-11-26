@@ -1089,8 +1089,12 @@ static enum resp_states acknowledge(struct rxe_qp *qp,
 #endif
 	} else if (pkt->mask & RXE_ATOMIC_MASK)
 		send_atomic_ack(qp, pkt, AETH_ACK_UNLIMITED);
-	else if (bth_ack(pkt))
-		send_ack(qp, pkt, AETH_ACK_UNLIMITED, pkt->psn);
+	else if (bth_ack(pkt)) {
+		if (pkt->opcode == IB_OPCODE_RC_RESUME) {
+			send_ack(qp, pkt, AETH_ACK_UNLIMITED, qp->resp.psn - 1);
+		} else
+			send_ack(qp, pkt, AETH_ACK_UNLIMITED, pkt->psn);
+	}
 
 	return RESPST_CLEANUP;
 }
