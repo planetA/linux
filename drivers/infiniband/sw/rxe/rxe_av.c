@@ -14,6 +14,28 @@ void rxe_init_av(struct rdma_ah_attr *attr, struct rxe_av *av)
 	memcpy(av->dmac, attr->roce.dmac, ETH_ALEN);
 }
 
+void rxe_av_from_attr_xxx(u8 port_num, struct rxe_av *av,
+			  struct rdma_ah_attr *attr);
+void rxe_av_fill_ip_info_xxx(struct rxe_av *av, struct rdma_ah_attr *attr);
+
+void rxe_init_av_xxx(struct rdma_ah_attr *attr, struct rxe_av *av)
+{
+	__be32 *s_addr = &av->dgid_addr._sockaddr_in.sin_addr.s_addr;
+
+	rxe_av_from_attr_xxx(rdma_ah_get_port_num(attr), av, attr);
+	rxe_av_fill_ip_info_xxx(av, attr);
+
+	if (s_addr[0] == 0x301a8c0) {
+		attr->roce.dmac[5] = 0xf0;
+		attr->roce.dmac[4] = 0xa5;
+	} else if (s_addr[0] == 0x401a8c0) {
+		attr->roce.dmac[5] = 0x60;
+		attr->roce.dmac[4] = 0xa7;
+	}
+
+	memcpy(av->dmac, attr->roce.dmac, ETH_ALEN);
+}
+
 int rxe_av_chk_attr(struct rxe_dev *rxe, struct rdma_ah_attr *attr)
 {
 	const struct ib_global_route *grh = rdma_ah_read_grh(attr);
@@ -48,6 +70,19 @@ void rxe_av_from_attr(u8 port_num, struct rxe_av *av,
 
 	memset(av, 0, sizeof(*av));
 	memcpy(av->grh.dgid.raw, grh->dgid.raw, sizeof(grh->dgid.raw));
+	av->grh.flow_label = grh->flow_label;
+	av->grh.sgid_index = grh->sgid_index;
+	av->grh.hop_limit = grh->hop_limit;
+	av->grh.traffic_class = grh->traffic_class;
+	av->port_num = port_num;
+}
+
+void rxe_av_from_attr_xxx(u8 port_num, struct rxe_av *av, struct rdma_ah_attr *attr)
+{
+	const struct ib_global_route *grh = rdma_ah_read_grh(attr);
+
+	memset(av, 0, sizeof(*av));
+	memcpy(av->grh.dgid.raw, grh->sgid_attr->gid.raw, sizeof(grh->dgid.raw));
 	av->grh.flow_label = grh->flow_label;
 	av->grh.sgid_index = grh->sgid_index;
 	av->grh.hop_limit = grh->hop_limit;
@@ -97,6 +132,15 @@ void rxe_av_fill_ip_info(struct rxe_av *av, struct rdma_ah_attr *attr)
 	}
 
 	av->network_type = type;
+}
+
+void rxe_av_fill_ip_info_xxx(struct rxe_av *av, struct rdma_ah_attr *attr)
+{
+	const struct ib_gid_attr *sgid_attr = attr->grh.sgid_attr;
+
+	rdma_gid2ip((struct sockaddr *)&av->sgid_addr, &sgid_attr->gid);
+	rdma_gid2ip((struct sockaddr *)&av->dgid_addr, &sgid_attr->gid);
+	av->network_type = rdma_gid_attr_network_type(sgid_attr);
 }
 
 struct rxe_av *rxe_get_av(struct rxe_pkt_info *pkt)
