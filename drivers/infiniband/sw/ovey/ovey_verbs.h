@@ -13,10 +13,12 @@ int ovey_query_port(struct ib_device *base_dev, u8 port,
 int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
                    union ib_gid *gid);
 int ovey_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pkey);
+enum rdma_link_layer ovey_get_link_layer(struct ib_device *device, u8 port_num);
 int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
                             struct ib_port_immutable *port_immutable);
 int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata);
 void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx);
+void ovey_dealloc_driver(struct ib_device *base_dev);
 int ovey_alloc_pd(struct ib_pd *base_pd, struct ib_udata *udata);
 void ovey_dealloc_pd(struct ib_pd *base_pd, struct ib_udata *udata);
 int ovey_mmap(struct ib_ucontext *ctx, struct vm_area_struct *vma);

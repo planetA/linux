@@ -18,9 +18,9 @@ void ovey_free_qp(struct kref *ref)
         struct ovey_qp *found, *qp = container_of(ref, struct ovey_qp, ref);
         struct ovey_device *ovey_dev = qp->ovey_dev;
 
-	pr_err("FREE_QP: %d", __LINE__);
+	pr_err("FREE_QP: %d\n", __LINE__);
         found = xa_erase(&ovey_dev->qp_xa, qp_id(qp));
-	pr_err("FREE_QP: %d found %px", __LINE__, found);
+	pr_err("FREE_QP: %d found %px\n", __LINE__, found);
         WARN_ON(found != qp);
 
         ovey_dbg_qp(qp, "free QP\n");
