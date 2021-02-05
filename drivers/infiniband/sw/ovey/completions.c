@@ -29,9 +29,10 @@ struct ovey_completion_chain *ovey_completion_add_entry(void) {
 }
 
 struct ovey_completion_chain * ovey_completion_find_by_id(u64 id) {
+	struct ovey_completion_chain *curr, *n;
+
     opr_info("ovey_completion_find_by_id(%lld)", id);
-    struct ovey_completion_chain * curr;
-    struct ovey_completion_chain * n;
+
     list_for_each_entry_safe(curr, n, &ovey_completion_list.list_item, list_item) {
         if (curr->req_id == id) {
             opr_info("found!");
@@ -43,8 +44,9 @@ struct ovey_completion_chain * ovey_completion_find_by_id(u64 id) {
 }
 
 int ovey_completion_resolve_by_id(u64 completion_id) {
-    opr_info("ovey_completion_resolve_by_id(%lld)!", completion_id);
     struct ovey_completion_chain * chain_node = ovey_completion_find_by_id(completion_id);
+
+    opr_info("ovey_completion_resolve_by_id(%lld)!", completion_id);
     if (chain_node == NULL) {
         opr_err("The completion chain doesn't know the element %lld\n", completion_id);
         return -EINVAL;
