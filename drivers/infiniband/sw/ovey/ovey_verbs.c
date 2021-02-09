@@ -324,6 +324,11 @@ struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
 	}
+	ovey_mr->parent->device = ovey_pd->parent->device;
+	ovey_mr->parent->pd = ovey_pd->parent;
+	ovey_mr->parent->type = IB_MR_TYPE_DMA;
+	ovey_mr->parent->uobject = NULL;
+	ovey_mr->parent->need_inval = false;
 
 	pr_err("ALLOCATED MR ovey %px parent %px parent device %px\n", ovey_mr,
 	       ovey_mr->parent, ovey_mr->parent->device);
@@ -365,6 +370,28 @@ int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 	return ret;
 }
 
+static int ovey_create_cq_kernel(struct ovey_device *ovey_dev,
+				 struct ovey_cq *ovey_cq,
+				 const struct ib_cq_init_attr *attr)
+{
+	ovey_cq->parent = ib_alloc_cq(ovey_dev->parent, ovey_cq->base.cq_context,
+				      (int)attr->cqe, attr->comp_vector,
+				      ovey_cq->base.poll_ctx);
+	if (IS_ERR(ovey_cq->parent)) {
+		return PTR_ERR(ovey_cq->parent);
+	}
+
+	return 0;
+}
+
+static int ovey_create_cq_user(struct ovey_device *ovey_dev,
+			       struct ovey_cq *ovey_cq,
+			       const struct ib_cq_init_attr *attr,
+			       struct ib_udata *udata)
+{
+	return -EOPNOTSUPP;
+}
+
 /*
  * ovey_create_cq()
  *
@@ -374,39 +401,27 @@ int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
  * @attr: Initial CQ attributes
  * @udata: relates to user context
  */
-
 int ovey_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
 		   struct ib_udata *udata)
 {
-#if 0
     struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
     struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
+    int err;
 
     // this is the function that also gets invoked after the syscall
 
     // base_eq gets filled by ioctl syscall which triggers __ib_alloc_cq_user
     // this function calls this one and we forward it to the parent device
 
-    ovey_cq->parent = __ib_alloc_cq_user(
-	    ovey_dev->parent,
-	    base_cq->cq_context,
-	    (int) attr->cqe,
-	    attr->comp_vector,
-	    base_cq->poll_ctx,
-	    // TODO how to get this information?!
-	    "TODO_UNKNOWN",
-	    udata
-    );
-
-    opr_info("ovey_cq->parent=%px\n", ovey_cq->parent);
-
-    if (ovey_cq->parent == NULL) {
-	return -EINVAL;
+    if (udata) {
+	    err = ovey_create_cq_user(ovey_dev, ovey_cq, attr, udata);
+    } else {
+	    err = ovey_create_cq_kernel(ovey_dev, ovey_cq, attr);
     }
+
+    opr_info("ovey_cq->parent=%px err %d\n", ovey_cq->parent, err);
+
     return 0;
-#else
-	return -EOPNOTSUPP;
-#endif
 }
 
 /*
@@ -464,9 +479,7 @@ int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 		return -EOPNOTSUPP;
 	}
 
-	//ib_destroy_cq_user(ovey_cq->parent, udata);
-	ovey_dev->parent->ops.destroy_cq(ovey_cq->parent, udata);
-	kfree(ovey_cq->parent);
+	ib_destroy_cq_user(ovey_cq->parent, udata);
 
 	return 0;
 }
@@ -483,25 +496,28 @@ int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 struct ib_qp *ovey_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
 			     struct ib_udata *udata)
 {
-#if 0
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
-	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_qp *qp = NULL;
 
 	opr_info("verb invoked\n");
 
-	qp = kzalloc(sizeof(*qp), GFP_KERNEL);
-	// like ib_create_qp(ovey_pd->parent, attrs)
-	qp->parent = ib_create_qp_user(ovey_pd->parent, attrs, udata);
-	if (!qp->parent) {
-		opr_err("ib_create_qp() failed for parent device\n");
+	if (udata) {
+		return ERR_PTR(-EOPNOTSUPP);
 	}
 
-	// return &qp->base;
-	return qp->parent;
-#else
-	return ERR_PTR(-EOPNOTSUPP);
-#endif
+	qp = kzalloc(sizeof(*qp), GFP_KERNEL);
+	if (attrs->qp_type == IB_QPT_SMI || attrs->qp_type == IB_QPT_GSI) {
+		/* Service QP. Do not create a real one */
+		qp->parent = NULL;
+	} else {
+		qp->parent = ib_create_qp(ovey_pd->parent, attrs);
+		if (IS_ERR(qp->parent)) {
+			opr_err("ib_create_qp() failed for parent device\n");
+			return qp->parent;
+		}
+	}
+
+	return &qp->base;
 }
 
 /*
@@ -514,6 +530,10 @@ int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 {
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	opr_info("verb invoked\n");
+
+	if (!ovey_qp->parent) {
+		return -EOPNOTSUPP;
+	}
 
 	return ib_query_qp(ovey_qp->parent, qp_attr, qp_attr_mask,
 			   qp_init_attr);
@@ -528,6 +548,10 @@ int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
 	struct sk_buff *req_sk_buf;
 	int ret;
 	opr_info("verb invoked\n");
+
+	if (!ovey_qp->parent) {
+		return -EOPNOTSUPP;
+	}
 
 	chain_node = ovey_completion_add_entry();
 	req_sk_buf = ocp_nlmsg_new();
@@ -568,6 +592,10 @@ int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	opr_info("verb invoked\n");
 
+	if (!ovey_qp->parent) {
+		return -EOPNOTSUPP;
+	}
+
 	return ib_post_send(ovey_qp->parent, wr, bad_wr);
 }
 
@@ -586,6 +614,10 @@ int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	opr_info("verb invoked\n");
 
+	if (!ovey_qp->parent) {
+		return -EOPNOTSUPP;
+	}
+
 	return ib_post_recv(ovey_qp->parent, wr, bad_wr);
 }
 
@@ -595,7 +627,11 @@ int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 	int ret;
 	opr_info("verb invoked\n");
 
-	ret = ib_destroy_qp(ovey_qp->parent);
+	if (ovey_qp->parent) {
+		ret = ib_destroy_qp(ovey_qp->parent);
+	} else {
+		ret = 0;
+	}
 	kfree(ovey_qp);
 
 	return ret;
