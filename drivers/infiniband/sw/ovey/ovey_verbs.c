@@ -308,34 +308,38 @@ struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
+	struct ovey_mr *ovey_mr;
+	int ret;
 
 	opr_info("verb invoked\n");
 
-	/*ovey_mr = kzalloc(sizeof(*ovey_mr), GFP_KERNEL);
-    if (!ovey_mr) {
-	ret = -ENOMEM;
-	goto err_out;
-    }
+	ovey_mr = kzalloc(sizeof(*ovey_mr), GFP_KERNEL);
+	if (!ovey_mr) {
+		ret = -ENOMEM;
+		goto err_out;
+	}
 
-    ovey_mr->parent = ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights);
-    if (IS_ERR(ovey_mr->parent)) {
-	ret = PTR_ERR(ovey_mr->parent);
-	goto err_out;
-    }
+	ovey_mr->parent = ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights);
+	if (IS_ERR(ovey_mr->parent)) {
+		ret = PTR_ERR(ovey_mr->parent);
+		goto err_out;
+	}
 
-    / * ovey_mr->parent = parent_mr;
-    / * pr_err("ALLOCATED MR ovey %px parent %px parent device %px\n", ovey_mr, parent_mr, parent_mr->device);
+	pr_err("ALLOCATED MR ovey %px parent %px parent device %px\n", ovey_mr,
+	       ovey_mr->parent, ovey_mr->parent->device);
 
-    // I think this has to be parent..
-    return &ovey_mr->base;
+	// I think this has to be parent..
+	return &ovey_mr->base;
 
-    err_out:
-    if (ret) {
-	kfree(ovey_mr);
-    }
+  err_out:
+	if (ret) {
+		kfree(ovey_mr);
+	}
 
-    return ERR_PTR(ret);*/
-	return ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights);
+	return ERR_PTR(ret);
+	/* ib_mr = ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights); */
+	/* opr_info("%px\n", ib_mr); */
+	/* return ib_mr; */
 }
 
 /*
@@ -349,13 +353,14 @@ struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_mr->device);
+	struct ovey_mr *ovey_mr = to_ovey_mr(base_mr);
 	int ret;
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked mr %px dev %px ovey_mr->parent %px\n", base_mr, ovey_dev, ovey_mr->parent);
 
-	ret = ovey_dev->parent->ops.dereg_mr(base_mr, udata);
+	ret = ovey_dev->parent->ops.dereg_mr(ovey_mr->parent, udata);
 	// HELL NO! DON'T EVER FREE HERE! OTHERWISE DOUBLE FREE
-	// kfree(ovey_mr);
+	kfree(ovey_mr);
 
 	return ret;
 }
