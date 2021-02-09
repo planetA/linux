@@ -50,7 +50,8 @@ int ovey_query_port(struct ib_device *base_dev, u8 port,
 	// XXX: Should query lid from ovey
 	// VIRTUALIZE PROPERTY PORT->LID
 	virt_lid.orig = attr->lid;
-	virt_lid.virt = 0x11223344;
+
+	virt_lid.virt = 42;
 	attr->lid = virt_lid.virt;
 	// END VIRTUALIZE PROPERTY PORT->LID
 
