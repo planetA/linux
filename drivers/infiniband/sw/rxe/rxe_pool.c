@@ -135,6 +135,8 @@ int rxe_pool_init(
 	kref_init(&pool->ref_cnt);
 
 	rwlock_init(&pool->pool_lock);
+	printk("WAH rxe_pool_init: pool %px lock %px\n", pool,
+	       &pool->pool_lock);
 
 	if (rxe_type_info[type].flags & RXE_POOL_INDEX) {
 		err = rxe_pool_init_index(pool,
@@ -161,6 +163,8 @@ static void rxe_pool_release(struct kref *kref)
 
 	pool->state = RXE_POOL_STATE_INVALID;
 	kfree(pool->table);
+	printk("WAH rxe_pool_release: pool %px lock %px\n", pool,
+	       &pool->pool_lock);
 }
 
 static void rxe_pool_put(struct rxe_pool *pool)
@@ -172,6 +176,8 @@ void rxe_pool_cleanup(struct rxe_pool *pool)
 {
 	unsigned long flags;
 
+	printk("WAH rxe_pool_cleanup: pool %px lock %px\n", pool,
+	       &pool->pool_lock);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	pool->state = RXE_POOL_STATE_INVALID;
 	if (atomic_read(&pool->num_elem) > 0)
@@ -179,6 +185,8 @@ void rxe_pool_cleanup(struct rxe_pool *pool)
 			pool_name(pool));
 	write_unlock_irqrestore(&pool->pool_lock, flags);
 
+	printk("WAH rxe_pool_cleanup: pool %px lock %px\n", pool,
+	       &pool->pool_lock);
 	rxe_pool_put(pool);
 }
 
@@ -260,10 +268,12 @@ void rxe_add_key(struct rxe_pool_entry *elem, void *key)
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	memcpy((u8 *)elem + pool->key_offset, key, pool->key_size);
 	insert_key(pool, elem);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 }
 
 void rxe_drop_key(struct rxe_pool_entry *elem)
@@ -271,9 +281,11 @@ void rxe_drop_key(struct rxe_pool_entry *elem)
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	rb_erase(&elem->node, &pool->tree);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 }
 
 void rxe_add_index(struct rxe_pool_entry *elem)
@@ -281,10 +293,12 @@ void rxe_add_index(struct rxe_pool_entry *elem)
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	elem->index = alloc_index(pool);
 	insert_index(pool, elem);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 }
 
 void rxe_drop_index(struct rxe_pool_entry *elem)
@@ -292,10 +306,12 @@ void rxe_drop_index(struct rxe_pool_entry *elem)
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	clear_bit(elem->index - pool->min_index, pool->table);
 	rb_erase(&elem->node, &pool->tree);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 }
 
 void *rxe_alloc(struct rxe_pool *pool)
@@ -303,11 +319,13 @@ void *rxe_alloc(struct rxe_pool *pool)
 	struct rxe_pool_entry *elem;
 	unsigned long flags;
 
+	printk("WAH %s %d: %px\n", __func__, __LINE__, pool);
 	might_sleep_if(!(pool->flags & RXE_POOL_ATOMIC));
 
 	read_lock_irqsave(&pool->pool_lock, flags);
 	if (pool->state != RXE_POOL_STATE_VALID) {
 		read_unlock_irqrestore(&pool->pool_lock, flags);
+		printk("WAH %s %d: %px\n", __func__, __LINE__, NULL);
 		return NULL;
 	}
 	kref_get(&pool->ref_cnt);
@@ -328,6 +346,7 @@ void *rxe_alloc(struct rxe_pool *pool)
 	elem->pool = pool;
 	kref_init(&elem->ref_cnt);
 
+	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 	return elem;
 
 out_cnt:
@@ -335,6 +354,7 @@ out_cnt:
 	ib_device_put(&pool->rxe->ib_dev);
 out_put_pool:
 	rxe_pool_put(pool);
+	printk("WAH %s %d: %px\n", __func__, __LINE__, NULL);
 	return NULL;
 }
 
@@ -342,11 +362,13 @@ int rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_entry *elem)
 {
 	unsigned long flags;
 
+	printk("WAH %s %d: pool %px elem %px\n", __func__, __LINE__, pool, elem);
 	might_sleep_if(!(pool->flags & RXE_POOL_ATOMIC));
 
 	read_lock_irqsave(&pool->pool_lock, flags);
 	if (pool->state != RXE_POOL_STATE_VALID) {
 		read_unlock_irqrestore(&pool->pool_lock, flags);
+		printk("WAH %s %d: %d\n", __func__, __LINE__, -EINVAL);
 		return -EINVAL;
 	}
 	kref_get(&pool->ref_cnt);
@@ -361,6 +383,7 @@ int rxe_add_to_pool(struct rxe_pool *pool, struct rxe_pool_entry *elem)
 	elem->pool = pool;
 	kref_init(&elem->ref_cnt);
 
+	printk("WAH %s %d: %d\n", __func__, __LINE__, 0);
 	return 0;
 
 out_cnt:
@@ -368,6 +391,7 @@ out_cnt:
 	ib_device_put(&pool->rxe->ib_dev);
 out_put_pool:
 	rxe_pool_put(pool);
+	printk("WAH %s %d: %d\n", __func__, __LINE__, -EINVAL);
 	return -EINVAL;
 }
 
@@ -471,11 +495,14 @@ int rxe_drop_ref(struct rxe_pool_entry *pelem)
 	struct rxe_pool *pool = pelem->pool;
 	unsigned long flags;
 
+	printk("WAH rxe_drop_ref: %px pool %px lock %px\n", pelem, pool,
+	       &pool->pool_lock);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	res = kref_put(&pelem->ref_cnt, rxe_dummy_release);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
 	if (res) {
 		rxe_elem_release(&pelem->ref_cnt);
 	}
+	printk("WAH rxe_drop_ref ret: %d\n", res);
 	return res;
 }

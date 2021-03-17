@@ -978,11 +978,13 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	if (cmd->comp_vector >= attrs->ufile->device->num_comp_vectors)
 		return -EINVAL;
 
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, 0);
 	obj = (struct ib_ucq_object *)uobj_alloc(UVERBS_OBJECT_CQ, attrs,
 						 &ib_dev);
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, 0);
 	if (cmd->comp_channel >= 0) {
 		ev_file = ib_uverbs_lookup_comp_file(cmd->comp_channel, attrs);
 		if (IS_ERR(ev_file)) {
@@ -1028,6 +1030,7 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	resp.base.cq_handle = obj->uevent.uobject.id;
 	resp.base.cqe = cq->cqe;
 	resp.response_length = uverbs_response_length(attrs, sizeof(resp));
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, 0);
 	return uverbs_response(attrs, &resp, sizeof(resp));
 
 err_free:
@@ -1038,6 +1041,7 @@ err_file:
 		ib_uverbs_release_ucq(ev_file, obj);
 err:
 	uobj_alloc_abort(&obj->uevent.uobject, attrs);
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 	return ret;
 }
 
@@ -1047,9 +1051,12 @@ static int ib_uverbs_create_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_uverbs_ex_create_cq	cmd_ex;
 	int ret;
 
+	printk("WAH %s %d\n", __FUNCTION__, __LINE__);
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
-	if (ret)
+	if (ret) {
+		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 		return ret;
+	}
 
 	memset(&cmd_ex, 0, sizeof(cmd_ex));
 	cmd_ex.user_handle = cmd.user_handle;

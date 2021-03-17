@@ -143,31 +143,30 @@ int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
 
 int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
 {
-	struct ovey_ucontext *ovey_u_ctx = to_ovey_ctx(base_ctx);
-	struct ovey_device *ovey_dev = to_ovey_dev(ovey_u_ctx->base.device);
+	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
+	struct ovey_device *ovey_dev;
 	int ret;
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked base_ctx %px udata %px\n", base_ctx, udata);
+	ovey_dev = to_ovey_dev(base_ctx->device);
+	opr_info("verb invoked ovey_dev %px\n", ovey_dev);
+	opr_info("verb invoked ovey_dev->parent %px\n", ovey_dev->parent);
+
+	opr_info("verb invoked ucontext=%px ufile=%px\n", base_ctx,
+		 base_ctx->ufile);
 	opr_info("ovey_dev->name=%s, ovey_dev->parent->name=%s\n",
 		 ovey_dev->base.name, ovey_dev->parent->name);
 
-	ovey_u_ctx->parent = rdma_zalloc_drv_obj(ovey_dev->parent, ib_ucontext);
-	if (!ovey_u_ctx->parent)
-		return -ENOMEM;
-
-	ovey_u_ctx->parent->res.type = RDMA_RESTRACK_CTX;
-	ovey_u_ctx->parent->device = ovey_dev->parent;
-	ovey_u_ctx->parent->ufile = base_ctx->ufile;
-	xa_init_flags(&ovey_u_ctx->parent->mmap_xa, XA_FLAGS_ALLOC);
-
-	// TODO we just forward udata.. is there a memory problem if the parent relies on it
-	//  having enough memory fur it's case?
-	ret = ovey_dev->parent->ops.alloc_ucontext(ovey_u_ctx->parent, udata);
+	ovey_ctx->parent = base_ctx;
+	ovey_ctx->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.alloc_ucontext(ovey_ctx->parent, udata);
+	ovey_ctx->parent->device = &ovey_dev->base;
 	opr_err("ret=%d\n", ret);
 	if (ret < 0) {
 		opr_err("alloc_ucontext() on parent device failed! %d\n", ret);
-		kfree(ovey_u_ctx->parent);
 	}
+	opr_info("verb invoked ucontext=%px==%px parent=%px\n", base_ctx,
+		 ovey_ctx, ovey_ctx->parent);
 
 	return ret;
 }
@@ -175,31 +174,35 @@ int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
 void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
-	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->base.device);
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->parent->device);
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked ucontext=%px==%px parent=%px\n", base_ctx, ovey_ctx, ovey_ctx->parent);
 
 	if (!ovey_dev->parent->ops.dealloc_ucontext) {
 		return;
 	}
 
 	ovey_dev->parent->ops.dealloc_ucontext(ovey_ctx->parent);
-
-	// todo free ovey_ctx itself or just parent?!
-	kfree(ovey_ctx->parent);
 }
 
 int ovey_alloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
+	int ret;
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked ibpd %px ovey_pd %px uobject %px ufile %px\n",
+		 pd, ovey_pd, pd->uobject,
+		 pd->uobject ? pd->uobject->ufile :
+				     (struct ib_uverbs_file *)0xf);
 
-	ovey_pd->parent = ib_alloc_pd(ovey_dev->parent, pd->flags);
-	if (!ovey_pd->parent) {
-		opr_err("ib_alloc_pd failed for parent device\n");
-		return PTR_ERR(ovey_pd->parent);
+	ovey_pd->parent = pd;
+	ovey_pd->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.alloc_pd(ovey_pd->parent, udata);
+	ovey_pd->parent->device = &ovey_dev->base;
+	if (ret) {
+		opr_err("ib_alloc_pd failed for parent device %d\n", ret);
+		return ret;
 	}
 
 	return 0;
@@ -209,22 +212,23 @@ int ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
+	int ret;
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked uobject %px \n", pd->uobject);
 
-	if (!ovey_dev->parent->ops.dealloc_pd) {
-		return -EOPNOTSUPP;
-	}
+	ovey_pd->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.dealloc_pd(ovey_pd->parent, udata);
+	ovey_pd->parent->device = &ovey_dev->base;
 
-	ib_dealloc_pd_user(ovey_pd->parent, udata);
+	opr_info("verb invoked %d\n", ret);
 
-	return 0;
+	return ret;
 }
 
 int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
-	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->base.device);
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->parent->device);
 	int ret;
 
 	opr_info("verb invoked\n");
@@ -256,7 +260,7 @@ struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
 	struct ovey_mr *ovey_mr;
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked pd->uobject %px \n", pd->uobject);
 
 	ovey_mr = kmalloc(sizeof(struct ovey_mr), GFP_KERNEL);
 	ovey_mr->parent = ib_alloc_mr(ovey_pd->parent, mr_type, max_sge);
@@ -283,20 +287,50 @@ struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
+	struct ovey_mr *ovey_mr;
+	int ret = 0;
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked pd->uobject %px \n", pd->uobject);
 
-	return ovey_dev->parent->ops.reg_user_mr(ovey_pd->parent, start, len,
-						 rnic_va, rights, udata);
+	ovey_mr = kzalloc(sizeof(*ovey_mr), GFP_KERNEL);
+	if (!ovey_mr) {
+		ret = -ENOMEM;
+		goto err_out;
+	}
+
+	ovey_pd->parent->device = ovey_dev->parent;
+	ovey_mr->parent = ovey_dev->parent->ops.reg_user_mr(ovey_pd->parent, start, len,
+							    rnic_va, rights, udata);
+	if (IS_ERR(ovey_mr->parent)) {
+		ret = PTR_ERR(ovey_mr->parent);
+		goto err_out;
+	}
+	opr_info("verb invoked: ret=%d\n", ret);
+	ovey_pd->parent->device = &ovey_dev->base;
+
+	return &ovey_mr->base;
+err_out:
+	if (ovey_mr) {
+		kfree(ovey_mr);
+	}
+
+	return ERR_PTR(ret);
 }
 
 int ovey_map_mr_sg(struct ib_mr *base_mr, struct scatterlist *sl, int num_sle,
 		   unsigned int *sg_off)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(base_mr->device);
 	struct ovey_mr *ovey_mr = to_ovey_mr(base_mr);
+	int ret;
 	opr_info("verb invoked\n");
 
-	return ib_map_mr_sg(ovey_mr->parent, sl, num_sle, sg_off, PAGE_SIZE);
+	ovey_mr->parent->device = ovey_dev->parent;
+	ret = ib_map_mr_sg(ovey_mr->parent, sl, num_sle, sg_off, PAGE_SIZE);
+	ovey_mr->parent->device = &ovey_dev->base;
+	opr_info("verb invoked: %d\n", ret);
+
+	return ret;
 }
 
 /*
@@ -319,7 +353,9 @@ struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 		goto err_out;
 	}
 
+	ovey_pd->parent->device = ovey_dev->parent;
 	ovey_mr->parent = ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights);
+	ovey_pd->parent->device = &ovey_dev->base;
 	if (IS_ERR(ovey_mr->parent)) {
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
@@ -363,9 +399,10 @@ int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 
 	opr_info("verb invoked mr %px dev %px ovey_mr->parent %px\n", base_mr, ovey_dev, ovey_mr->parent);
 
+	ovey_mr->parent->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.dereg_mr(ovey_mr->parent, udata);
-	// HELL NO! DON'T EVER FREE HERE! OTHERWISE DOUBLE FREE
-	kfree(ovey_mr);
+
+	kfree(base_mr);
 
 	return ret;
 }
@@ -374,6 +411,7 @@ static int ovey_create_cq_kernel(struct ovey_device *ovey_dev,
 				 struct ovey_cq *ovey_cq,
 				 const struct ib_cq_init_attr *attr)
 {
+#if 0
 	ovey_cq->parent = ib_alloc_cq(ovey_dev->parent, ovey_cq->base.cq_context,
 				      (int)attr->cqe, attr->comp_vector,
 				      ovey_cq->base.poll_ctx);
@@ -382,6 +420,9 @@ static int ovey_create_cq_kernel(struct ovey_device *ovey_dev,
 	}
 
 	return 0;
+#else
+	return -EOPNOTSUPP;
+#endif
 }
 
 static int ovey_create_cq_user(struct ovey_device *ovey_dev,
@@ -408,20 +449,33 @@ int ovey_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
     struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
     int err;
 
+    opr_info("verb invoked %px\n", udata);
     // this is the function that also gets invoked after the syscall
 
     // base_eq gets filled by ioctl syscall which triggers __ib_alloc_cq_user
     // this function calls this one and we forward it to the parent device
 
     if (udata) {
-	    err = ovey_create_cq_user(ovey_dev, ovey_cq, attr, udata);
+	    ovey_cq->parent = base_cq;
+	    opr_info("base_cq %px ovey_cq %px ovey_dev %px", base_cq, ovey_cq,
+		     ovey_dev);
+	    opr_info("ovey_cq %px\n", ovey_cq);
+	    opr_info("ovey_cq->parent %px\n", ovey_cq->parent);
+	    opr_info("ovey_cq->parent->device %px\n", ovey_cq->parent->device);
+	    opr_info("ovey_cq->parent->device %px %px\n", ovey_cq->parent,
+		     ovey_dev->parent);
+
+	    ovey_cq->parent->device = ovey_dev->parent;
+	    err = ovey_dev->parent->ops.create_cq(ovey_cq->parent, attr, udata);
+	    /* err = ovey_create_cq_user(ovey_dev, ovey_cq, attr, udata); */
+	    ovey_cq->parent->device = &ovey_dev->base;
     } else {
 	    err = ovey_create_cq_kernel(ovey_dev, ovey_cq, attr);
     }
 
     opr_info("ovey_cq->parent=%px err %d\n", ovey_cq->parent, err);
 
-    return 0;
+    return err;
 }
 
 /*
@@ -460,10 +514,18 @@ int ovey_poll_cq(struct ib_cq *base_cq, int num_cqe, struct ib_wc *wc)
  */
 int ovey_req_notify_cq(struct ib_cq *base_cq, enum ib_cq_notify_flags flags)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
 	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
+	int err;
 	opr_info("verb invoked\n");
 
-	return ib_req_notify_cq(ovey_cq->parent, flags);
+	ovey_cq->parent->device = ovey_dev->parent;
+
+	err = ib_req_notify_cq(ovey_cq->parent, flags);
+
+	ovey_cq->parent->device = &ovey_dev->base;
+
+	return err;
 }
 
 int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
@@ -473,11 +535,16 @@ int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 
 	opr_info("verb invoked\n");
 
-	dump_stack();
+	if (udata) {
+		opr_info("Kernel CQ is not supported\n");
+		return -EOPNOTSUPP;
+	}
 
 	if (!ovey_dev->parent->ops.destroy_cq) {
 		return -EOPNOTSUPP;
 	}
+
+	ovey_cq->parent->device = ovey_dev->parent;
 
 	ib_destroy_cq_user(ovey_cq->parent, udata);
 

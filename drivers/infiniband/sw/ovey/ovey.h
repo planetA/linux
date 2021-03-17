@@ -95,12 +95,10 @@ struct ovey_device {
 };
 
 struct ovey_ucontext {
-	struct ib_ucontext base;
 	struct ib_ucontext *parent;
 };
 
 struct ovey_pd {
-	struct ib_pd base;
 	struct ib_pd *parent;
 };
 
@@ -113,7 +111,6 @@ struct ovey_qp {
 };
 
 struct ovey_cq {
-	struct ib_cq base;
 	struct ib_cq *parent;
 };
 
@@ -142,9 +139,16 @@ static inline void ovey_qp_put(struct ovey_qp *qp)
 	kref_put(&qp->ref, ovey_free_qp);
 }
 
+#define INIT_OVEY_OBJ_SIZE(ovey_dev, ib_struct, parent_dev)                    \
+	ovey_dev->base.ops.size_ib_##ib_struct =                               \
+		(parent_dev->ops.size_ib_##ib_struct +                         \
+		 sizeof(struct ovey_##ib_struct))
+
 static inline struct ovey_ucontext *to_ovey_ctx(struct ib_ucontext *base_ctx)
 {
-	return container_of(base_ctx, struct ovey_ucontext, base);
+	return (struct ovey_ucontext *)((char *)base_ctx +
+					base_ctx->device->ops.size_ib_ucontext -
+					sizeof(struct ovey_ucontext));
 }
 
 static inline struct ovey_device *to_ovey_dev(struct ib_device *base_dev)
@@ -154,12 +158,16 @@ static inline struct ovey_device *to_ovey_dev(struct ib_device *base_dev)
 
 static inline struct ovey_pd *to_ovey_pd(struct ib_pd *base_pd)
 {
-	return container_of(base_pd, struct ovey_pd, base);
+	return (struct ovey_pd *)((char *)base_pd +
+				  base_pd->device->ops.size_ib_pd -
+				  sizeof(struct ovey_pd));
 }
 
 static inline struct ovey_cq *to_ovey_cq(struct ib_cq *base_cq)
 {
-	return container_of(base_cq, struct ovey_cq, base);
+	return (struct ovey_cq*)((char *)base_cq +
+				base_cq->device->ops.size_ib_cq -
+				sizeof(struct ovey_cq));
 }
 
 static inline struct ovey_mr *to_ovey_mr(struct ib_mr *base_mr)

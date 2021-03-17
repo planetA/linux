@@ -929,6 +929,8 @@ static int ib_uverbs_open(struct inode *inode, struct file *filp)
 
 		goto err;
 	}
+	dump_stack();
+	printk("WAH %s %d ufile %px\n", __FUNCTION__, __LINE__, file);
 
 	file->device	 = dev;
 	kref_init(&file->ref);

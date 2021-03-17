@@ -109,7 +109,13 @@ __uobj_alloc(const struct uverbs_api_object *obj,
 }
 
 #define uobj_alloc(_type, _attrs, _ib_dev)                                     \
-	__uobj_alloc(uobj_get_type(_attrs, _type), _attrs, _ib_dev)
+	({                                                                     \
+		struct ib_uobject *__uobj = __uobj_alloc(                      \
+			uobj_get_type(_attrs, _type), _attrs, _ib_dev);        \
+		printk("WAH %s %s %d ubobject_alloc=%px", __FILE__, __FUNCTION__, __LINE__, \
+		       __uobj);                                                \
+		__uobj;                                                        \
+	})
 
 static inline void uverbs_flow_action_fill_action(struct ib_flow_action *action,
 						  struct ib_uobject *uobj,

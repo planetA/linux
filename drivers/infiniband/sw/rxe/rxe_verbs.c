@@ -18,6 +18,8 @@ static int rxe_query_device(struct ib_device *dev,
 {
 	struct rxe_dev *rxe = to_rdev(dev);
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+
 	if (uhw->inlen || uhw->outlen)
 		return -EINVAL;
 
@@ -31,6 +33,8 @@ static int rxe_query_port(struct ib_device *dev,
 	struct rxe_dev *rxe = to_rdev(dev);
 	struct rxe_port *port;
 	int rc;
+
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 
 	port = &rxe->port;
 
@@ -68,6 +72,8 @@ static int rxe_modify_device(struct ib_device *dev,
 {
 	struct rxe_dev *rxe = to_rdev(dev);
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+
 	if (mask & ~(IB_DEVICE_MODIFY_SYS_IMAGE_GUID |
 		     IB_DEVICE_MODIFY_NODE_DESC))
 		return -EOPNOTSUPP;
@@ -89,6 +95,7 @@ static int rxe_modify_port(struct ib_device *dev,
 	struct rxe_dev *rxe = to_rdev(dev);
 	struct rxe_port *port;
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 	port = &rxe->port;
 
 	port->attr.port_cap_flags |= attr->set_port_cap_mask;
@@ -111,6 +118,7 @@ static int rxe_alloc_ucontext(struct ib_ucontext *uctx, struct ib_udata *udata)
 	struct rxe_dev *rxe = to_rdev(uctx->device);
 	struct rxe_ucontext *uc = to_ruc(uctx);
 
+	printk("WAH %s:%d %px ucontext=%px ufile=%px\n", __FUNCTION__, __LINE__, rxe, uctx, uctx->ufile);
 	return rxe_add_to_pool(&rxe->uc_pool, &uc->pelem);
 }
 
@@ -118,6 +126,7 @@ static void rxe_dealloc_ucontext(struct ib_ucontext *ibuc)
 {
 	struct rxe_ucontext *uc = to_ruc(ibuc);
 
+	printk("WAH %s:%d ucontext=%px==%px\n", __FUNCTION__, __LINE__, uc, ibuc);
 	rxe_drop_ref(&uc->pelem);
 }
 
@@ -144,13 +153,20 @@ static int rxe_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 {
 	struct rxe_dev *rxe = to_rdev(ibpd->device);
 	struct rxe_pd *pd = to_rpd(ibpd);
+	printk("WAH %s:%d %px uobject %px ufile %px\n",
+	       __FUNCTION__, __LINE__, rxe, ibpd->uobject,
+	       ibpd->uobject ? ibpd->uobject->ufile : (struct ib_uverbs_file*)0xf);
 
 	return rxe_add_to_pool(&rxe->pd_pool, &pd->pelem);
 }
 
 static int rxe_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 {
+	struct rxe_dev *rxe = to_rdev(ibpd->device);
 	struct rxe_pd *pd = to_rpd(ibpd);
+
+	printk("WAH %s:%d %px uobject %px\n", __FUNCTION__, __LINE__,
+	       rxe, ibpd->uobject);
 
 	rxe_drop_ref(&pd->pelem);
 	return 0;
@@ -164,6 +180,8 @@ static int rxe_create_ah(struct ib_ah *ibah,
 	int err;
 	struct rxe_dev *rxe = to_rdev(ibah->device);
 	struct rxe_ah *ah = to_rah(ibah);
+
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 
 	err = rxe_av_chk_attr(rxe, init_attr->ah_attr);
 	if (err)
@@ -183,6 +201,7 @@ static int rxe_modify_ah(struct ib_ah *ibah, struct rdma_ah_attr *attr)
 	struct rxe_dev *rxe = to_rdev(ibah->device);
 	struct rxe_ah *ah = to_rah(ibah);
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 	err = rxe_av_chk_attr(rxe, attr);
 	if (err)
 		return err;
@@ -265,6 +284,8 @@ static int rxe_create_srq(struct ib_srq *ibsrq, struct ib_srq_init_attr *init,
 	struct rxe_srq *srq = to_rsrq(ibsrq);
 	struct rxe_create_srq_resp __user *uresp = NULL;
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+
 	if (udata) {
 		if (udata->outlen < sizeof(*uresp))
 			return -EINVAL;
@@ -303,6 +324,8 @@ static int rxe_modify_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr,
 	struct rxe_srq *srq = to_rsrq(ibsrq);
 	struct rxe_dev *rxe = to_rdev(ibsrq->device);
 	struct rxe_modify_srq_cmd ucmd = {};
+
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 
 	if (udata) {
 		if (udata->inlen < sizeof(ucmd))
@@ -386,6 +409,8 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 	struct rxe_qp *qp;
 	struct rxe_create_qp_resp __user *uresp = NULL;
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+
 	if (udata) {
 		if (udata->outlen < sizeof(*uresp))
 			return ERR_PTR(-EINVAL);
@@ -432,6 +457,8 @@ static int rxe_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	int err;
 	struct rxe_dev *rxe = to_rdev(ibqp->device);
 	struct rxe_qp *qp = to_rqp(ibqp);
+
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 
 	err = rxe_qp_chk_attr(rxe, qp, attr, mask);
 	if (err)
@@ -765,21 +792,28 @@ static int rxe_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 	struct rxe_cq *cq = to_rcq(ibcq);
 	struct rxe_create_cq_resp __user *uresp = NULL;
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+
+	printk("WAH udata %px\n", udata);
 	if (udata) {
+		printk("WAH udata %ld < %ld\n", udata->outlen, sizeof(*uresp));
 		if (udata->outlen < sizeof(*uresp))
 			return -EINVAL;
 		uresp = udata->outbuf;
 	}
 
+	printk("WAH flags %x\n", attr->flags);
 	if (attr->flags)
 		return -EINVAL;
 
 	err = rxe_cq_chk_attr(rxe, NULL, attr->cqe, attr->comp_vector);
+	printk("WAH %d err %x\n", __LINE__, err);
 	if (err)
 		return err;
 
 	err = rxe_cq_from_init(rxe, cq, attr->cqe, attr->comp_vector, udata,
 			       uresp);
+	printk("WAH %d err %x\n", __LINE__, err);
 	if (err)
 		return err;
 
@@ -876,6 +910,8 @@ static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 	struct rxe_pd *pd = to_rpd(ibpd);
 	struct rxe_mem *mr;
 
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+
 	mr = rxe_alloc(&rxe->mr_pool);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
@@ -883,6 +919,11 @@ static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 	rxe_add_index(&mr->pelem);
 	rxe_add_ref(&pd->pelem);
 	rxe_mem_init_dma(pd, access, mr);
+
+	printk("WAH rxe_get_dma_mr: mr %px ibmr %px pool %px pd %px &pd->pelem %px &mr->pelem %px\n",
+	       mr, &mr->ibmr, &rxe->mr_pool, pd, &pd->pelem, &mr->pelem);
+	printk("WAH reg mr %px &mr->ibmr %px mr->ibmr.pd %px mr_pd(mr) %px pd %px",
+	       mr, &mr->ibmr, mr->ibmr.pd, mr_pd(mr), pd);
 
 	return &mr->ibmr;
 }
@@ -898,6 +939,8 @@ static struct ib_mr *rxe_reg_user_mr(struct ib_pd *ibpd,
 	struct rxe_pd *pd = to_rpd(ibpd);
 	struct rxe_mem *mr;
 
+	printk("WAH %s:%d %px uobject %px\n", __FUNCTION__, __LINE__,
+	       rxe, ibpd->uobject);
 	mr = rxe_alloc(&rxe->mr_pool);
 	if (!mr) {
 		err = -ENOMEM;
@@ -925,8 +968,14 @@ err2:
 
 static int rxe_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
 {
+	struct rxe_dev *rxe = to_rdev(ibmr->device);
 	struct rxe_mem *mr = to_rmr(ibmr);
 
+	printk("WAH %s:%d %px uobject %px\n", __FUNCTION__, __LINE__,
+	       rxe, ibmr->uobject);
+	printk("WAH rxe_dereg_mr mr %px ibmr %px pd %px &pd->pelem %px\n", mr, ibmr, mr_pd(mr), &mr_pd(mr)->pelem);
+	printk("WAH dereg mr %px &mr->ibmr %px mr->ibmr.pd %px mr_pd(mr) %px ibmr %px",
+	       mr, &mr->ibmr, mr->ibmr.pd, mr_pd(mr), ibmr);
 	mr->state = RXE_MEM_STATE_ZOMBIE;
 	rxe_drop_ref(&mr_pd(mr)->pelem);
 	rxe_drop_index(&mr->pelem);
@@ -941,6 +990,8 @@ static struct ib_mr *rxe_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 	struct rxe_pd *pd = to_rpd(ibpd);
 	struct rxe_mem *mr;
 	int err;
+
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 
 	if (mr_type != IB_MR_TYPE_MEM_REG)
 		return ERR_PTR(-EINVAL);
@@ -1126,6 +1177,8 @@ int rxe_register_device(struct rxe_dev *rxe, const char *ibdev_name)
 	struct ib_device *dev = &rxe->ib_dev;
 	struct crypto_shash *tfm;
 	u64 dma_mask;
+
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 
 	strlcpy(dev->node_desc, "rxe", sizeof(dev->node_desc));
 

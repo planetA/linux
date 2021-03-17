@@ -53,9 +53,6 @@ static const struct ib_device_ops ovey_device_ops = {
 	// Mapping to application specific structs
 	// this way the kernel can alloc a proper amount of memory
 	// TODO: also for _ah and _srq?
-	INIT_RDMA_OBJ_SIZE(ib_cq, ovey_cq, base),
-	INIT_RDMA_OBJ_SIZE(ib_pd, ovey_pd, base),
-	INIT_RDMA_OBJ_SIZE(ib_ucontext, ovey_ucontext, base),
 };
 
 /**
@@ -107,6 +104,10 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 
 	// first we set all ops
 	ib_set_device_ops(&ovey_dev->base, &ovey_device_ops);
+
+	INIT_OVEY_OBJ_SIZE(ovey_dev, cq, parent);
+	INIT_OVEY_OBJ_SIZE(ovey_dev, pd, parent);
+	INIT_OVEY_OBJ_SIZE(ovey_dev, ucontext, parent);
 
 	// no we make some changes
 	ovey_dev->base.ops.uverbs_abi_ver = parent->ops.uverbs_abi_ver;
@@ -194,16 +195,20 @@ int ovey_new_device_if_not_exists(
 	ovey_ib_dev = ib_device_get_by_name(ovey_device_info->device_name,
 					    RDMA_DRIVER_OVEY_ID);
 	if (ovey_ib_dev) {
+		opr_info("invoked\n");
 		ib_device_put(ovey_ib_dev);
 		return -EEXIST;
 	}
+	opr_info("invoked\n");
 
 	ovey_dev = ovey_alloc_and_setup_new_device(ovey_device_info, parent);
+	opr_info("invoked: %px\n", ovey_dev);
 	if (ovey_dev) {
-		ovey_dbg(parent, "ovey: new device\n");
+		opr_info("ovey: new device\n");
 
 		ret = ovey_device_register(ovey_dev,
 					   ovey_device_info->device_name);
+		opr_info("ovey: new device done %d\n", ret);
 		if (ret) {
 			opr_err("ovey_device_register() failed: %d\n", ret);
 			ib_dealloc_device(&ovey_dev->base);

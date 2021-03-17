@@ -322,6 +322,7 @@ static int uverbs_process_attr(struct bundle_priv *pbundle,
 		o_attr->uobject = uverbs_get_uobject_from_file(
 			spec->u.obj.obj_type, spec->u.obj.access,
 			uattr->data_s64, &pbundle->bundle);
+		printk("WAH %s %d ret=%ld\n", __FUNCTION__, __LINE__, PTR_ERR(o_attr->uobject));
 		if (IS_ERR(o_attr->uobject))
 			return PTR_ERR(o_attr->uobject);
 		__set_bit(attr_bkey, pbundle->uobj_finalize);
@@ -417,7 +418,7 @@ static int ib_uverbs_run_method(struct bundle_priv *pbundle,
 	size_t uattrs_size = array_size(sizeof(*pbundle->uattrs), num_attrs);
 	unsigned int destroy_bkey = pbundle->method_elm->destroy_bkey;
 	unsigned int i;
-	int ret;
+	int ret = 0;
 
 	/* See uverbs_disassociate_api() */
 	handler = srcu_dereference(
@@ -549,11 +550,13 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	struct bundle_priv *pbundle;
 	struct bundle_priv onstack;
 	void __rcu **slot;
-	int ret;
+	int ret = 0;
 
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 	if (unlikely(hdr->driver_id != uapi->driver_id))
 		return -EINVAL;
 
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 	slot = radix_tree_iter_lookup(
 		&uapi->radix, &attrs_iter,
 		uapi_key_obj(hdr->object_id) |
@@ -598,6 +601,7 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	       sizeof(pbundle->uobj_hw_obj_valid));
 
 	ret = ib_uverbs_run_method(pbundle, hdr->num_attrs);
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 	bundle_destroy(pbundle, ret == 0);
 	return ret;
 }
@@ -609,7 +613,7 @@ long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		(struct ib_uverbs_ioctl_hdr __user *)arg;
 	struct ib_uverbs_ioctl_hdr hdr;
 	int srcu_key;
-	int err;
+	int err = 0;
 
 	if (unlikely(cmd != RDMA_VERBS_IOCTL))
 		return -ENOIOCTLCMD;
@@ -628,6 +632,7 @@ long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
 	err = ib_uverbs_cmd_verbs(file, &hdr, user_hdr->attrs);
 	srcu_read_unlock(&file->device->disassociate_srcu, srcu_key);
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, err);
 	return err;
 }
 
