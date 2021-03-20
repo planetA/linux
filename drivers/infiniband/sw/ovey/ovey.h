@@ -51,7 +51,7 @@ int ovey_verify_new_device_name(char const *);
 	ibdev_dbg(ibdev, "%s: " fmt, __func__, ##__VA_ARGS__)
 
 #define ovey_dbg_qp(qp, fmt, ...)                                               \
-	ibdev_dbg(&qp->ovey_dev->base, "QP[%u] %s: " fmt, qp_id(qp), __func__, \
+	ibdev_dbg(qp->parent->device, "QP[%u] %s: " fmt, qp_id(qp), __func__, \
 		  ##__VA_ARGS__)
 
 #define ovey_dbg_cq(cq, fmt, ...)                                               \
@@ -105,7 +105,6 @@ struct ovey_pd {
 struct ovey_qp {
 	struct ib_qp base;
 	struct ib_qp *parent;
-	struct ovey_device *ovey_dev;
 	struct kref ref;
 	struct rcu_head rcu;
 };
@@ -129,16 +128,6 @@ static inline u32 qp_id(struct ovey_qp *qp)
 	return *qp_id_p(qp);
 }
 
-static inline void ovey_qp_get(struct ovey_qp *qp)
-{
-	kref_get(&qp->ref);
-}
-
-static inline void ovey_qp_put(struct ovey_qp *qp)
-{
-	kref_put(&qp->ref, ovey_free_qp);
-}
-
 #define INIT_OVEY_OBJ_SIZE(ovey_dev, ib_struct, parent_dev)                    \
 	ovey_dev->base.ops.size_ib_##ib_struct =                               \
 		(parent_dev->ops.size_ib_##ib_struct +                         \
@@ -146,7 +135,7 @@ static inline void ovey_qp_put(struct ovey_qp *qp)
 
 static inline struct ovey_ucontext *to_ovey_ctx(struct ib_ucontext *base_ctx)
 {
-	return (struct ovey_ucontext *)((char *)base_ctx +
+	return (struct ovey_ucontext *)((uintptr_t)base_ctx +
 					base_ctx->device->ops.size_ib_ucontext -
 					sizeof(struct ovey_ucontext));
 }
@@ -158,14 +147,14 @@ static inline struct ovey_device *to_ovey_dev(struct ib_device *base_dev)
 
 static inline struct ovey_pd *to_ovey_pd(struct ib_pd *base_pd)
 {
-	return (struct ovey_pd *)((char *)base_pd +
+	return (struct ovey_pd *)((uintptr_t)base_pd +
 				  base_pd->device->ops.size_ib_pd -
 				  sizeof(struct ovey_pd));
 }
 
 static inline struct ovey_cq *to_ovey_cq(struct ib_cq *base_cq)
 {
-	return (struct ovey_cq*)((char *)base_cq +
+	return (struct ovey_cq*)((uintptr_t)base_cq +
 				base_cq->device->ops.size_ib_cq -
 				sizeof(struct ovey_cq));
 }
@@ -175,10 +164,15 @@ static inline struct ovey_mr *to_ovey_mr(struct ib_mr *base_mr)
 	return container_of(base_mr, struct ovey_mr, base);
 }
 
+#if 0
 static inline struct ovey_qp *to_ovey_qp(struct ib_qp *base_qp)
 {
 	return container_of(base_qp, struct ovey_qp, base);
+	/* return (struct ovey_qp *)((uintptr_t)base_qp + */
+	/* 			  base_qp->device->ops.size_ib_qp - */
+	/* 			  sizeof(struct ovey_qp)); */
 }
+#endif
 
 // functions that must be accessible from ocp.c
 

@@ -104,6 +104,7 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 
 	// first we set all ops
 	ib_set_device_ops(&ovey_dev->base, &ovey_device_ops);
+	ovey_dev->base.ops.driver_id = parent->ops.driver_id;
 
 	INIT_OVEY_OBJ_SIZE(ovey_dev, cq, parent);
 	INIT_OVEY_OBJ_SIZE(ovey_dev, pd, parent);

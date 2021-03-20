@@ -7,7 +7,6 @@ int ovey_qp_add(struct ovey_device *ovey_dev, struct ovey_qp *qp)
 
         if (!rv) {
                 kref_init(&qp->ref);
-                qp->ovey_dev = ovey_dev;
                 ovey_dbg_qp(qp, "new QP\n");
         }
         return rv;
@@ -16,7 +15,7 @@ int ovey_qp_add(struct ovey_device *ovey_dev, struct ovey_qp *qp)
 void ovey_free_qp(struct kref *ref)
 {
         struct ovey_qp *found, *qp = container_of(ref, struct ovey_qp, ref);
-        struct ovey_device *ovey_dev = qp->ovey_dev;
+        struct ovey_device *ovey_dev = to_ovey_dev(qp->parent->device);
 
 	pr_err("FREE_QP: %d\n", __LINE__);
         found = xa_erase(&ovey_dev->qp_xa, qp_id(qp));

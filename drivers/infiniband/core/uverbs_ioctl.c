@@ -552,7 +552,7 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	void __rcu **slot;
 	int ret = 0;
 
-	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
+	printk("WAH %s %d ret=%d hdr->did %d uapi->did %d\n", __FUNCTION__, __LINE__, ret, hdr->driver_id, uapi->driver_id);
 	if (unlikely(hdr->driver_id != uapi->driver_id))
 		return -EINVAL;
 

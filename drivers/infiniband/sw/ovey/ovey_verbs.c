@@ -7,6 +7,13 @@
 #include "completions.h"
 #include "virtualized_properties.h"
 
+DEFINE_XARRAY(qp_xarray);
+
+static inline struct ovey_qp *to_ovey_qp(struct ib_qp *base_qp)
+{
+	return xa_load(&qp_xarray, (uintptr_t) base_qp);
+}
+
 int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 		      struct ib_udata *udata)
 {
@@ -233,7 +240,9 @@ int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 
 	opr_info("verb invoked\n");
 
+	base_ctx->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.mmap(ovey_ctx->parent, vma);
+	base_ctx->device = &ovey_dev->base;
 	if (!ret) {
 		opr_err("mmap() on parent device failed! %d\n", ret);
 	}
@@ -242,16 +251,15 @@ int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 
 void ovey_mmap_free(struct rdma_user_mmap_entry *rdma_entry)
 {
-	struct ib_ucontext *parent_ctx = rdma_entry->ucontext;
-	struct ib_device *parent_dev = parent_ctx->device;
+	struct ib_ucontext *base_ctx = rdma_entry->ucontext;
+	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->parent->device);
 
 	opr_info("verb invoked\n");
 
-	if (!parent_dev->ops.mmap_free) {
-		return;
-	}
-
-	return parent_ctx->device->ops.mmap_free(rdma_entry);
+	base_ctx->device = ovey_dev->parent;
+	base_ctx->device->ops.mmap_free(rdma_entry);
+	base_ctx->device = &ovey_dev->base;
 }
 
 struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
@@ -301,12 +309,12 @@ struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
 	ovey_pd->parent->device = ovey_dev->parent;
 	ovey_mr->parent = ovey_dev->parent->ops.reg_user_mr(ovey_pd->parent, start, len,
 							    rnic_va, rights, udata);
+	ovey_pd->parent->device = &ovey_dev->base;
 	if (IS_ERR(ovey_mr->parent)) {
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
 	}
 	opr_info("verb invoked: ret=%d\n", ret);
-	ovey_pd->parent->device = &ovey_dev->base;
 
 	return &ovey_mr->base;
 err_out:
@@ -563,28 +571,47 @@ int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 struct ib_qp *ovey_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
 			     struct ib_udata *udata)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
 	struct ovey_qp *qp = NULL;
+	int err = 0;
 
 	opr_info("verb invoked\n");
 
-	if (udata) {
+	if (!udata) {
 		return ERR_PTR(-EOPNOTSUPP);
 	}
 
 	qp = kzalloc(sizeof(*qp), GFP_KERNEL);
-	if (attrs->qp_type == IB_QPT_SMI || attrs->qp_type == IB_QPT_GSI) {
-		/* Service QP. Do not create a real one */
-		qp->parent = NULL;
-	} else {
-		qp->parent = ib_create_qp(ovey_pd->parent, attrs);
-		if (IS_ERR(qp->parent)) {
-			opr_err("ib_create_qp() failed for parent device\n");
-			return qp->parent;
-		}
+	if (!qp) {
+		err = -ENOMEM;
+		goto err1;
 	}
 
-	return &qp->base;
+	ovey_pd->parent->device = ovey_dev->parent;
+	qp->parent = ovey_dev->parent->ops.create_qp(ovey_pd->parent, attrs, udata);
+	ovey_pd->parent->device = &ovey_dev->base;
+	if (IS_ERR(qp->parent)) {
+		opr_err("create_qp() failed for parent device\n");
+		err = PTR_ERR(qp->parent);
+		goto err2;
+	}
+
+	err = xa_err(xa_store(&qp_xarray, (uintptr_t)qp->parent, qp, GFP_KERNEL));
+	if (err) {
+		goto err3;
+	}
+
+	return qp->parent;
+
+  err3:
+	ovey_pd->parent->device = ovey_dev->parent;
+	ovey_dev->parent->ops.destroy_qp(qp->parent, NULL);
+	ovey_pd->parent->device = &ovey_dev->base;
+  err2:
+	kfree(qp);
+  err1:
+	return ERR_PTR(err);
 }
 
 /*
@@ -595,15 +622,25 @@ struct ib_qp *ovey_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
 int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		  int qp_attr_mask, struct ib_qp_init_attr *qp_init_attr)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
+	int ret;
 	opr_info("verb invoked\n");
 
-	if (!ovey_qp->parent) {
-		return -EOPNOTSUPP;
+	if (!ovey_qp) {
+		opr_err("Failed to find the QP");
+		return -EINVAL;
 	}
 
-	return ib_query_qp(ovey_qp->parent, qp_attr, qp_attr_mask,
-			   qp_init_attr);
+	ovey_qp->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.query_qp(ovey_qp->parent, qp_attr, qp_attr_mask, qp_init_attr);
+	ovey_qp->parent->device = &ovey_dev->base;
+	if (ret) {
+		opr_err("create_qp() failed for parent device\n");
+		return ret;
+	}
+
+	return ret;
 }
 
 int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
@@ -615,6 +652,11 @@ int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
 	struct sk_buff *req_sk_buf;
 	int ret;
 	opr_info("verb invoked\n");
+
+	if (!ovey_qp) {
+		opr_err("Failed to find the QP");
+		return -EINVAL;
+	}
 
 	if (!ovey_qp->parent) {
 		return -EOPNOTSUPP;
@@ -659,6 +701,11 @@ int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	opr_info("verb invoked\n");
 
+	if (!ovey_qp) {
+		opr_err("Failed to find the QP");
+		return -EINVAL;
+	}
+
 	if (!ovey_qp->parent) {
 		return -EOPNOTSUPP;
 	}
@@ -681,6 +728,11 @@ int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	opr_info("verb invoked\n");
 
+	if (!ovey_qp) {
+		opr_err("Failed to find the QP");
+		return -EINVAL;
+	}
+
 	if (!ovey_qp->parent) {
 		return -EOPNOTSUPP;
 	}
@@ -691,14 +743,22 @@ int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 {
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
+	struct ovey_qp *old_qp;
 	int ret;
 	opr_info("verb invoked\n");
+
+	if (!ovey_qp) {
+		opr_err("Failed to find the QP");
+		return -EINVAL;
+	}
 
 	if (ovey_qp->parent) {
 		ret = ib_destroy_qp(ovey_qp->parent);
 	} else {
 		ret = 0;
 	}
+	old_qp = xa_erase(&qp_xarray, (uintptr_t)ovey_qp->parent);
+	BUG_ON(old_qp != ovey_qp);
 	kfree(ovey_qp);
 
 	return ret;
