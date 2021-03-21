@@ -637,11 +637,11 @@ static int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 	}
 
 	ovey_qp->parent->device = ovey_dev->parent;
-	ret = ovey_dev->parent->ops.query_qp(ovey_qp->parent, qp_attr, qp_attr_mask, qp_init_attr);
+	ret = ovey_dev->parent->ops.query_qp(ovey_qp->parent, qp_attr,
+					     qp_attr_mask, qp_init_attr);
 	ovey_qp->parent->device = &ovey_dev->base;
 	if (ret) {
-		opr_err("create_qp() failed for parent device\n");
-		return ret;
+		opr_err("%s() failed for parent device\n", __FUNCTION__);
 	}
 
 	return ret;
@@ -650,6 +650,7 @@ static int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 			  int qp_attr_mask, struct ib_udata *udata)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	struct ovey_completion_chain *chain_node;
 	struct nlmsghdr *hdr;
@@ -687,7 +688,15 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		return -EINVAL;
 	}
 
-	return ib_modify_qp(ovey_qp->parent, attr, attr_mask);
+	ovey_qp->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.modify_qp(ovey_qp->parent, qp_attr,
+					      qp_attr_mask, udata);
+	ovey_qp->parent->device = &ovey_dev->base;
+	if (ret) {
+		opr_err("%s() failed for parent device\n", __FUNCTION__);
+	}
+
+	return ret;
 }
 
 /*
@@ -702,7 +711,9 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 static int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 			  const struct ib_send_wr **bad_wr)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
+	int ret;
 	opr_info("verb invoked\n");
 
 	if (!ovey_qp) {
@@ -714,7 +725,14 @@ static int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 		return -EOPNOTSUPP;
 	}
 
-	return ib_post_send(ovey_qp->parent, wr, bad_wr);
+	ovey_qp->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.post_send(ovey_qp->parent, wr, bad_wr);
+	ovey_qp->parent->device = &ovey_dev->base;
+	if (ret) {
+		opr_err("%s() failed for parent device\n", __FUNCTION__);
+	}
+
+	return ret;
 }
 
 /*
@@ -729,7 +747,9 @@ static int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 static int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 		   const struct ib_recv_wr **bad_wr)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
+	int ret;
 	opr_info("verb invoked\n");
 
 	if (!ovey_qp) {
@@ -741,11 +761,19 @@ static int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 		return -EOPNOTSUPP;
 	}
 
-	return ib_post_recv(ovey_qp->parent, wr, bad_wr);
+	ovey_qp->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.post_recv(ovey_qp->parent, wr, bad_wr);
+	ovey_qp->parent->device = &ovey_dev->base;
+	if (ret) {
+		opr_err("%s() failed for parent device\n", __FUNCTION__);
+	}
+
+	return ret;
 }
 
 static int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 {
+	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	struct ovey_qp *old_qp;
 	int ret;
@@ -756,11 +784,13 @@ static int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 		return -EINVAL;
 	}
 
-	if (ovey_qp->parent) {
-		ret = ib_destroy_qp(ovey_qp->parent);
-	} else {
-		ret = 0;
+	ovey_qp->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.destroy_qp(ovey_qp->parent, udata);
+	ovey_qp->parent->device = &ovey_dev->base;
+	if (ret) {
+		opr_err("%s() failed for parent device\n", __FUNCTION__);
 	}
+
 	old_qp = xa_erase(&qp_xarray, (uintptr_t)ovey_qp->parent);
 	BUG_ON(old_qp != ovey_qp);
 	kfree(ovey_qp);
