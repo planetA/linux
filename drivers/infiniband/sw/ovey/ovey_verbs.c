@@ -242,7 +242,7 @@ static int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 	base_ctx->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.mmap(ovey_ctx->parent, vma);
 	base_ctx->device = &ovey_dev->base;
-	if (!ret) {
+	if (ret) {
 		opr_err("mmap() on parent device failed! %d\n", ret);
 	}
 	return ret;
