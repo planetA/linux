@@ -102,6 +102,10 @@ struct ovey_pd {
 	struct ib_pd *parent;
 };
 
+struct ovey_ah {
+	struct ib_ah *parent;
+};
+
 struct ovey_qp {
 	struct ib_qp base;
 	struct ib_qp *parent;
@@ -150,6 +154,13 @@ static inline struct ovey_pd *to_ovey_pd(struct ib_pd *base_pd)
 	return (struct ovey_pd *)((uintptr_t)base_pd +
 				  base_pd->device->ops.size_ib_pd -
 				  sizeof(struct ovey_pd));
+}
+
+static inline struct ovey_ah *to_ovey_ah(struct ib_ah *base_ah)
+{
+	return (struct ovey_ah *)((uintptr_t)base_ah +
+				  base_ah->device->ops.size_ib_ah -
+				  sizeof(struct ovey_ah));
 }
 
 static inline struct ovey_cq *to_ovey_cq(struct ib_cq *base_cq)

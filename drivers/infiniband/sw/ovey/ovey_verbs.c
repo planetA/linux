@@ -231,6 +231,62 @@ static int ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	return ret;
 }
 
+static int ovey_create_ah(struct ib_ah *base_ah,
+			 struct rdma_ah_init_attr *init_attr,
+			 struct ib_udata *udata)
+
+{
+	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
+	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
+	int ret;
+
+	ovey_ah->parent = base_ah;
+	ovey_ah->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.create_ah(ovey_ah->parent, init_attr, udata);
+	ovey_ah->parent->device = &ovey_dev->base;
+
+	return ret;
+}
+
+static int ovey_modify_ah(struct ib_ah *base_ah, struct rdma_ah_attr *attr)
+{
+	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
+	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
+	int ret;
+
+	ovey_ah->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.modify_ah(ovey_ah->parent, attr);
+	ovey_ah->parent->device = &ovey_dev->base;
+
+	return ret;
+}
+
+static int ovey_query_ah(struct ib_ah *base_ah, struct rdma_ah_attr *attr)
+{
+	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
+	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
+	int ret;
+
+	ovey_ah->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.query_ah(ovey_ah->parent, attr);
+	ovey_ah->parent->device = &ovey_dev->base;
+
+	return ret;
+}
+
+static int ovey_destroy_ah(struct ib_ah *base_ah, u32 flags)
+{
+	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
+	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
+	int ret;
+
+	ovey_ah->parent->device = ovey_dev->parent;
+	ret = ovey_dev->parent->ops.destroy_ah(ovey_ah->parent, flags);
+	ovey_ah->parent->device = &ovey_dev->base;
+
+	return ret;
+}
+
 static int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
@@ -821,11 +877,13 @@ const struct ib_device_ops ovey_device_ops = {
 	.alloc_ucontext = ovey_alloc_ucontext,
 	.alloc_mr = ovey_alloc_mr,
 	.alloc_pd = ovey_alloc_pd,
+	.create_ah = ovey_create_ah,
 	.create_cq = ovey_create_cq,
 	.create_qp = ovey_create_qp,
 	.dealloc_ucontext = ovey_dealloc_ucontext,
 	.dealloc_driver = ovey_dealloc_driver,
 	.dealloc_pd = ovey_dealloc_pd,
+	.destroy_ah = ovey_destroy_ah,
 	.destroy_cq = ovey_destroy_cq,
 	.destroy_qp = ovey_destroy_qp,
 	.dereg_mr = ovey_dereg_mr,
@@ -835,12 +893,14 @@ const struct ib_device_ops ovey_device_ops = {
 	.mmap = ovey_mmap,
 	.mmap_free = ovey_mmap_free,
 	.map_mr_sg = ovey_map_mr_sg,
+	.modify_ah = ovey_modify_ah,
 	.modify_qp = ovey_modify_qp,
 	.reg_user_mr = ovey_reg_user_mr,
 	.req_notify_cq = ovey_req_notify_cq,
 	.poll_cq = ovey_poll_cq,
 	.post_recv = ovey_post_recv,
 	.post_send = ovey_post_send,
+	.query_ah = ovey_query_ah,
 	.query_device = ovey_query_device,
 	.query_port = ovey_query_port,
 	.query_gid = ovey_query_gid,
