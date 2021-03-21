@@ -2,7 +2,6 @@
 
 #include "ocp.h"
 #include "ovey.h"
-#include "ovey_verbs.h"
 #include "ocp-util.h"
 #include "completions.h"
 #include "virtualized_properties.h"
@@ -14,8 +13,8 @@ static inline struct ovey_qp *to_ovey_qp(struct ib_qp *base_qp)
 	return xa_load(&qp_xarray, (uintptr_t) base_qp);
 }
 
-int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
-		      struct ib_udata *udata)
+static int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
+			     struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	int ret;
@@ -36,8 +35,8 @@ int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 	return ret;
 }
 
-int ovey_query_port(struct ib_device *base_dev, u8 port,
-		    struct ib_port_attr *attr)
+static int ovey_query_port(struct ib_device *base_dev, u8 port,
+			   struct ib_port_attr *attr)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	struct ovey_completion_chain *chain_node;
@@ -89,8 +88,8 @@ int ovey_query_port(struct ib_device *base_dev, u8 port,
 	return ret;
 }
 
-int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
-		   union ib_gid *gid)
+static int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
+			  union ib_gid *gid)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	int ret;
@@ -105,7 +104,7 @@ int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
 	return ret;
 }
 
-int ovey_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pkey)
+static int ovey_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pkey)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	int ret;
@@ -120,8 +119,8 @@ int ovey_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pkey)
 	return ret;
 }
 
-enum rdma_link_layer ovey_get_link_layer(struct ib_device *base_dev,
-					 u8 port_num)
+static enum rdma_link_layer ovey_get_link_layer(struct ib_device *base_dev,
+						u8 port_num)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 
@@ -130,7 +129,7 @@ enum rdma_link_layer ovey_get_link_layer(struct ib_device *base_dev,
 	return ovey_dev->parent->ops.get_link_layer(ovey_dev->parent, port_num);
 }
 
-int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
+static int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
 			    struct ib_port_immutable *port_immutable)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
@@ -148,7 +147,7 @@ int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
 	return 0;
 }
 
-int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
+static int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
 	struct ovey_device *ovey_dev;
@@ -178,7 +177,7 @@ int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
 	return ret;
 }
 
-void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx)
+static void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
 	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->parent->device);
@@ -192,7 +191,7 @@ void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx)
 	ovey_dev->parent->ops.dealloc_ucontext(ovey_ctx->parent);
 }
 
-int ovey_alloc_pd(struct ib_pd *pd, struct ib_udata *udata)
+static int ovey_alloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
@@ -215,7 +214,7 @@ int ovey_alloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	return 0;
 }
 
-int ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
+static int ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
@@ -232,7 +231,7 @@ int ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	return ret;
 }
 
-int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
+static int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
 	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->parent->device);
@@ -249,7 +248,7 @@ int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 	return ret;
 }
 
-void ovey_mmap_free(struct rdma_user_mmap_entry *rdma_entry)
+static void ovey_mmap_free(struct rdma_user_mmap_entry *rdma_entry)
 {
 	struct ib_ucontext *base_ctx = rdma_entry->ucontext;
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
@@ -262,8 +261,8 @@ void ovey_mmap_free(struct rdma_user_mmap_entry *rdma_entry)
 	base_ctx->device = &ovey_dev->base;
 }
 
-struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
-			    u32 max_sge)
+static struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
+				   u32 max_sge)
 {
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
 	struct ovey_mr *ovey_mr;
@@ -290,8 +289,9 @@ struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
  * @rights:	MR access rights
  * @udata:	user buffer to communicate STag and Key.
  */
-struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
-			       u64 rnic_va, int rights, struct ib_udata *udata)
+static struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
+				      u64 rnic_va, int rights,
+				      struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
@@ -325,8 +325,8 @@ err_out:
 	return ERR_PTR(ret);
 }
 
-int ovey_map_mr_sg(struct ib_mr *base_mr, struct scatterlist *sl, int num_sle,
-		   unsigned int *sg_off)
+static int ovey_map_mr_sg(struct ib_mr *base_mr, struct scatterlist *sl,
+			  int num_sle, unsigned int *sg_off)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_mr->device);
 	struct ovey_mr *ovey_mr = to_ovey_mr(base_mr);
@@ -346,7 +346,7 @@ int ovey_map_mr_sg(struct ib_mr *base_mr, struct scatterlist *sl, int num_sle,
  *
  * Create a (empty) DMA memory region, where no umem is attached.
  */
-struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
+static struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
@@ -399,7 +399,7 @@ struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
  * @base: Base MR contained in ovey MR.
  * @udata: points to user context, unused.
  */
-int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
+static int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_mr->device);
 	struct ovey_mr *ovey_mr = to_ovey_mr(base_mr);
@@ -450,40 +450,43 @@ static int ovey_create_cq_user(struct ovey_device *ovey_dev,
  * @attr: Initial CQ attributes
  * @udata: relates to user context
  */
-int ovey_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
-		   struct ib_udata *udata)
+static int ovey_create_cq(struct ib_cq *base_cq,
+			  const struct ib_cq_init_attr *attr,
+			  struct ib_udata *udata)
 {
-    struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
-    struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
-    int err;
+	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
+	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
+	int err;
 
-    opr_info("verb invoked %px\n", udata);
-    // this is the function that also gets invoked after the syscall
+	opr_info("verb invoked %px\n", udata);
+	// this is the function that also gets invoked after the syscall
 
-    // base_eq gets filled by ioctl syscall which triggers __ib_alloc_cq_user
-    // this function calls this one and we forward it to the parent device
+	// base_eq gets filled by ioctl syscall which triggers __ib_alloc_cq_user
+	// this function calls this one and we forward it to the parent device
 
-    if (udata) {
-	    ovey_cq->parent = base_cq;
-	    opr_info("base_cq %px ovey_cq %px ovey_dev %px", base_cq, ovey_cq,
-		     ovey_dev);
-	    opr_info("ovey_cq %px\n", ovey_cq);
-	    opr_info("ovey_cq->parent %px\n", ovey_cq->parent);
-	    opr_info("ovey_cq->parent->device %px\n", ovey_cq->parent->device);
-	    opr_info("ovey_cq->parent->device %px %px\n", ovey_cq->parent,
-		     ovey_dev->parent);
+	if (udata) {
+		ovey_cq->parent = base_cq;
+		opr_info("base_cq %px ovey_cq %px ovey_dev %px", base_cq,
+			 ovey_cq, ovey_dev);
+		opr_info("ovey_cq %px\n", ovey_cq);
+		opr_info("ovey_cq->parent %px\n", ovey_cq->parent);
+		opr_info("ovey_cq->parent->device %px\n",
+			 ovey_cq->parent->device);
+		opr_info("ovey_cq->parent->device %px %px\n", ovey_cq->parent,
+			 ovey_dev->parent);
 
-	    ovey_cq->parent->device = ovey_dev->parent;
-	    err = ovey_dev->parent->ops.create_cq(ovey_cq->parent, attr, udata);
-	    /* err = ovey_create_cq_user(ovey_dev, ovey_cq, attr, udata); */
-	    ovey_cq->parent->device = &ovey_dev->base;
-    } else {
-	    err = ovey_create_cq_kernel(ovey_dev, ovey_cq, attr);
-    }
+		ovey_cq->parent->device = ovey_dev->parent;
+		err = ovey_dev->parent->ops.create_cq(ovey_cq->parent, attr,
+						      udata);
+		/* err = ovey_create_cq_user(ovey_dev, ovey_cq, attr, udata); */
+		ovey_cq->parent->device = &ovey_dev->base;
+	} else {
+		err = ovey_create_cq_kernel(ovey_dev, ovey_cq, attr);
+	}
 
-    opr_info("ovey_cq->parent=%px err %d\n", ovey_cq->parent, err);
+	opr_info("ovey_cq->parent=%px err %d\n", ovey_cq->parent, err);
 
-    return err;
+	return err;
 }
 
 /*
@@ -496,7 +499,7 @@ int ovey_create_cq(struct ib_cq *base_cq, const struct ib_cq_init_attr *attr,
  * @num_cqe:	Maximum number of CQE's to reap.
  * @wc:		Array of work completions to be filled by ovey.
  */
-int ovey_poll_cq(struct ib_cq *base_cq, int num_cqe, struct ib_wc *wc)
+static int ovey_poll_cq(struct ib_cq *base_cq, int num_cqe, struct ib_wc *wc)
 {
 	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
 	opr_info("verb invoked\n");
@@ -520,7 +523,7 @@ int ovey_poll_cq(struct ib_cq *base_cq, int num_cqe, struct ib_wc *wc)
  * @base_cq:	Base CQ contained in ovey CQ.
  * @flags:	Requested notification flags.
  */
-int ovey_req_notify_cq(struct ib_cq *base_cq, enum ib_cq_notify_flags flags)
+static int ovey_req_notify_cq(struct ib_cq *base_cq, enum ib_cq_notify_flags flags)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
 	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
@@ -536,7 +539,7 @@ int ovey_req_notify_cq(struct ib_cq *base_cq, enum ib_cq_notify_flags flags)
 	return err;
 }
 
-int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
+static int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 {
 	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
 	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
@@ -568,8 +571,9 @@ int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
  * @attrs:	Initial QP attributes.
  * @udata:	used to provide QP ID, SQ and RQ size back to user.
  */
-struct ib_qp *ovey_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
-			     struct ib_udata *udata)
+static struct ib_qp *ovey_create_qp(struct ib_pd *pd,
+				    struct ib_qp_init_attr *attrs,
+				    struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
@@ -619,8 +623,8 @@ struct ib_qp *ovey_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
  *
  * @qp_attr_mask is not used but all available information is provided
  */
-int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
-		  int qp_attr_mask, struct ib_qp_init_attr *qp_init_attr)
+static int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
+			 int qp_attr_mask, struct ib_qp_init_attr *qp_init_attr)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
@@ -643,8 +647,8 @@ int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 	return ret;
 }
 
-int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
-		   int attr_mask, struct ib_udata *udata)
+static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
+			  int qp_attr_mask, struct ib_udata *udata)
 {
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	struct ovey_completion_chain *chain_node;
@@ -695,8 +699,8 @@ int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *attr,
  * @wr:		Null terminated list of user WR's
  * @bad_wr:	Points to failing WR in case of synchronous failure.
  */
-int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
-		   const struct ib_send_wr **bad_wr)
+static int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
+			  const struct ib_send_wr **bad_wr)
 {
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	opr_info("verb invoked\n");
@@ -722,7 +726,7 @@ int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
  * @wr:		Null terminated list of user WR's
  * @bad_wr:	Points to failing WR in case of synchronous failure.
  */
-int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
+static int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 		   const struct ib_recv_wr **bad_wr)
 {
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
@@ -740,7 +744,7 @@ int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 	return ib_post_recv(ovey_qp->parent, wr, bad_wr);
 }
 
-int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
+static int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 {
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	struct ovey_qp *old_qp;
@@ -764,7 +768,7 @@ int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 	return ret;
 }
 
-void ovey_dealloc_driver(struct ib_device *base_dev)
+static void ovey_dealloc_driver(struct ib_device *base_dev)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 
@@ -779,15 +783,41 @@ void ovey_dealloc_driver(struct ib_device *base_dev)
 	ib_device_put(ovey_dev->parent);
 }
 
-void ovey_qp_event(struct ovey_qp *qp, enum ib_event_type etype)
-{
-}
+const struct ib_device_ops ovey_device_ops = {
+	.owner = THIS_MODULE,
+	.uverbs_abi_ver = OVEY_ABI_VERSION,
+	.driver_id = RDMA_DRIVER_OVEY,
 
-void ovey_cq_event(struct ovey_cq *cq, enum ib_event_type etype)
-{
-}
+	.alloc_ucontext = ovey_alloc_ucontext,
+	.alloc_mr = ovey_alloc_mr,
+	.alloc_pd = ovey_alloc_pd,
+	.create_cq = ovey_create_cq,
+	.create_qp = ovey_create_qp,
+	.dealloc_ucontext = ovey_dealloc_ucontext,
+	.dealloc_driver = ovey_dealloc_driver,
+	.dealloc_pd = ovey_dealloc_pd,
+	.destroy_cq = ovey_destroy_cq,
+	.destroy_qp = ovey_destroy_qp,
+	.dereg_mr = ovey_dereg_mr,
+	.get_dma_mr = ovey_get_dma_mr,
+	.get_link_layer = ovey_get_link_layer,
+	.get_port_immutable = ovey_get_port_immutable,
+	.mmap = ovey_mmap,
+	.mmap_free = ovey_mmap_free,
+	.map_mr_sg = ovey_map_mr_sg,
+	.modify_qp = ovey_modify_qp,
+	.reg_user_mr = ovey_reg_user_mr,
+	.req_notify_cq = ovey_req_notify_cq,
+	.poll_cq = ovey_poll_cq,
+	.post_recv = ovey_post_recv,
+	.post_send = ovey_post_send,
+	.query_device = ovey_query_device,
+	.query_port = ovey_query_port,
+	.query_gid = ovey_query_gid,
+	.query_pkey = ovey_query_pkey,
+	.query_qp = ovey_query_qp,
 
-void ovey_port_event(struct ovey_device *ovey_dev, u8 port,
-		     enum ib_event_type etype)
-{
-}
+	// Mapping to application specific structs
+	// this way the kernel can alloc a proper amount of memory
+	// TODO: also for _srq
+};

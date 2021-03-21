@@ -3,7 +3,6 @@
 #include <net/addrconf.h>
 
 #include "ovey.h"
-#include "ovey_verbs.h"
 #include "ocp.h"
 #include "completions.h"
 
@@ -12,48 +11,9 @@ MODULE_AUTHOR("Philipp Schuster");
 MODULE_DESCRIPTION("Overlay RDMA-network");
 MODULE_LICENSE("GPL");
 
-#define RDMA_DRIVER_OVEY_ID 1337
-
 #define OVEY_DEVICE_NAME_PREFIX "ovey"
 
-static const struct ib_device_ops ovey_device_ops = {
-	.owner = THIS_MODULE,
-	.uverbs_abi_ver = OVEY_ABI_VERSION,
-	.driver_id = RDMA_DRIVER_OVEY_ID,
-
-	.alloc_ucontext = ovey_alloc_ucontext,
-	.alloc_mr = ovey_alloc_mr,
-	.alloc_pd = ovey_alloc_pd,
-	.create_cq = ovey_create_cq,
-	.create_qp = ovey_create_qp,
-	.dealloc_ucontext = ovey_dealloc_ucontext,
-	.dealloc_driver = ovey_dealloc_driver,
-	.dealloc_pd = ovey_dealloc_pd,
-	.destroy_cq = ovey_destroy_cq,
-	.destroy_qp = ovey_destroy_qp,
-	.dereg_mr = ovey_dereg_mr,
-	.get_dma_mr = ovey_get_dma_mr,
-	.get_link_layer = ovey_get_link_layer,
-	.get_port_immutable = ovey_get_port_immutable,
-	.mmap = ovey_mmap,
-	.mmap_free = ovey_mmap_free,
-	.map_mr_sg = ovey_map_mr_sg,
-	.modify_qp = ovey_modify_qp,
-	.reg_user_mr = ovey_reg_user_mr,
-	.req_notify_cq = ovey_req_notify_cq,
-	.poll_cq = ovey_poll_cq,
-	.post_recv = ovey_post_recv,
-	.post_send = ovey_post_send,
-	.query_device = ovey_query_device,
-	.query_port = ovey_query_port,
-	.query_gid = ovey_query_gid,
-	.query_pkey = ovey_query_pkey,
-	.query_qp = ovey_query_qp,
-
-	// Mapping to application specific structs
-	// this way the kernel can alloc a proper amount of memory
-	// TODO: also for _ah and _srq?
-};
+extern const struct ib_device_ops ovey_device_ops;
 
 /**
  * Allocates a new ib device and initializes it.
@@ -194,7 +154,7 @@ int ovey_new_device_if_not_exists(
 	opr_info("invoked\n");
 
 	ovey_ib_dev = ib_device_get_by_name(ovey_device_info->device_name,
-					    RDMA_DRIVER_OVEY_ID);
+					    RDMA_DRIVER_UNKNOWN);
 	if (ovey_ib_dev) {
 		opr_info("invoked\n");
 		ib_device_put(ovey_ib_dev);
@@ -223,7 +183,7 @@ int ovey_delete_device(char *device_name)
 {
 	struct ib_device *ovey_ib_dev;
 
-	ovey_ib_dev = ib_device_get_by_name(device_name, RDMA_DRIVER_OVEY_ID);
+	ovey_ib_dev = ib_device_get_by_name(device_name, RDMA_DRIVER_UNKNOWN);
 	if (!ovey_ib_dev) {
 		return -ENOENT;
 	}
@@ -326,7 +286,7 @@ static void __exit ovey_module_exit(void)
 	ovey_completion_clear();
 
 	// unregisters all "ovey" devices
-	ib_unregister_driver(RDMA_DRIVER_OVEY_ID);
+	ib_unregister_driver(RDMA_DRIVER_OVEY);
 
 	// unregister ovey netlink family
 	ocp_fini();
