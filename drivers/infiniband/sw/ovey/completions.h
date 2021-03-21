@@ -41,12 +41,6 @@ struct ovey_completion_chain * ovey_completion_add_entry(void);
 int ovey_completion_resolve_by_id(u64 completion_id);
 
 /**
- * Deletes an entry from the list.
- * @param entry
- */
-void ovey_completion_delete_entry(struct ovey_completion_chain * entry);
-
-/**
  * Clears the list with all items. It also checks if all items
  * are set to done.
  * @param entry

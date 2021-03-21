@@ -61,7 +61,11 @@ int ovey_completion_resolve_by_id(u64 completion_id) {
     return 0;
 }
 
-void ovey_completion_delete_entry(struct ovey_completion_chain * entry) {
+/**
+ * Deletes an entry from the list.
+ * @param entry
+ */
+static void ovey_completion_delete_entry(struct ovey_completion_chain * entry) {
     struct list_head * head = &ovey_completion_list.list_item;
 
     // Will update the pointers next and prev
