@@ -1346,6 +1346,7 @@ int ib_register_device(struct ib_device *device, const char *name,
 	if (ret)
 		return ret;
 
+	printk("WAH %s %d device %s\n", __FUNCTION__, __LINE__, device->name);
 	ret = ib_cache_setup_one(device);
 	if (ret) {
 		dev_warn(&device->dev,
@@ -2255,17 +2256,30 @@ void ib_enum_roce_netdev(struct ib_device *ib_dev,
 {
 	unsigned int port;
 
-	rdma_for_each_port (ib_dev, port)
+	rdma_for_each_port (ib_dev, port) {
+		printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+		       ib_dev->name, port);
 		if (rdma_protocol_roce(ib_dev, port)) {
 			struct net_device *idev =
 				ib_device_get_netdev(ib_dev, port);
 
-			if (filter(ib_dev, port, idev, filter_cookie))
+			printk("WAH %s %d device %s port %d ib_net_dev %px\n", __FUNCTION__,
+			       __LINE__, ib_dev->name, port, idev);
+			if (filter(ib_dev, port, idev, filter_cookie)) {
+				printk("WAH %s %d device %s port %d\n",
+				       __FUNCTION__, __LINE__, ib_dev->name,
+				       port);
 				cb(ib_dev, port, idev, cookie);
+			}
 
+			printk("WAH %s %d device %s port %d\n", __FUNCTION__,
+			       __LINE__, ib_dev->name, port);
 			if (idev)
 				dev_put(idev);
+			printk("WAH %s %d device %s port %d\n", __FUNCTION__,
+			       __LINE__, ib_dev->name, port);
 		}
+	}
 }
 
 /**
@@ -2288,8 +2302,11 @@ void ib_enum_all_roce_netdevs(roce_netdev_filter filter,
 	unsigned long index;
 
 	down_read(&devices_rwsem);
-	xa_for_each_marked (&devices, index, dev, DEVICE_REGISTERED)
+	xa_for_each_marked (&devices, index, dev, DEVICE_REGISTERED) {
+		printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+		       dev->name, 0);
 		ib_enum_roce_netdev(dev, filter, filter_cookie, cb, cookie);
+	}
 	up_read(&devices_rwsem);
 }
 

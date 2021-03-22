@@ -24,6 +24,8 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 	struct ib_device *const parent)
 {
 	struct ovey_device *ovey_dev = NULL;
+	struct net_device *netdev = NULL;
+	int ret;
 
 	ovey_dev = ib_alloc_device(ovey_device, base);
 	if (!ovey_dev)
@@ -114,35 +116,28 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 	UNSET_OVEY_OP_IF_NOT_AVAILABLE(query_pkey);
 	UNSET_OVEY_OP_IF_NOT_AVAILABLE(query_qp);
 
-	return ovey_dev;
-
-#if 0
-error:
-	ib_dealloc_device(&ovey_dev->base);
-
-	return NULL;
-#endif
-}
-
-/**
- *
- * @param ovey_dev
- * @param name
- * @return 0 on succes or negative error
- */
-static int ovey_device_register(struct ovey_device *ovey_dev, const char *name)
-{
-	int ret;
+	netdev = ib_device_netdev(parent, 1);
+	ret = ib_device_set_netdev(&ovey_dev->base, netdev, 1);
+	if (ret) {
+		opr_err("ovey: set netdev error %d\n", ret);
+		goto error;
+	}
 
 	opr_info("invoked\n");
-	ret = ib_register_device(&ovey_dev->base, name, NULL);
+	ret = ib_register_device(&ovey_dev->base, ovey_device_info->device_name, NULL);
 	if (ret) {
 		opr_err("ovey: device registration error %d\n", ret);
+		goto error;
 	}
 
 	opr_info("registered\n");
 
-	return ret;
+	return ovey_dev;
+
+error:
+	ib_dealloc_device(&ovey_dev->base);
+
+	return ERR_PTR(-EINVAL);
 }
 
 int ovey_new_device_if_not_exists(
@@ -151,7 +146,6 @@ int ovey_new_device_if_not_exists(
 {
 	struct ib_device *ovey_ib_dev;
 	struct ovey_device *ovey_dev = NULL;
-	int ret = -ENOMEM;
 
 	opr_info("invoked\n");
 
@@ -166,19 +160,13 @@ int ovey_new_device_if_not_exists(
 
 	ovey_dev = ovey_alloc_and_setup_new_device(ovey_device_info, parent);
 	opr_info("invoked: %px\n", ovey_dev);
-	if (ovey_dev) {
-		opr_info("ovey: new device\n");
-
-		ret = ovey_device_register(ovey_dev,
-					   ovey_device_info->device_name);
-		opr_info("ovey: new device done %d\n", ret);
-		if (ret) {
-			opr_err("ovey_device_register() failed: %d\n", ret);
-			ib_dealloc_device(&ovey_dev->base);
-		}
+	if (IS_ERR(ovey_dev)) {
+		opr_err("ovey_device_register() failed: %ld\n",
+			PTR_ERR(ovey_dev));
+		return PTR_ERR(ovey_dev);
 	}
 
-	return ret;
+	return 0;
 }
 
 int ovey_delete_device(char *device_name)

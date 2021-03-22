@@ -112,7 +112,7 @@ static int ovey_query_pkey(struct ib_device *base_dev, u8 port, u16 idx, u16 *pk
 	opr_info("verb invoked: port=%d, idx=%d, pkey=%d\n", port, idx, *pkey);
 
 	ret = ib_query_pkey(ovey_dev->parent, port, idx, pkey);
-	if (ret < 0) {
+	if (ret) {
 		opr_err("query_pkey() on parent device failed! %d\n", ret);
 	}
 

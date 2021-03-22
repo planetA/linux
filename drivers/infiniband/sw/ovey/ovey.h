@@ -82,6 +82,8 @@ struct ovey_device {
 	// The actual device the ovey device uses
 	struct ib_device *parent;
 
+	struct net_device *ndev;
+
     // Virtual networks are identified by a uuid.
     // Because I don't need to process the ID here and just have to store
     // it, I just store it's easy to read string representation.

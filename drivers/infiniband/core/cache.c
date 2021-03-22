@@ -323,9 +323,10 @@ static void store_gid_entry(struct ib_gid_table *table,
 {
 	entry->state = GID_TABLE_ENTRY_VALID;
 
-	dev_dbg(&entry->attr.device->dev, "%s port=%d index=%d gid %pI6\n",
+	printk("WAH %s port=%d index=%d gid %pI6\n",
 		__func__, entry->attr.port_num, entry->attr.index,
 		entry->attr.gid.raw);
+	if (entry->attr.index < 2) dump_stack();
 
 	lockdep_assert_held(&table->lock);
 	write_lock_irq(&table->rwlock);
@@ -556,6 +557,8 @@ static int __ib_cache_gid_add(struct ib_device *ib_dev, u8 port,
 	 * IB spec version 1.3 section 4.1.1 point (6) and
 	 * section 12.7.10 and section 12.7.20
 	 */
+	printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, port);
 	if (rdma_is_zero_gid(gid))
 		return -EINVAL;
 
@@ -850,12 +853,16 @@ void ib_cache_gid_set_default_gid(struct ib_device *ib_dev, u8 port,
 	memset(&gid_attr, 0, sizeof(gid_attr));
 	gid_attr.ndev = ndev;
 
+	printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, port);
 	for (gid_type = 0; gid_type < IB_GID_TYPE_SIZE; ++gid_type) {
 		if (1UL << gid_type & ~gid_type_mask)
 			continue;
 
 		gid_attr.gid_type = gid_type;
 
+		printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+		       ib_dev->name, port);
 		if (mode == IB_CACHE_GID_DEFAULT_MODE_SET) {
 			make_default_gid(ndev, &gid);
 			__ib_cache_gid_add(ib_dev, port, &gid,
@@ -927,11 +934,16 @@ static int gid_table_setup_one(struct ib_device *ib_dev)
 	int err;
 
 	err = _gid_table_setup_one(ib_dev);
+	printk("WAH %s %d device %s err %d\n", __FUNCTION__, __LINE__, ib_dev->name, err);
 
 	if (err)
 		return err;
 
+	printk("WAH %s %d device %s err %d\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, err);
 	rdma_roce_rescan_device(ib_dev);
+	printk("WAH %s %d device %s err %d\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, err);
 
 	return err;
 }
@@ -1628,13 +1640,18 @@ int ib_cache_setup_one(struct ib_device *device)
 	unsigned int p;
 	int err;
 
+	printk("WAH %s %d device %s\n", __FUNCTION__, __LINE__, device->name);
 	rwlock_init(&device->cache_lock);
 
+	printk("WAH %s %d device %s\n", __FUNCTION__, __LINE__, device->name);
 	err = gid_table_setup_one(device);
 	if (err)
 		return err;
 
+	printk("WAH %s %d device %s\n", __FUNCTION__, __LINE__, device->name);
 	rdma_for_each_port (device, p) {
+		printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+		       device->name, p);
 		err = ib_cache_update(device, p, true);
 		if (err)
 			return err;
