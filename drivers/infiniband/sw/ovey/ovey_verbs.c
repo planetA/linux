@@ -93,7 +93,7 @@ static int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	int ret;
-	opr_info("verb invoked\n");
+	opr_info("verb invoked port %d idx %d\n", port, idx);
 
 	// forward operation to parent
 	ret = ovey_dev->parent->ops.query_gid(ovey_dev->parent, port, idx, gid);

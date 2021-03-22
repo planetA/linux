@@ -134,12 +134,13 @@ static int ovey_device_register(struct ovey_device *ovey_dev, const char *name)
 {
 	int ret;
 
+	opr_info("invoked\n");
 	ret = ib_register_device(&ovey_dev->base, name, NULL);
 	if (ret) {
 		opr_err("ovey: device registration error %d\n", ret);
 	}
 
-	ovey_dbg(&ovey_dev->base, "Registered\n");
+	opr_info("registered\n");
 
 	return ret;
 }
