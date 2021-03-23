@@ -116,7 +116,7 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 	UNSET_OVEY_OP_IF_NOT_AVAILABLE(query_pkey);
 	UNSET_OVEY_OP_IF_NOT_AVAILABLE(query_qp);
 
-	netdev = ib_device_netdev(parent, 1);
+	netdev = ib_device_get_netdev(parent, 1);
 	ret = ib_device_set_netdev(&ovey_dev->base, netdev, 1);
 	if (ret) {
 		opr_err("ovey: set netdev error %d\n", ret);

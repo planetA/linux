@@ -2166,8 +2166,7 @@ static void free_netdevs(struct ib_device *ib_dev)
 	}
 }
 
-struct net_device *ib_device_get_netdev(struct ib_device *ib_dev,
-					unsigned int port)
+struct net_device *ib_device_get_netdev(struct ib_device *ib_dev, u8 port)
 {
 	struct ib_port_data *pdata;
 	struct net_device *res;
@@ -2203,6 +2202,7 @@ struct net_device *ib_device_get_netdev(struct ib_device *ib_dev,
 
 	return res;
 }
+EXPORT_SYMBOL(ib_device_get_netdev);
 
 /**
  * ib_device_get_by_netdev - Find an IB device associated with a netdev
