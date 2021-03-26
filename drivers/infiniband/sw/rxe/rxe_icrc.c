@@ -59,6 +59,10 @@ u32 rxe_icrc_hdr(struct rxe_pkt_info *pkt, struct sk_buff *skb)
 	/* exclude bth.resv8a */
 	bth->qpn |= cpu_to_be32(~BTH_QPN_MASK);
 
+	printk("WAH %s %d pkt %px", __FUNCTION__, __LINE__, pkt);
+	printk("WAH %s %d pkt %px rxe %px", __FUNCTION__, __LINE__, pkt, pkt->rxe);
+	printk("WAH %s %d pkt %px rxe %px tfm %px", __FUNCTION__, __LINE__, pkt,
+	       pkt->rxe, pkt->rxe->tfm);
 	length = hdr_size + RXE_BTH_BYTES;
 	crc = rxe_crc32(pkt->rxe, crc, pshdr, length);
 

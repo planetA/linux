@@ -6,12 +6,14 @@
 #include "completions.h"
 #include "virtualized_properties.h"
 
+#if 0
 DEFINE_XARRAY(qp_xarray);
 
 static inline struct ovey_qp *to_ovey_qp(struct ib_qp *base_qp)
 {
 	return xa_load(&qp_xarray, (uintptr_t) base_qp);
 }
+#endif
 
 static int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *attr,
 			     struct ib_udata *udata)
@@ -195,20 +197,25 @@ static int ovey_alloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
-	int ret;
 
 	opr_info("verb invoked ibpd %px ovey_pd %px uobject %px ufile %px\n",
 		 pd, ovey_pd, pd->uobject,
 		 pd->uobject ? pd->uobject->ufile :
 				     (struct ib_uverbs_file *)0xf);
 
+#if 1
+	ovey_pd->parent = ib_alloc_pd_user(ovey_dev->parent, 0, udata);
+#else
 	ovey_pd->parent = pd;
 	ovey_pd->parent->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.alloc_pd(ovey_pd->parent, udata);
 	ovey_pd->parent->device = &ovey_dev->base;
-	if (ret) {
-		opr_err("ib_alloc_pd failed for parent device %d\n", ret);
-		return ret;
+#endif
+	opr_info("verb invoked ovey_pd %px \n", ovey_pd);
+	opr_info("verb invoked ovey_pd->parent %px \n", ovey_pd->parent);
+	if (IS_ERR(ovey_pd->parent)) {
+		opr_err("ib_alloc_pd failed for parent device %ld\n", PTR_ERR(ovey_pd->parent));
+		return PTR_ERR(ovey_pd->parent);
 	}
 
 	return 0;
@@ -221,10 +228,17 @@ static int ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	int ret;
 
 	opr_info("verb invoked uobject %px \n", pd->uobject);
+	opr_info("verb invoked ovey_pd %px \n", ovey_pd);
+	opr_info("verb invoked ovey_pd->parent %px \n", ovey_pd->parent);
+	opr_info("verb invoked %s \n", ovey_pd->parent->device->name);
 
+#if 1
+	ret = ib_dealloc_pd_user(ovey_pd->parent, udata);
+#else
 	ovey_pd->parent->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.dealloc_pd(ovey_pd->parent, udata);
 	ovey_pd->parent->device = &ovey_dev->base;
+#endif
 
 	opr_info("verb invoked %d\n", ret);
 
@@ -362,10 +376,7 @@ static struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
 		goto err_out;
 	}
 
-	ovey_pd->parent->device = ovey_dev->parent;
-	ovey_mr->parent = ovey_dev->parent->ops.reg_user_mr(ovey_pd->parent, start, len,
-							    rnic_va, rights, udata);
-	ovey_pd->parent->device = &ovey_dev->base;
+	ovey_mr->parent = ib_reg_user_mr_user(pd, start, len, rnic_va, rights, udata);
 	if (IS_ERR(ovey_mr->parent)) {
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
@@ -417,23 +428,23 @@ static struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 		goto err_out;
 	}
 
-	ovey_pd->parent->device = ovey_dev->parent;
 	ovey_mr->parent = ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights);
-	ovey_pd->parent->device = &ovey_dev->base;
 	if (IS_ERR(ovey_mr->parent)) {
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
 	}
 	ovey_mr->parent->device = ovey_pd->parent->device;
+	opr_info("verb invoked %s parent %s\n", ovey_pd->parent->device->name,
+		 pd->device->name);
 	ovey_mr->parent->pd = ovey_pd->parent;
 	ovey_mr->parent->type = IB_MR_TYPE_DMA;
 	ovey_mr->parent->uobject = NULL;
 	ovey_mr->parent->need_inval = false;
 
-	pr_err("ALLOCATED MR ovey %px parent %px parent device %px\n", ovey_mr,
-	       ovey_mr->parent, ovey_mr->parent->device);
+	pr_err("ALLOCATED MR ovey %px &ovey_mr->base %px parent %px parent device %px\n",
+	       ovey_mr, &ovey_mr->base, ovey_mr->parent,
+	       ovey_mr->parent->device);
 
-	// I think this has to be parent..
 	return &ovey_mr->base;
 
   err_out:
@@ -442,9 +453,6 @@ static struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 	}
 
 	return ERR_PTR(ret);
-	/* ib_mr = ovey_dev->parent->ops.get_dma_mr(ovey_pd->parent, rights); */
-	/* opr_info("%px\n", ib_mr); */
-	/* return ib_mr; */
 }
 
 /*
@@ -459,42 +467,16 @@ static int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_mr->device);
 	struct ovey_mr *ovey_mr = to_ovey_mr(base_mr);
-	int ret;
+	int ret = 0;
 
 	opr_info("verb invoked mr %px dev %px ovey_mr->parent %px\n", base_mr, ovey_dev, ovey_mr->parent);
-
-	ovey_mr->parent->device = ovey_dev->parent;
-	ret = ovey_dev->parent->ops.dereg_mr(ovey_mr->parent, udata);
+	if (ovey_mr->parent) {
+		ret = ovey_dev->parent->ops.dereg_mr(ovey_mr->parent, udata);
+	}
 
 	kfree(base_mr);
 
 	return ret;
-}
-
-static int ovey_create_cq_kernel(struct ovey_device *ovey_dev,
-				 struct ovey_cq *ovey_cq,
-				 const struct ib_cq_init_attr *attr)
-{
-#if 0
-	ovey_cq->parent = ib_alloc_cq(ovey_dev->parent, ovey_cq->base.cq_context,
-				      (int)attr->cqe, attr->comp_vector,
-				      ovey_cq->base.poll_ctx);
-	if (IS_ERR(ovey_cq->parent)) {
-		return PTR_ERR(ovey_cq->parent);
-	}
-
-	return 0;
-#else
-	return -EOPNOTSUPP;
-#endif
-}
-
-static int ovey_create_cq_user(struct ovey_device *ovey_dev,
-			       struct ovey_cq *ovey_cq,
-			       const struct ib_cq_init_attr *attr,
-			       struct ib_udata *udata)
-{
-	return -EOPNOTSUPP;
 }
 
 /*
@@ -512,7 +494,6 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
 	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
-	int err;
 
 	opr_info("verb invoked %px\n", udata);
 	// this is the function that also gets invoked after the syscall
@@ -520,29 +501,22 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 	// base_eq gets filled by ioctl syscall which triggers __ib_alloc_cq_user
 	// this function calls this one and we forward it to the parent device
 
-	if (udata) {
-		ovey_cq->parent = base_cq;
-		opr_info("base_cq %px ovey_cq %px ovey_dev %px", base_cq,
-			 ovey_cq, ovey_dev);
-		opr_info("ovey_cq %px\n", ovey_cq);
-		opr_info("ovey_cq->parent %px\n", ovey_cq->parent);
-		opr_info("ovey_cq->parent->device %px\n",
-			 ovey_cq->parent->device);
-		opr_info("ovey_cq->parent->device %px %px\n", ovey_cq->parent,
-			 ovey_dev->parent);
+	opr_info("base_cq %px ovey_cq %px ovey_dev %px", base_cq, ovey_cq,
+		 ovey_dev);
+	opr_info("ovey_cq %px\n", ovey_cq);
 
-		ovey_cq->parent->device = ovey_dev->parent;
-		err = ovey_dev->parent->ops.create_cq(ovey_cq->parent, attr,
-						      udata);
-		/* err = ovey_create_cq_user(ovey_dev, ovey_cq, attr, udata); */
-		ovey_cq->parent->device = &ovey_dev->base;
-	} else {
-		err = ovey_create_cq_kernel(ovey_dev, ovey_cq, attr);
+	ovey_cq->parent =
+		ib_alloc_cq_user(ovey_dev->parent, ovey_cq->base.cq_context,
+				 (int)attr->cqe, attr->comp_vector, udata,
+				 ovey_cq->base.poll_ctx);
+	if (IS_ERR(ovey_cq->parent)) {
+		opr_err("Failed to create cq: %ld %px\n", PTR_ERR(ovey_cq->parent), udata);
+		return PTR_ERR(ovey_cq->parent);
 	}
 
-	opr_info("ovey_cq->parent=%px err %d\n", ovey_cq->parent, err);
+	opr_info("ovey_cq->parent=%px\n", ovey_cq->parent);
 
-	return err;
+	return 0;
 }
 
 /*
@@ -586,11 +560,7 @@ static int ovey_req_notify_cq(struct ib_cq *base_cq, enum ib_cq_notify_flags fla
 	int err;
 	opr_info("verb invoked\n");
 
-	ovey_cq->parent->device = ovey_dev->parent;
-
 	err = ib_req_notify_cq(ovey_cq->parent, flags);
-
-	ovey_cq->parent->device = &ovey_dev->base;
 
 	return err;
 }
@@ -601,17 +571,6 @@ static int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
 
 	opr_info("verb invoked\n");
-
-	if (udata) {
-		opr_info("Kernel CQ is not supported\n");
-		return -EOPNOTSUPP;
-	}
-
-	if (!ovey_dev->parent->ops.destroy_cq) {
-		return -EOPNOTSUPP;
-	}
-
-	ovey_cq->parent->device = ovey_dev->parent;
 
 	ib_destroy_cq_user(ovey_cq->parent, udata);
 
@@ -636,11 +595,7 @@ static struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 	struct ovey_qp *qp = NULL;
 	int err = 0;
 
-	opr_info("verb invoked\n");
-
-	if (!udata) {
-		return ERR_PTR(-EOPNOTSUPP);
-	}
+	opr_info("verb invoked udata %px\n", udata);
 
 	qp = kzalloc(sizeof(*qp), GFP_KERNEL);
 	if (!qp) {
@@ -648,26 +603,27 @@ static struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 		goto err1;
 	}
 
-	ovey_pd->parent->device = ovey_dev->parent;
-	qp->parent = ovey_dev->parent->ops.create_qp(ovey_pd->parent, attrs, udata);
-	ovey_pd->parent->device = &ovey_dev->base;
+	qp->parent = ib_create_qp_user(ovey_pd->parent, attrs, udata);
 	if (IS_ERR(qp->parent)) {
 		opr_err("create_qp() failed for parent device\n");
 		err = PTR_ERR(qp->parent);
 		goto err2;
 	}
 
+#if 0
 	err = xa_err(xa_store(&qp_xarray, (uintptr_t)qp->parent, qp, GFP_KERNEL));
 	if (err) {
 		goto err3;
 	}
+#endif
 
-	return qp->parent;
+	opr_info("created qp ovey_dev %s parent_dev %s qp_dev %s\n",
+		 ovey_dev->base.name, ovey_dev->parent->name,
+		 qp->parent->device->name);
 
-  err3:
-	ovey_pd->parent->device = ovey_dev->parent;
-	ovey_dev->parent->ops.destroy_qp(qp->parent, NULL);
-	ovey_pd->parent->device = &ovey_dev->base;
+	return &qp->base;
+
+	ib_destroy_qp(qp->parent);
   err2:
 	kfree(qp);
   err1:
@@ -692,10 +648,8 @@ static int ovey_query_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		return -EINVAL;
 	}
 
-	ovey_qp->parent->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.query_qp(ovey_qp->parent, qp_attr,
 					     qp_attr_mask, qp_init_attr);
-	ovey_qp->parent->device = &ovey_dev->base;
 	if (ret) {
 		opr_err("%s() failed for parent device\n", __FUNCTION__);
 	}
@@ -713,6 +667,9 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 	struct sk_buff *req_sk_buf;
 	int ret;
 	opr_info("verb invoked\n");
+	opr_info("modify qp ovey_dev %s parent_dev %s qp_dev %s\n",
+		 ovey_dev->base.name, ovey_dev->parent->name,
+		 ovey_qp->parent->device->name);
 
 	if (!ovey_qp) {
 		opr_err("Failed to find the QP");
@@ -744,10 +701,17 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		return -EINVAL;
 	}
 
-	ovey_qp->parent->device = ovey_dev->parent;
+	opr_info("modify 2 qp ovey_dev %s parent_dev %s qp_dev %s\n",
+		 ovey_dev->base.name, ovey_dev->parent->name,
+		 ovey_qp->parent->device->name);
+
+#if 1
+	ret = ib_modify_qp_with_udata(ovey_qp->parent, qp_attr, qp_attr_mask,
+				      udata);
+#else
 	ret = ovey_dev->parent->ops.modify_qp(ovey_qp->parent, qp_attr,
 					      qp_attr_mask, udata);
-	ovey_qp->parent->device = &ovey_dev->base;
+#endif
 	if (ret) {
 		opr_err("%s() failed for parent device\n", __FUNCTION__);
 	}
@@ -781,9 +745,11 @@ static int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 		return -EOPNOTSUPP;
 	}
 
-	ovey_qp->parent->device = ovey_dev->parent;
+	opr_info("post_send qp ovey_dev %s parent_dev %s qp_dev %s\n",
+		 ovey_dev->base.name, ovey_dev->parent->name,
+		 ovey_qp->parent->device->name);
+
 	ret = ovey_dev->parent->ops.post_send(ovey_qp->parent, wr, bad_wr);
-	ovey_qp->parent->device = &ovey_dev->base;
 	if (ret) {
 		opr_err("%s() failed for parent device\n", __FUNCTION__);
 	}
@@ -817,9 +783,11 @@ static int ovey_post_recv(struct ib_qp *base_qp, const struct ib_recv_wr *wr,
 		return -EOPNOTSUPP;
 	}
 
-	ovey_qp->parent->device = ovey_dev->parent;
+	opr_info("post_recv qp ovey_dev %s parent_dev %s qp_dev %s\n",
+		 ovey_dev->base.name, ovey_dev->parent->name,
+		 ovey_qp->parent->device->name);
+
 	ret = ovey_dev->parent->ops.post_recv(ovey_qp->parent, wr, bad_wr);
-	ovey_qp->parent->device = &ovey_dev->base;
 	if (ret) {
 		opr_err("%s() failed for parent device\n", __FUNCTION__);
 	}
@@ -840,15 +808,19 @@ static int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 		return -EINVAL;
 	}
 
-	ovey_qp->parent->device = ovey_dev->parent;
+#if 1
+	ret = ib_destroy_qp_user(ovey_qp->parent, udata);
+#else
 	ret = ovey_dev->parent->ops.destroy_qp(ovey_qp->parent, udata);
-	ovey_qp->parent->device = &ovey_dev->base;
+#endif
 	if (ret) {
 		opr_err("%s() failed for parent device\n", __FUNCTION__);
 	}
 
+#if 0
 	old_qp = xa_erase(&qp_xarray, (uintptr_t)ovey_qp->parent);
 	BUG_ON(old_qp != ovey_qp);
+#endif
 	kfree(ovey_qp);
 
 	return ret;
@@ -910,4 +882,7 @@ const struct ib_device_ops ovey_device_ops = {
 	// Mapping to application specific structs
 	// this way the kernel can alloc a proper amount of memory
 	// TODO: also for _srq
+
+	INIT_RDMA_OBJ_SIZE(ib_pd, ovey_pd, base),
+	INIT_RDMA_OBJ_SIZE(ib_cq, ovey_cq, base),
 };

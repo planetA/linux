@@ -409,7 +409,8 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 	struct rxe_qp *qp;
 	struct rxe_create_qp_resp __user *uresp = NULL;
 
-	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+	printk("WAH %s:%d %s: %px %px\n", __FUNCTION__, __LINE__,
+	       ibpd->device->name, ibpd->device, rxe);
 
 	if (udata) {
 		if (udata->outlen < sizeof(*uresp))
@@ -441,6 +442,8 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 	if (err)
 		goto err3;
 
+	printk("WAH %s:%d %s: %px %px\n", __FUNCTION__, __LINE__,
+	       qp->ibqp.device->name, qp->ibqp.device, rxe);
 	return &qp->ibqp;
 
 err3:
@@ -458,7 +461,8 @@ static int rxe_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	struct rxe_dev *rxe = to_rdev(ibqp->device);
 	struct rxe_qp *qp = to_rqp(ibqp);
 
-	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
+	printk("WAH %s:%d %s: %px\n", __FUNCTION__, __LINE__,
+	       ibqp->device->name, rxe);
 
 	err = rxe_qp_chk_attr(rxe, qp, attr, mask);
 	if (err)
@@ -924,6 +928,7 @@ static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 	       mr, &mr->ibmr, &rxe->mr_pool, pd, &pd->pelem, &mr->pelem);
 	printk("WAH reg mr %px &mr->ibmr %px mr->ibmr.pd %px mr_pd(mr) %px pd %px",
 	       mr, &mr->ibmr, mr->ibmr.pd, mr_pd(mr), pd);
+	dump_stack();
 
 	return &mr->ibmr;
 }

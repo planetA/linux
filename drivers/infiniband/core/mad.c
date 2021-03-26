@@ -2919,6 +2919,7 @@ static int create_mad_qp(struct ib_mad_qp_info *qp_info,
 	qp_init_attr.event_handler = qp_event_handler;
 	qp_info->qp = ib_create_qp(qp_info->port_priv->pd, &qp_init_attr);
 	if (IS_ERR(qp_info->qp)) {
+		dump_stack();
 		dev_err(&qp_info->port_priv->device->dev,
 			"Couldn't create ib_mad QP%d\n",
 			get_spl_qp_index(qp_type));

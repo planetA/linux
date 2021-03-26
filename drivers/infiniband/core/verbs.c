@@ -255,8 +255,8 @@ EXPORT_SYMBOL(rdma_port_get_link_layer);
  * Every PD has a local_dma_lkey which can be used as the lkey value for local
  * memory operations.
  */
-struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
-		const char *caller)
+struct ib_pd *__ib_alloc_pd_user(struct ib_device *device, unsigned int flags,
+				 struct ib_udata *udata, const char *caller)
 {
 	struct ib_pd *pd;
 	int mr_access_flags = 0;
@@ -275,7 +275,7 @@ struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
 	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
 	rdma_restrack_set_name(&pd->res, caller);
 
-	ret = device->ops.alloc_pd(pd, NULL);
+	ret = device->ops.alloc_pd(pd, udata);
 	if (ret) {
 		rdma_restrack_put(&pd->res);
 		kfree(pd);
@@ -309,6 +309,9 @@ struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
 		mr->need_inval	= false;
 
 		pd->__internal_mr = mr;
+		printk("WAH %s %d pd %px mr %px %s\n", __FUNCTION__, __LINE__,
+		       pd, pd->__internal_mr, pd->device->name);
+		dump_stack();
 
 		if (!(device->attrs.device_cap_flags & IB_DEVICE_LOCAL_DMA_LKEY))
 			pd->local_dma_lkey = pd->__internal_mr->lkey;
@@ -319,7 +322,7 @@ struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
 
 	return pd;
 }
-EXPORT_SYMBOL(__ib_alloc_pd);
+EXPORT_SYMBOL(__ib_alloc_pd_user);
 
 /**
  * ib_dealloc_pd_user - Deallocates a protection domain.
@@ -335,6 +338,8 @@ int ib_dealloc_pd_user(struct ib_pd *pd, struct ib_udata *udata)
 	int ret;
 
 	if (pd->__internal_mr) {
+		printk("WAH ib_dealloc_pd_user pd %px internal_mr %px\n", pd, pd->__internal_mr);
+		dump_stack();
 		ret = pd->device->ops.dereg_mr(pd->__internal_mr, NULL);
 		WARN_ON(ret);
 		pd->__internal_mr = NULL;
@@ -344,6 +349,7 @@ int ib_dealloc_pd_user(struct ib_pd *pd, struct ib_udata *udata)
 	   requires the caller to guarantee we can't race here. */
 	WARN_ON(atomic_read(&pd->usecnt));
 
+	printk("WAH %s %d %s\n", __FUNCTION__, __LINE__, pd->device->name);
 	ret = pd->device->ops.dealloc_pd(pd, udata);
 	if (ret)
 		return ret;
@@ -1197,8 +1203,9 @@ static struct ib_qp *create_xrc_qp_user(struct ib_qp *qp,
  *
  * NOTE: for user qp use ib_create_qp_user with valid udata!
  */
-struct ib_qp *ib_create_qp(struct ib_pd *pd,
-			   struct ib_qp_init_attr *qp_init_attr)
+struct ib_qp *ib_create_qp_user(struct ib_pd *pd,
+				struct ib_qp_init_attr *qp_init_attr,
+				struct ib_udata *udata)
 {
 	struct ib_device *device = pd ? pd->device : qp_init_attr->xrcd->device;
 	struct ib_qp *qp;
@@ -1223,7 +1230,7 @@ struct ib_qp *ib_create_qp(struct ib_pd *pd,
 	if (qp_init_attr->cap.max_rdma_ctxs)
 		rdma_rw_init_qp(device, qp_init_attr);
 
-	qp = _ib_create_qp(device, pd, qp_init_attr, NULL, NULL);
+	qp = _ib_create_qp(device, pd, qp_init_attr, udata, NULL);
 	if (IS_ERR(qp))
 		return qp;
 
@@ -1287,9 +1294,8 @@ struct ib_qp *ib_create_qp(struct ib_pd *pd,
 err:
 	ib_destroy_qp(qp);
 	return ERR_PTR(ret);
-
 }
-EXPORT_SYMBOL(ib_create_qp);
+EXPORT_SYMBOL(ib_create_qp_user);
 
 static const struct {
 	int			valid;
@@ -1977,12 +1983,11 @@ EXPORT_SYMBOL(ib_destroy_qp_user);
 
 /* Completion queues */
 
-struct ib_cq *__ib_create_cq(struct ib_device *device,
-			     ib_comp_handler comp_handler,
-			     void (*event_handler)(struct ib_event *, void *),
-			     void *cq_context,
-			     const struct ib_cq_init_attr *cq_attr,
-			     const char *caller)
+struct ib_cq *
+__ib_create_cq_user(struct ib_device *device, ib_comp_handler comp_handler,
+		    void (*event_handler)(struct ib_event *, void *),
+		    void *cq_context, const struct ib_cq_init_attr *cq_attr,
+		    struct ib_udata *udata, const char *caller)
 {
 	struct ib_cq *cq;
 	int ret;
@@ -2001,7 +2006,7 @@ struct ib_cq *__ib_create_cq(struct ib_device *device,
 	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
 	rdma_restrack_set_name(&cq->res, caller);
 
-	ret = device->ops.create_cq(cq, cq_attr, NULL);
+	ret = device->ops.create_cq(cq, cq_attr, udata);
 	if (ret) {
 		rdma_restrack_put(&cq->res);
 		kfree(cq);
@@ -2011,7 +2016,7 @@ struct ib_cq *__ib_create_cq(struct ib_device *device,
 	rdma_restrack_add(&cq->res);
 	return cq;
 }
-EXPORT_SYMBOL(__ib_create_cq);
+EXPORT_SYMBOL(__ib_create_cq_user);
 
 int rdma_set_cq_moderation(struct ib_cq *cq, u16 cq_count, u16 cq_period)
 {
@@ -2056,8 +2061,9 @@ EXPORT_SYMBOL(ib_resize_cq);
 
 /* Memory regions */
 
-struct ib_mr *ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
-			     u64 virt_addr, int access_flags)
+struct ib_mr *ib_reg_user_mr_user(struct ib_pd *pd, u64 start, u64 length,
+				  u64 virt_addr, int access_flags,
+				  struct ib_udata *udata)
 {
 	struct ib_mr *mr;
 
@@ -2070,7 +2076,7 @@ struct ib_mr *ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	}
 
 	mr = pd->device->ops.reg_user_mr(pd, start, length, virt_addr,
-					 access_flags, NULL);
+					 access_flags, udata);
 
 	if (IS_ERR(mr))
 		return mr;
@@ -2086,7 +2092,7 @@ struct ib_mr *ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 
 	return mr;
 }
-EXPORT_SYMBOL(ib_reg_user_mr);
+EXPORT_SYMBOL(ib_reg_user_mr_user);
 
 int ib_advise_mr(struct ib_pd *pd, enum ib_uverbs_advise_mr_advice advice,
 		 u32 flags, struct ib_sge *sg_list, u32 num_sge)
@@ -2111,6 +2117,9 @@ int ib_dereg_mr_user(struct ib_mr *mr, struct ib_udata *udata)
 
 	trace_mr_dereg(mr);
 	rdma_restrack_del(&mr->res);
+	printk("WAH ib_dereg_mr_user pd %px internal_mr %px mr %px\n", pd,
+	       pd->__internal_mr, mr);
+	dump_stack();
 	ret = mr->device->ops.dereg_mr(mr, udata);
 	if (!ret) {
 		atomic_dec(&pd->usecnt);

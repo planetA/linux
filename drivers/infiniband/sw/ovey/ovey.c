@@ -69,8 +69,6 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 	ovey_dev->base.ops.driver_id = parent->ops.driver_id;
 
 	INIT_OVEY_OBJ_SIZE(ovey_dev, ah, parent);
-	INIT_OVEY_OBJ_SIZE(ovey_dev, cq, parent);
-	INIT_OVEY_OBJ_SIZE(ovey_dev, pd, parent);
 	INIT_OVEY_OBJ_SIZE(ovey_dev, ucontext, parent);
 
 	// no we make some changes

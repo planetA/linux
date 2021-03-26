@@ -570,6 +570,8 @@ int rxe_requester(void *arg)
 	struct rxe_send_wqe rollback_wqe;
 	u32 rollback_psn;
 
+	printk("WAH %s:%d %s: %px\n", __FUNCTION__, __LINE__,
+	       qp->ibqp.device->name, qp->ibqp.device);
 	if (unlikely(!qp->valid || qp->req.state == QP_STATE_ERROR))
 		goto exit;
 
