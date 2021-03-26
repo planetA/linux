@@ -106,6 +106,7 @@ struct ovey_pd {
 };
 
 struct ovey_ah {
+	struct ib_ah base;
 	struct ib_ah *parent;
 };
 
@@ -155,31 +156,17 @@ static inline struct ovey_device *to_ovey_dev(struct ib_device *base_dev)
 
 static inline struct ovey_pd *to_ovey_pd(struct ib_pd *base_pd)
 {
-#if 1
 	return container_of(base_pd, struct ovey_pd, base);
-#else
-	return (struct ovey_pd *)((uintptr_t)base_pd +
-				  base_pd->device->ops.size_ib_pd -
-				  sizeof(struct ovey_pd));
-#endif
 }
 
 static inline struct ovey_ah *to_ovey_ah(struct ib_ah *base_ah)
 {
-	return (struct ovey_ah *)((uintptr_t)base_ah +
-				  base_ah->device->ops.size_ib_ah -
-				  sizeof(struct ovey_ah));
+	return container_of(base_ah, struct ovey_ah, base);
 }
 
 static inline struct ovey_cq *to_ovey_cq(struct ib_cq *base_cq)
 {
-#if 1
 	return container_of(base_cq, struct ovey_cq, base);
-#else
-	return (struct ovey_cq *)((uintptr_t)base_cq +
-				  base_cq->device->ops.size_ib_cq -
-				  sizeof(struct ovey_cq));
-#endif
 }
 
 static inline struct ovey_mr *to_ovey_mr(struct ib_mr *base_mr)
@@ -187,15 +174,10 @@ static inline struct ovey_mr *to_ovey_mr(struct ib_mr *base_mr)
 	return container_of(base_mr, struct ovey_mr, base);
 }
 
-#if 1
 static inline struct ovey_qp *to_ovey_qp(struct ib_qp *base_qp)
 {
 	return container_of(base_qp, struct ovey_qp, base);
-	/* return (struct ovey_qp *)((uintptr_t)base_qp + */
-	/* 			  base_qp->device->ops.size_ib_qp - */
-	/* 			  sizeof(struct ovey_qp)); */
 }
-#endif
 
 // functions that must be accessible from ocp.c
 

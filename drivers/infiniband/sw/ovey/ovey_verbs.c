@@ -250,54 +250,49 @@ static int ovey_create_ah(struct ib_ah *base_ah,
 			 struct ib_udata *udata)
 
 {
-	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
 	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
-	int ret;
+	struct ovey_pd *ovey_pd = to_ovey_pd(base_ah->pd);
 
-	ovey_ah->parent = base_ah;
-	ovey_ah->parent->device = ovey_dev->parent;
-	ret = ovey_dev->parent->ops.create_ah(ovey_ah->parent, init_attr, udata);
-	ovey_ah->parent->device = &ovey_dev->base;
+	ovey_ah->parent = rdma_create_user_ah(ovey_pd->parent, init_attr->ah_attr, udata);
+	if (IS_ERR(ovey_ah->parent)) {
+		opr_err("Failed to create AH: %ld\n", PTR_ERR(ovey_ah->parent));
+		return PTR_ERR(ovey_ah->parent);
+	}
 
-	return ret;
+	opr_info("verb invoked %d\n", 0);
+	return 0;
 }
 
 static int ovey_modify_ah(struct ib_ah *base_ah, struct rdma_ah_attr *attr)
 {
-	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
 	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
 	int ret;
 
-	ovey_ah->parent->device = ovey_dev->parent;
-	ret = ovey_dev->parent->ops.modify_ah(ovey_ah->parent, attr);
-	ovey_ah->parent->device = &ovey_dev->base;
+	ret = rdma_modify_ah(ovey_ah->parent, attr);
 
+	opr_info("verb invoked %d\n", ret);
 	return ret;
 }
 
 static int ovey_query_ah(struct ib_ah *base_ah, struct rdma_ah_attr *attr)
 {
-	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
 	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
 	int ret;
 
-	ovey_ah->parent->device = ovey_dev->parent;
-	ret = ovey_dev->parent->ops.query_ah(ovey_ah->parent, attr);
-	ovey_ah->parent->device = &ovey_dev->base;
+	ret = rdma_query_ah(ovey_ah->parent, attr);
 
+	opr_info("verb invoked %d\n", ret);
 	return ret;
 }
 
 static int ovey_destroy_ah(struct ib_ah *base_ah, u32 flags)
 {
-	struct ovey_device *ovey_dev = to_ovey_dev(base_ah->device);
 	struct ovey_ah *ovey_ah = to_ovey_ah(base_ah);
 	int ret;
 
-	ovey_ah->parent->device = ovey_dev->parent;
-	ret = ovey_dev->parent->ops.destroy_ah(ovey_ah->parent, flags);
-	ovey_ah->parent->device = &ovey_dev->base;
+	ret = rdma_destroy_ah_user(ovey_ah->parent, flags, NULL);
 
+	opr_info("verb invoked %d\n", ret);
 	return ret;
 }
 
@@ -368,7 +363,8 @@ static struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
 	struct ovey_mr *ovey_mr;
 	int ret = 0;
 
-	opr_info("verb invoked pd->uobject %px \n", pd->uobject);
+	opr_info("verb invoked pd->uobject %px dev %s parent %s\n", pd->uobject,
+		 pd->device->name, ovey_pd->parent->device->name);
 
 	ovey_mr = kzalloc(sizeof(*ovey_mr), GFP_KERNEL);
 	if (!ovey_mr) {
@@ -376,7 +372,8 @@ static struct ib_mr *ovey_reg_user_mr(struct ib_pd *pd, u64 start, u64 len,
 		goto err_out;
 	}
 
-	ovey_mr->parent = ib_reg_user_mr_user(pd, start, len, rnic_va, rights, udata);
+	dump_stack();
+	ovey_mr->parent = ib_reg_user_mr_user(ovey_pd->parent, start, len, rnic_va, rights, udata);
 	if (IS_ERR(ovey_mr->parent)) {
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
@@ -884,5 +881,6 @@ const struct ib_device_ops ovey_device_ops = {
 	// TODO: also for _srq
 
 	INIT_RDMA_OBJ_SIZE(ib_pd, ovey_pd, base),
+	INIT_RDMA_OBJ_SIZE(ib_ah, ovey_ah, base),
 	INIT_RDMA_OBJ_SIZE(ib_cq, ovey_cq, base),
 };
