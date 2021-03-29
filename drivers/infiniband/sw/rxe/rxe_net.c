@@ -411,6 +411,8 @@ int rxe_send(struct rxe_pkt_info *pkt, struct sk_buff *skb)
 	rxe_add_ref(&pkt->qp->pelem);
 	atomic_inc(&pkt->qp->skb_out);
 
+	rxe_print_skb(skb);
+
 	if (skb->protocol == htons(ETH_P_IP)) {
 		err = ip_local_out(dev_net(skb_dst(skb)->dev), skb->sk, skb);
 	} else if (skb->protocol == htons(ETH_P_IPV6)) {

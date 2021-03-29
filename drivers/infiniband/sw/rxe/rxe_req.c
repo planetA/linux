@@ -447,15 +447,19 @@ static int fill_packet(struct rxe_qp *qp, struct rxe_send_wqe *wqe,
 	struct rxe_dev *rxe = to_rdev(qp->ibqp.device);
 	u32 crc = 0;
 	u32 *p;
-	int err;
+	int err = 0;
 
+	pr_err("WAH %s %d err=%d\n", __FUNCTION__, __LINE__, err);
 	err = rxe_prepare(pkt, skb, &crc);
+	pr_err("WAH %s %d err=%d\n", __FUNCTION__, __LINE__, err);
 	if (err)
 		return err;
 
 	if (pkt->mask & RXE_WRITE_OR_SEND) {
 		if (wqe->wr.send_flags & IB_SEND_INLINE) {
 			u8 *tmp = &wqe->dma.inline_data[wqe->dma.sge_offset];
+			pr_err("WAH %s %d err=%d\n", __FUNCTION__, __LINE__,
+			       err);
 
 			crc = rxe_crc32(rxe, crc, tmp, paylen);
 			memcpy(payload_addr(pkt), tmp, paylen);
@@ -467,11 +471,15 @@ static int fill_packet(struct rxe_qp *qp, struct rxe_send_wqe *wqe,
 					payload_addr(pkt), paylen,
 					from_mem_obj,
 					&crc);
+			pr_err("WAH %s %d err=%d\n", __FUNCTION__, __LINE__,
+			       err);
 			if (err)
 				return err;
 		}
 		if (bth_pad(pkt)) {
 			u8 *pad = payload_addr(pkt) + paylen;
+			pr_err("WAH %s %d err=%d\n", __FUNCTION__, __LINE__,
+			       err);
 
 			memset(pad, 0, bth_pad(pkt));
 			crc = rxe_crc32(rxe, crc, pad, bth_pad(pkt));
@@ -480,6 +488,7 @@ static int fill_packet(struct rxe_qp *qp, struct rxe_send_wqe *wqe,
 	p = payload_addr(pkt) + paylen + bth_pad(pkt);
 
 	*p = ~crc;
+	pr_err("WAH %s %d err=%d\n", __FUNCTION__, __LINE__, err);
 
 	return 0;
 }
@@ -622,6 +631,8 @@ int rxe_requester(void *arg)
 			rmr->iova = wqe->wr.wr.reg.mr->iova;
 			wqe->state = wqe_state_done;
 			wqe->status = IB_WC_SUCCESS;
+			pr_err("WAH %s %d rmr state=VALID access=%x lkey %d rkey %d iova %llx status SUCCESS",
+			       __FUNCTION__, __LINE__, rmr->access, rmr->ibmr.lkey, rmr->ibmr.rkey, rmr->iova);
 		} else {
 			goto exit;
 		}
@@ -683,17 +694,20 @@ int rxe_requester(void *arg)
 		payload = mtu;
 	}
 
+	rxe_print_pkt(&pkt);
 	skb = init_req_packet(qp, wqe, opcode, payload, &pkt);
 	if (unlikely(!skb)) {
 		pr_err("qp#%d Failed allocating skb\n", qp_num(qp));
 		goto err;
 	}
 
+	rxe_print_pkt(&pkt);
 	if (fill_packet(qp, wqe, &pkt, skb, payload)) {
-		pr_debug("qp#%d Error during fill packet\n", qp_num(qp));
+		pr_err("qp#%d Error during fill packet\n", qp_num(qp));
 		kfree_skb(skb);
 		goto err;
 	}
+	rxe_print_pkt(&pkt);
 
 	/*
 	 * To prevent a race on wqe access between requester and completer,
@@ -705,6 +719,7 @@ int rxe_requester(void *arg)
 	update_wqe_state(qp, wqe, &pkt);
 	update_wqe_psn(qp, wqe, &pkt, payload);
 	ret = rxe_xmit_packet(qp, &pkt, skb);
+	rxe_print_pkt(&pkt);
 	if (ret) {
 		qp->need_req_skb = 1;
 
@@ -721,6 +736,7 @@ int rxe_requester(void *arg)
 	update_state(qp, wqe, &pkt, payload);
 
 out:
+	rxe_print_pkt(&pkt);
 	return 0;
 
 err:
@@ -729,5 +745,6 @@ err:
 	rxe_run_task_wait(&qp->comp.task);
 
 exit:
+	rxe_print_pkt(&pkt);
 	return -EAGAIN;
 }

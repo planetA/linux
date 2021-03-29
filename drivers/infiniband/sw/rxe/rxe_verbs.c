@@ -437,6 +437,8 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 	}
 
 	rxe_add_index(&qp->pelem);
+	printk("WAH rxe_add_index %d from %s %d\n", qp->pelem.index,
+	       __FUNCTION__, __LINE__);
 
 	err = rxe_qp_from_init(rxe, qp, pd, init, uresp, ibpd, udata);
 	if (err)
@@ -921,6 +923,7 @@ static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 		return ERR_PTR(-ENOMEM);
 
 	rxe_add_index(&mr->pelem);
+	printk("WAH rxe_add_index %d from %s %d\n", mr->pelem.index, __FUNCTION__, __LINE__);
 	rxe_add_ref(&pd->pelem);
 	rxe_mem_init_dma(pd, access, mr);
 
@@ -953,6 +956,8 @@ static struct ib_mr *rxe_reg_user_mr(struct ib_pd *ibpd,
 	}
 
 	rxe_add_index(&mr->pelem);
+	printk("WAH rxe_add_index %d from %s %d\n", mr->pelem.index,
+	       __FUNCTION__, __LINE__);
 
 	rxe_add_ref(&pd->pelem);
 
@@ -1008,6 +1013,8 @@ static struct ib_mr *rxe_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 	}
 
 	rxe_add_index(&mr->pelem);
+	printk("WAH rxe_add_index %d from %s %d\n", mr->pelem.index,
+	       __FUNCTION__, __LINE__);
 
 	rxe_add_ref(&pd->pelem);
 

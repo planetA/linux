@@ -84,4 +84,70 @@ void rxe_port_up(struct rxe_dev *rxe);
 void rxe_port_down(struct rxe_dev *rxe);
 void rxe_set_port_state(struct rxe_dev *rxe);
 
+static inline void rxe_print_skb_v4(const struct sk_buff *skb, const char *func, int line)
+{
+	struct iphdr *iph = ip_hdr(skb);
+#if 0
+	struct udphdr *udp_header;
+	struct tcphdr *tcp_header;
+
+	unsigned int src_ip = (unsigned int)ip_header->saddr;
+	unsigned int dest_ip = (unsigned int)ip_header->daddr;
+	unsigned int src_port = 0;
+	unsigned int dest_port = 0;
+
+	if (iph->protocol == 17) {
+		udp_header = (struct udphdr *)skb_transport_header(skb);
+		src_port = (unsigned int)ntohs(udp_header->source);
+	} else if (iph->protocol == 6) {
+		tcp_header = (struct tcphdr *)skb_transport_header(skb);
+		src_port = (unsigned int)ntohs(tcp_header->source);
+		dest_port = (unsigned int)ntohs(tcp_header->dest);
+	}
+#endif
+
+	printk(KERN_DEBUG "%s %d IP addres = %pI4  DEST = %pI4\n", func, line, &iph->saddr, &iph->daddr);
+}
+
+static inline void rxe_print_skb_v6(const struct sk_buff *skb, const char *func, int line)
+{
+        struct ipv6hdr *iph = ipv6_hdr(skb);
+#if 0
+        struct udphdr *udp_header;
+        struct tcphdr *tcp_header;
+
+        unsigned int src_ip = (unsigned int)iph->saddr;
+        unsigned int dest_ip = (unsigned int)ip_header->daddr;
+        unsigned int src_port = 0;
+        unsigned int dest_port = 0;
+        if (iph->protocol==17) {
+                udp_header = (struct udphdr *)skb_transport_header(skb);
+                src_port = (unsigned int)ntohs(udp_header->source);
+        } else if (iph->protocol == 6) {
+                tcp_header = (struct tcphdr *)skb_transport_header(skb);
+                src_port = (unsigned int)ntohs(tcp_header->source);
+                dest_port = (unsigned int)ntohs(tcp_header->dest);
+        }
+#endif
+
+        printk(KERN_DEBUG "%s %d IP addres = %pI6  DEST = %pI6\n", func, line, &iph->saddr, &iph->daddr);
+
+}
+
+#define rxe_print_skb(skb) __rxe_print_skb(skb, __FUNCTION__, __LINE__)
+
+static inline void __rxe_print_skb(const struct sk_buff *skb, const char *func, int line)
+{
+	if (skb->protocol == htons(ETH_P_IPV6)) {
+		rxe_print_skb_v6(skb, func, line);
+	} else if (skb->protocol == htons(ETH_P_IP)) {
+		rxe_print_skb_v4(skb, func, line);
+	}
+	else {
+		pr_warn_ratelimited("bad packet\n");
+	}
+}
+
+#include "rxe_debug.h"
+
 #endif /* RXE_H */

@@ -1206,12 +1206,18 @@ int rxe_responder(void *arg)
 		switch (state) {
 		case RESPST_GET_REQ:
 			state = get_req(qp, &pkt);
+			printk("WAH %s %d psn %d\n", __FUNCTION__, __LINE__,
+			       pkt ? pkt->psn : -1);
 			break;
 		case RESPST_CHK_PSN:
 			state = check_psn(qp, pkt);
+			printk("WAH %s %d psn %d\n", __FUNCTION__, __LINE__,
+			       pkt ? pkt->psn : -1);
 			break;
 		case RESPST_CHK_OP_SEQ:
 			state = check_op_seq(qp, pkt);
+			printk("WAH %s %d psn %d\n", __FUNCTION__, __LINE__,
+			       pkt ? pkt->psn : -1);
 			break;
 		case RESPST_CHK_OP_VALID:
 			state = check_op_valid(qp, pkt);

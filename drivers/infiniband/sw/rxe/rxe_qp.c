@@ -316,34 +316,49 @@ int rxe_qp_from_init(struct rxe_dev *rxe, struct rxe_qp *qp, struct rxe_pd *pd,
 	int err;
 	struct rxe_cq *rcq = to_rcq(init->recv_cq);
 	struct rxe_cq *scq = to_rcq(init->send_cq);
+	printk("WAH %s %d rcq %px scq %px init %px\n", __FUNCTION__, __LINE__, rcq, scq, init);
+
 	struct rxe_srq *srq = init->srq ? to_rsrq(init->srq) : NULL;
 
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
+
 	rxe_add_ref(&pd->pelem);
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
 	rxe_add_ref(&rcq->pelem);
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
 	rxe_add_ref(&scq->pelem);
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
 	if (srq)
 		rxe_add_ref(&srq->pelem);
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
 
 	qp->pd			= pd;
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
 	qp->rcq			= rcq;
 	qp->scq			= scq;
 	qp->srq			= srq;
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
 
 	rxe_qp_init_misc(rxe, qp, init);
+	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);
 
 	err = rxe_qp_init_req(rxe, qp, init, udata, uresp);
+	printk("WAH %s %d srq %d \n", __FUNCTION__, __LINE__, err);
 	if (err)
 		goto err1;
 
 	err = rxe_qp_init_resp(rxe, qp, init, udata, uresp);
+	printk("WAH %s %d srq %d \n", __FUNCTION__, __LINE__, err);
 	if (err)
 		goto err2;
 
 	qp->attr.qp_state = IB_QPS_RESET;
 	qp->valid = 1;
 
+	printk("WAH %s %d srq %d \n", __FUNCTION__, __LINE__, err);
 	INIT_WORK(&qp->cleanup_work, rxe_qp_do_cleanup);
 	qp->cleanup_completion = NULL;
+	printk("WAH %s %d srq %d \n", __FUNCTION__, __LINE__, err);
 
 	return 0;
 

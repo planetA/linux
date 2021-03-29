@@ -217,6 +217,8 @@ static inline unsigned int wr_opcode_mask(int opcode, struct rxe_qp *qp)
 	return rxe_wr_opcode_info[opcode].mask[qp->ibqp.qp_type];
 }
 
+#include "rxe_debug.h"
+
 static inline int rxe_xmit_packet(struct rxe_qp *qp, struct rxe_pkt_info *pkt,
 				  struct sk_buff *skb)
 {
@@ -224,21 +226,26 @@ static inline int rxe_xmit_packet(struct rxe_qp *qp, struct rxe_pkt_info *pkt,
 	int is_request = pkt->mask & RXE_REQ_MASK;
 	struct rxe_dev *rxe = to_rdev(qp->ibqp.device);
 
+	rxe_print_pkt(pkt);
 	if ((is_request && (qp->req.state != QP_STATE_READY)) ||
 	    (!is_request && (qp->resp.state != QP_STATE_READY))) {
-		pr_info("Packet dropped. QP is not in ready state\n");
+		pr_err("Packet dropped. QP is not in ready state\n");
 		goto drop;
 	}
 
 	if (pkt->mask & RXE_LOOPBACK_MASK) {
+		rxe_print_pkt(pkt);
 		memcpy(SKB_TO_PKT(skb), pkt, sizeof(*pkt));
 		rxe_loopback(skb);
 		err = 0;
 	} else {
+		rxe_print_pkt(pkt);
 		err = rxe_send(pkt, skb);
 	}
 
+	rxe_print_pkt(pkt);
 	if (err) {
+		rxe_print_pkt(pkt);
 		rxe->xmit_errors++;
 		rxe_counter_inc(rxe, RXE_CNT_SEND_ERR);
 		return err;
@@ -246,14 +253,17 @@ static inline int rxe_xmit_packet(struct rxe_qp *qp, struct rxe_pkt_info *pkt,
 
 	if ((qp_type(qp) != IB_QPT_RC) &&
 	    (pkt->mask & RXE_END_MASK)) {
+		rxe_print_pkt(pkt);
 		pkt->wqe->state = wqe_state_done;
 		rxe_run_task(&qp->comp.task);
 	}
 
+	rxe_print_pkt(pkt);
 	rxe_counter_inc(rxe, RXE_CNT_SENT_PKTS);
 	goto done;
 
 drop:
+	rxe_print_pkt(pkt);
 	kfree_skb(skb);
 	err = 0;
 done:
