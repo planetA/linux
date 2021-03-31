@@ -526,7 +526,9 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 		return PTR_ERR(ovey_cq->parent);
 	}
 
-	ovey_cq->parent->comp_handler = ib_uverbs_comp_handler;
+	if (udata) {
+		ovey_cq->parent->comp_handler = ib_uverbs_comp_handler;
+	}
 
 	err = xa_err(
 		xa_store(&cq_xarray, (uintptr_t)ovey_cq->parent, ovey_cq, GFP_KERNEL));
