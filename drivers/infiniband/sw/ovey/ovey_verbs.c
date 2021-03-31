@@ -182,6 +182,9 @@ static int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *ud
 	opr_info("verb invoked ucontext=%px==%px parent=%px\n", base_ctx,
 		 ovey_ctx, ovey_ctx->parent);
 
+	/* XXX: That is very hack. We first pretend to be parent, so that
+	 * alloc_context in rdma-core works, then we switch to being ovey. */
+	ovey_dev->base.ops.driver_id = RDMA_DRIVER_OVEY;
 	return ret;
 }
 
@@ -504,6 +507,7 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 	int err;
 
 	opr_info("verb invoked %px\n", udata);
+	WARN_ON(udata == NULL);
 	// this is the function that also gets invoked after the syscall
 
 	// base_eq gets filled by ioctl syscall which triggers __ib_alloc_cq_user
@@ -515,12 +519,14 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 
 	ovey_cq->parent =
 		ib_alloc_cq_user(ovey_dev->parent, ovey_cq->base.cq_context,
-				 (int)attr->cqe, attr->comp_vector, udata,
-				 ovey_cq->base.poll_ctx);
+				 (int)attr->cqe, attr->comp_vector,
+				 IB_POLL_DIRECT, udata);
 	if (IS_ERR(ovey_cq->parent)) {
 		opr_err("Failed to create cq: %ld %px\n", PTR_ERR(ovey_cq->parent), udata);
 		return PTR_ERR(ovey_cq->parent);
 	}
+
+	ovey_cq->parent->comp_handler = ib_uverbs_comp_handler;
 
 	err = xa_err(
 		xa_store(&cq_xarray, (uintptr_t)ovey_cq->parent, ovey_cq, GFP_KERNEL));
@@ -687,6 +693,8 @@ static struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 		err = PTR_ERR(qp->parent);
 		goto err2;
 	}
+
+	qp->base.qp_num = qp->parent->qp_num;
 
 #if 0
 	err = xa_err(xa_store(&qp_xarray, (uintptr_t)qp->parent, qp, GFP_KERNEL));

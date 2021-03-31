@@ -316,8 +316,6 @@ int rxe_qp_from_init(struct rxe_dev *rxe, struct rxe_qp *qp, struct rxe_pd *pd,
 	int err;
 	struct rxe_cq *rcq = to_rcq(init->recv_cq);
 	struct rxe_cq *scq = to_rcq(init->send_cq);
-	printk("WAH %s %d rcq %px scq %px init %px\n", __FUNCTION__, __LINE__, rcq, scq, init);
-
 	struct rxe_srq *srq = init->srq ? to_rsrq(init->srq) : NULL;
 
 	printk("WAH %s %d srq %px \n", __FUNCTION__, __LINE__, srq);

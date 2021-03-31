@@ -57,9 +57,6 @@ static void rxe_mem_init(int access, struct rxe_mem *mem)
 	mem->state		= RXE_MEM_STATE_INVALID;
 	mem->type		= RXE_MEM_TYPE_NONE;
 	mem->map_shift		= ilog2(RXE_BUF_PER_MAP);
-	pr_err("WAH %s %d rmr state=VALID access=%x lkey %d rkey %d map_shift %x status SUCCESS",
-	       __FUNCTION__, __LINE__, access, mem->ibmr.lkey,
-	       mem->ibmr.rkey, mem->map_shift);
 }
 
 void rxe_mem_cleanup(struct rxe_pool_entry *arg)
@@ -225,10 +222,6 @@ int rxe_mem_init_fast(struct rxe_pd *pd,
 	mem->max_buf		= max_pages;
 	mem->state		= RXE_MEM_STATE_FREE;
 	mem->type		= RXE_MEM_TYPE_MR;
-
-	pr_err("WAH %s %d rmr state=VALID lkey %d rkey %d max_pages %d dev %s",
-	       __FUNCTION__, __LINE__, mem->ibmr.lkey, mem->ibmr.rkey,
-	       max_pages, pd->ibpd.device->name);
 
 	return 0;
 
@@ -425,16 +418,13 @@ int copy_data(
 	u64			iova;
 	int			err = 0;
 
-	pr_err("WAH %s %d len=%d\n", __FUNCTION__, __LINE__, length);
 	if (length == 0)
 		return 0;
 
-	pr_err("WAH %s %d resid=%d\n", __FUNCTION__, __LINE__, resid);
 	if (length > resid) {
 		err = -EINVAL;
 		goto err2;
 	}
-	pr_err("WAH %s %d sge->length=%d\n", __FUNCTION__, __LINE__, sge->length);
 
 	if (sge->length && (offset < sge->length)) {
 		mem = lookup_mem(pd, access, sge->lkey, lookup_local);
@@ -449,11 +439,8 @@ int copy_data(
 	while (length > 0) {
 		bytes = length;
 
-		pr_err("WAH %s %d length=%d\n", __FUNCTION__, __LINE__, length);
 		if (offset >= sge->length) {
 			if (mem) {
-				pr_err("WAH %s %d length=%d\n", __FUNCTION__,
-				       __LINE__, length);
 				rxe_drop_ref(&mem->pelem);
 				mem = NULL;
 			}
@@ -489,8 +476,6 @@ int copy_data(
 			iova = sge->addr + offset;
 
 			err = rxe_mem_copy(mem, iova, addr, bytes, dir, crcp);
-			pr_err("WAH %s %d err=%d\n", __FUNCTION__, __LINE__,
-			       err);
 			if (err)
 				goto err2;
 
@@ -500,7 +485,6 @@ int copy_data(
 			addr	+= bytes;
 		}
 	}
-	pr_err("WAH %s %d resid=%d\n", __FUNCTION__, __LINE__, resid);
 
 	dma->sge_offset = offset;
 	dma->resid	= resid;
@@ -514,6 +498,7 @@ err2:
 	if (mem)
 		rxe_drop_ref(&mem->pelem);
 err1:
+	pr_err("WAH %s %d resid=%d\n", __FUNCTION__, __LINE__, err);
 	return err;
 }
 
@@ -563,9 +548,7 @@ struct rxe_mem *lookup_mem(struct rxe_pd *pd, int access, u32 key,
 	struct rxe_dev *rxe = to_rdev(pd->ibpd.device);
 	int index = key >> 8;
 
-	pr_err("WAH %s %d dev=%s\n", __FUNCTION__, __LINE__, pd->ibpd.device->name);
 	mem = rxe_pool_get_index(&rxe->mr_pool, index);
-	pr_err("WAH %s %d key=%d index=%d mem=%px\n", __FUNCTION__, __LINE__, key, index, mem);
 	if (!mem)
 		return NULL;
 
@@ -579,6 +562,5 @@ struct rxe_mem *lookup_mem(struct rxe_pd *pd, int access, u32 key,
 		mem = NULL;
 	}
 
-	pr_err("WAH %s %d mem=%px\n", __FUNCTION__, __LINE__, mem);
 	return mem;
 }

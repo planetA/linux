@@ -1190,6 +1190,7 @@ int rxe_responder(void *arg)
 	struct rxe_dev *rxe = to_rdev(qp->ibqp.device);
 	enum resp_states state;
 	struct rxe_pkt_info *pkt = NULL;
+	int pkt_num = -1;
 	int ret = 0;
 
 	qp->resp.aeth_syndrome = AETH_ACK_UNLIMITED;
@@ -1201,23 +1202,19 @@ int rxe_responder(void *arg)
 	}
 
 	while (1) {
-		pr_debug("qp#%d state = %s\n", qp_num(qp),
-			 resp_state_name[state]);
+		pr_debug("qp#%d state = %s psn=%d\n", qp_num(qp),
+			 resp_state_name[state], pkt_num);
 		switch (state) {
 		case RESPST_GET_REQ:
+			pkt_num = -1;
 			state = get_req(qp, &pkt);
-			printk("WAH %s %d psn %d\n", __FUNCTION__, __LINE__,
-			       pkt ? pkt->psn : -1);
 			break;
 		case RESPST_CHK_PSN:
 			state = check_psn(qp, pkt);
-			printk("WAH %s %d psn %d\n", __FUNCTION__, __LINE__,
-			       pkt ? pkt->psn : -1);
+			pkt_num = pkt ? pkt->psn : -1;
 			break;
 		case RESPST_CHK_OP_SEQ:
 			state = check_op_seq(qp, pkt);
-			printk("WAH %s %d psn %d\n", __FUNCTION__, __LINE__,
-			       pkt ? pkt->psn : -1);
 			break;
 		case RESPST_CHK_OP_VALID:
 			state = check_op_valid(qp, pkt);

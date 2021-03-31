@@ -495,14 +495,11 @@ int rxe_drop_ref(struct rxe_pool_entry *pelem)
 	struct rxe_pool *pool = pelem->pool;
 	unsigned long flags;
 
-	printk("WAH rxe_drop_ref: %px pool %px lock %px\n", pelem, pool,
-	       &pool->pool_lock);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	res = kref_put(&pelem->ref_cnt, rxe_dummy_release);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
 	if (res) {
 		rxe_elem_release(&pelem->ref_cnt);
 	}
-	printk("WAH rxe_drop_ref ret: %d\n", res);
 	return res;
 }

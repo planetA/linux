@@ -3803,8 +3803,8 @@ static inline struct ib_cq *ib_alloc_cq(struct ib_device *dev, void *private,
 static inline struct ib_cq *ib_alloc_cq_user(struct ib_device *dev,
 					     void *private, int nr_cqe,
 					     int comp_vector,
-					     struct ib_udata *udata,
-					     enum ib_poll_context poll_ctx)
+					     enum ib_poll_context poll_ctx,
+					     struct ib_udata *udata)
 {
 	return __ib_alloc_cq_user(dev, private, nr_cqe, comp_vector, poll_ctx,
 				  udata, KBUILD_MODNAME);
@@ -3857,6 +3857,8 @@ __ib_create_cq_user(struct ib_device *device, ib_comp_handler comp_handler,
 			  udata)                                               \
 	__ib_create_cq((device), (cmp_hndlr), (evt_hndlr), (cq_ctxt),          \
 		       (cq_attr), (udata), KBUILD_MODNAME)
+
+void ib_uverbs_comp_handler(struct ib_cq *cq, void *cq_context);
 
 /**
  * ib_resize_cq - Modifies the capacity of the CQ.

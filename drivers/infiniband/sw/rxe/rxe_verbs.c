@@ -916,22 +916,13 @@ static struct ib_mr *rxe_get_dma_mr(struct ib_pd *ibpd, int access)
 	struct rxe_pd *pd = to_rpd(ibpd);
 	struct rxe_mem *mr;
 
-	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
-
 	mr = rxe_alloc(&rxe->mr_pool);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
 	rxe_add_index(&mr->pelem);
-	printk("WAH rxe_add_index %d from %s %d\n", mr->pelem.index, __FUNCTION__, __LINE__);
 	rxe_add_ref(&pd->pelem);
 	rxe_mem_init_dma(pd, access, mr);
-
-	printk("WAH rxe_get_dma_mr: mr %px ibmr %px pool %px pd %px &pd->pelem %px &mr->pelem %px\n",
-	       mr, &mr->ibmr, &rxe->mr_pool, pd, &pd->pelem, &mr->pelem);
-	printk("WAH reg mr %px &mr->ibmr %px mr->ibmr.pd %px mr_pd(mr) %px pd %px",
-	       mr, &mr->ibmr, mr->ibmr.pd, mr_pd(mr), pd);
-	dump_stack();
 
 	return &mr->ibmr;
 }

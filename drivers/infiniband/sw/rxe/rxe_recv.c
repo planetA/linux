@@ -215,6 +215,7 @@ static int hdr_check(struct rxe_pkt_info *pkt)
 err2:
 	rxe_drop_ref(&qp->pelem);
 err1:
+	printk("WAH %s %d %s\n", __FUNCTION__, __LINE__, rxe->ib_dev.name);
 	return -EINVAL;
 }
 
@@ -342,11 +343,9 @@ void rxe_rcv(struct sk_buff *skb)
 
 	pkt->offset = 0;
 
-	rxe_print_skb(skb);
 	if (unlikely(skb->len < pkt->offset + RXE_BTH_BYTES))
 		goto drop;
 
-	printk("WAH %s %d\n", __FUNCTION__, __LINE__);
 	if (rxe_chk_dgid(rxe, skb) < 0) {
 		pr_warn_ratelimited("failed checking dgid\n");
 		goto drop;
@@ -357,7 +356,6 @@ void rxe_rcv(struct sk_buff *skb)
 	pkt->qp = NULL;
 	pkt->mask |= rxe_opcode[pkt->opcode].mask;
 
-	printk("WAH %s %d psn %d\n", __FUNCTION__, __LINE__, pkt->psn);
 	if (unlikely(skb->len < header_size(pkt)))
 		goto drop;
 

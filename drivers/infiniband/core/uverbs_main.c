@@ -390,6 +390,7 @@ void ib_uverbs_comp_handler(struct ib_cq *cq, void *cq_context)
 	wake_up_interruptible(&ev_queue->poll_wait);
 	kill_fasync(&ev_queue->async_queue, SIGIO, POLL_IN);
 }
+EXPORT_SYMBOL(ib_uverbs_comp_handler);
 
 void ib_uverbs_async_handler(struct ib_uverbs_async_event_file *async_file,
 			     __u64 element, __u64 event,
