@@ -296,8 +296,6 @@ static struct ib_uobject *alloc_uobj(struct uverbs_attr_bundle *attrs,
 	atomic_set(&uobj->usecnt, -1);
 	kref_init(&uobj->ref);
 
-	printk("WAH %s %s %d ubobject_alloc=%px", __FILE__, __FUNCTION__, __LINE__, 
-			uobj);
 	return uobj;
 }
 
@@ -320,7 +318,6 @@ lookup_get_idr_uobject(const struct uverbs_api_object *obj,
 {
 	struct ib_uobject *uobj;
 
-	printk("WAH %s %d ret=%lld\n", __FUNCTION__, __LINE__, id);
 	if (id < 0 || id > ULONG_MAX)
 		return ERR_PTR(-EINVAL);
 
@@ -348,7 +345,6 @@ lookup_get_fd_uobject(const struct uverbs_api_object *obj,
 	struct ib_uobject *uobject;
 	int fdno = id;
 
-	printk("WAH %s %d ret=%lld\n", __FUNCTION__, __LINE__, id);
 	if (fdno != id)
 		return ERR_PTR(-EINVAL);
 
@@ -360,9 +356,7 @@ lookup_get_fd_uobject(const struct uverbs_api_object *obj,
 	fd_type =
 		container_of(obj->type_attrs, struct uverbs_obj_fd_type, type);
 
-	printk("WAH %s %d ret=%lld\n", __FUNCTION__, __LINE__, id);
 	f = fget(fdno);
-	printk("WAH %s %d ret=%px\n", __FUNCTION__, __LINE__, f);
 	if (!f)
 		return ERR_PTR(-EBADF);
 
@@ -374,9 +368,6 @@ lookup_get_fd_uobject(const struct uverbs_api_object *obj,
 	 */
 	if (f->f_op != fd_type->fops || uobject->ufile != ufile) {
 		fput(f);
-		printk("WAH %s %d %px == %px %px == %px uobject %px\n",
-		       __FUNCTION__, __LINE__,
-		       f->f_op, fd_type->fops, uobject->ufile, ufile, uobject);
 		return ERR_PTR(-EBADF);
 	}
 
@@ -395,14 +386,12 @@ struct ib_uobject *rdma_lookup_get_uobject(const struct uverbs_api_object *obj,
 	if (obj == ERR_PTR(-ENOMSG)) {
 		/* must be UVERBS_IDR_ANY_OBJECT, see uapi_get_object() */
 		uobj = lookup_get_idr_uobject(NULL, ufile, id, mode);
-		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 		if (IS_ERR(uobj))
 			return uobj;
 	} else {
 		if (IS_ERR(obj))
 			return ERR_PTR(-EINVAL);
 
-		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 		uobj = obj->type_class->lookup_get(obj, ufile, id, mode);
 		if (IS_ERR(uobj))
 			return uobj;
@@ -425,7 +414,6 @@ struct ib_uobject *rdma_lookup_get_uobject(const struct uverbs_api_object *obj,
 	}
 
 	ret = uverbs_try_lock_object(uobj, mode);
-	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 	if (ret)
 		goto free;
 	if (attrs)
@@ -940,7 +928,6 @@ uverbs_get_uobject_from_file(u16 object_id, enum uverbs_obj_access access,
 	const struct uverbs_api_object *obj =
 		uapi_get_object(attrs->ufile->device->uapi, object_id);
 
-	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, access);
 	switch (access) {
 	case UVERBS_ACCESS_READ:
 		return rdma_lookup_get_uobject(obj, attrs->ufile, id,

@@ -734,6 +734,5 @@ err:
 	rxe_run_task_wait(&qp->comp.task);
 
 exit:
-	rxe_print_pkt(&pkt);
 	return -EAGAIN;
 }

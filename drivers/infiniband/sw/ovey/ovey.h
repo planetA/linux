@@ -84,13 +84,13 @@ struct ovey_device {
 
 	struct net_device *ndev;
 
-    // Virtual networks are identified by a uuid.
-    // Because I don't need to process the ID here and just have to store
-    // it, I just store it's easy to read string representation.
-    // +1: NULL Terminated; even tho we know the length, I decided to null-terminate
-    // it because it makes the life easier. Otherwise I have to know everywhere that
-    // I know the exact length of it.
-    char virt_network_id[VIRT_NETWORK_ID_STR_LEN + 1];
+	// Virtual networks are identified by a uuid.
+	// Because I don't need to process the ID here and just have to store
+	// it, I just store it's easy to read string representation.
+	// +1: NULL Terminated; even tho we know the length, I decided to null-terminate
+	// it because it makes the life easier. Otherwise I have to know everywhere that
+	// I know the exact length of it.
+	char virt_network_id[VIRT_NETWORK_ID_STR_LEN + 1];
 
 	// TODO remove probably
 	struct xarray qp_xa;
