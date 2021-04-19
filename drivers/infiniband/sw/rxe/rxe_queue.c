@@ -9,13 +9,14 @@
 #include "rxe_loc.h"
 #include "rxe_queue.h"
 
-int do_mmap_info(struct rxe_dev *rxe, struct mminfo __user *outbuf,
+int __do_mmap_info(struct rxe_dev *rxe, struct mminfo __user *outbuf,
 		 struct ib_udata *udata, struct rxe_queue_buf *buf,
 		 size_t buf_size, struct rxe_mmap_info **ip_p)
 {
 	int err;
 	struct rxe_mmap_info *ip = NULL;
 
+	pr_warn("WAH do_mmap_info device %s udata %px\n", rxe->ib_dev.name, udata);
 	if (outbuf) {
 		ip = rxe_create_mmap_info(rxe, buf_size, udata, buf);
 		if (IS_ERR(ip)) {
@@ -28,6 +29,8 @@ int do_mmap_info(struct rxe_dev *rxe, struct mminfo __user *outbuf,
 			goto err2;
 		}
 
+		pr_warn("WAH do_mmap_info 32 device %s udata %px context %px\n",
+			rxe->ib_dev.name, udata, ip->context);
 		spin_lock_bh(&rxe->pending_lock);
 		list_add(&ip->pending_mmaps, &rxe->pending_mmaps);
 		spin_unlock_bh(&rxe->pending_lock);

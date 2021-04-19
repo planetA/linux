@@ -22,6 +22,7 @@ void rxe_mmap_release(struct kref *ref)
 
 	spin_lock_bh(&rxe->pending_lock);
 
+	pr_warn("WAH Delete rxe mmap info context %px device %s", ip->context, ip->context->device->name);
 	if (!list_empty(&ip->pending_mmaps))
 		list_del(&ip->pending_mmaps);
 
@@ -68,16 +69,20 @@ int rxe_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 	struct rxe_mmap_info *ip, *pp;
 	int ret;
 
+	pr_err("WAH context %px dev %s", context, context->device->name);
 	/*
 	 * Search the device's list of objects waiting for a mmap call.
 	 * Normally, this list is very short since a call to create a
 	 * CQ, QP, or SRQ is soon followed by a call to mmap().
 	 */
 	spin_lock_bh(&rxe->pending_lock);
-	list_for_each_entry_safe(ip, pp, &rxe->pending_mmaps, pending_mmaps) {
+	list_for_each_entry_safe (ip, pp, &rxe->pending_mmaps, pending_mmaps) {
+		pr_warn("WAH rxe_mmap ctx %px ip->ctx %px offset %lu ip->offset %lld\n",
+			context, ip->context, offset, ip->info.offset);
 		if (context != ip->context || (__u64)offset != ip->info.offset)
 			continue;
 
+		pr_warn("WAH rxe_mmap size %lu ip->info.size %u\n", size, ip->info.size);
 		/* Don't allow a mmap larger than the object. */
 		if (size > ip->info.size) {
 			pr_err("mmap region is larger than the object!\n");

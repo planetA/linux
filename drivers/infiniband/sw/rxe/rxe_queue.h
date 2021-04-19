@@ -49,9 +49,16 @@ struct rxe_queue {
 	unsigned int		index_mask;
 };
 
-int do_mmap_info(struct rxe_dev *rxe, struct mminfo __user *outbuf,
-		 struct ib_udata *udata, struct rxe_queue_buf *buf,
-		 size_t buf_size, struct rxe_mmap_info **ip_p);
+#define do_mmap_info(rxe, outbuf, udata, buf, buf_size, ip_p)                  \
+	({                                                                     \
+		int ret;                                                       \
+		pr_warn("WAH %s %d\n", __FUNCTION__, __LINE__);                \
+		ret = __do_mmap_info(rxe, outbuf, udata, buf, buf_size, ip_p); \
+		ret;                                                           \
+	})
+int __do_mmap_info(struct rxe_dev *rxe, struct mminfo __user *outbuf,
+		   struct ib_udata *udata, struct rxe_queue_buf *buf,
+		   size_t buf_size, struct rxe_mmap_info **ip_p);
 
 void rxe_queue_reset(struct rxe_queue *q);
 

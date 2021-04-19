@@ -149,40 +149,6 @@ void ib_cache_cleanup_one(struct ib_device *device);
 void ib_cache_release_one(struct ib_device *device);
 void ib_dispatch_event_clients(struct ib_event *event);
 
-#ifdef CONFIG_CGROUP_RDMA
-void ib_device_register_rdmacg(struct ib_device *device);
-void ib_device_unregister_rdmacg(struct ib_device *device);
-
-int ib_rdmacg_try_charge(struct ib_rdmacg_object *cg_obj,
-			 struct ib_device *device,
-			 enum rdmacg_resource_type resource_index);
-
-void ib_rdmacg_uncharge(struct ib_rdmacg_object *cg_obj,
-			struct ib_device *device,
-			enum rdmacg_resource_type resource_index);
-#else
-static inline void ib_device_register_rdmacg(struct ib_device *device)
-{
-}
-
-static inline void ib_device_unregister_rdmacg(struct ib_device *device)
-{
-}
-
-static inline int ib_rdmacg_try_charge(struct ib_rdmacg_object *cg_obj,
-				       struct ib_device *device,
-				       enum rdmacg_resource_type resource_index)
-{
-	return 0;
-}
-
-static inline void ib_rdmacg_uncharge(struct ib_rdmacg_object *cg_obj,
-				      struct ib_device *device,
-				      enum rdmacg_resource_type resource_index)
-{
-}
-#endif
-
 static inline bool rdma_is_upper_dev_rcu(struct net_device *dev,
 					 struct net_device *upper)
 {

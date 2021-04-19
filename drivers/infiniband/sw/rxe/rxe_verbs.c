@@ -444,8 +444,7 @@ static struct ib_qp *rxe_create_qp(struct ib_pd *ibpd,
 	if (err)
 		goto err3;
 
-	printk("WAH %s:%d %s: %px %px\n", __FUNCTION__, __LINE__,
-	       qp->ibqp.device->name, qp->ibqp.device, rxe);
+	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
 	return &qp->ibqp;
 
 err3:

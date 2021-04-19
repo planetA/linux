@@ -1,4 +1,6 @@
 #include <linux/kernel.h>
+#include <rdma/restrack.h>
+#include <rdma/uverbs_ioctl.h>
 
 #include "ocp.h"
 #include "ovey.h"
@@ -155,10 +157,17 @@ static int ovey_get_port_immutable(struct ib_device *base_dev, u8 port,
 	return 0;
 }
 
+void rdma_restrack_add(struct rdma_restrack_entry *res);
+void rdma_restrack_new(struct rdma_restrack_entry *res,
+		       enum rdma_restrack_type type);
+void rdma_restrack_set_name(struct rdma_restrack_entry *res,
+			    const char *caller);
+
 static int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *udata)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
 	struct ovey_device *ovey_dev;
+	struct ib_ucontext *ucontext;
 	int ret;
 
 	opr_info("verb invoked base_ctx %px udata %px\n", base_ctx, udata);
@@ -171,10 +180,34 @@ static int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *ud
 	opr_info("ovey_dev->name=%s, ovey_dev->parent->name=%s\n",
 		 ovey_dev->base.name, ovey_dev->parent->name);
 
+#if OVEY_UCONTEXT
+	ucontext = rdma_zalloc_drv_obj(ovey_dev->parent, ib_ucontext);
+	if (!ucontext)
+		return -ENOMEM;
+
+	ucontext->device = ovey_dev->parent;
+	ucontext->ufile = base_ctx->ufile;
+	xa_init_flags(&ucontext->mmap_xa, XA_FLAGS_ALLOC);
+
+	rdma_restrack_new(&ucontext->res, RDMA_RESTRACK_CTX);
+	rdma_restrack_set_name(&ucontext->res, NULL);
+
+	ret = ib_rdmacg_try_charge(&ucontext->cg_obj, ucontext->device,
+				   RDMACG_RESOURCE_HCA_HANDLE);
+	if (ret)
+		goto err;
+
+	rdma_restrack_add(&ucontext->res);
+
+	ovey_ctx->parent = ucontext;
+	ovey_ctx->parent->device = ovey_dev->parent;
+	ret = ucontext->device->ops.alloc_ucontext(ucontext, udata);
+#else
 	ovey_ctx->parent = base_ctx;
 	ovey_ctx->parent->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.alloc_ucontext(ovey_ctx->parent, udata);
 	ovey_ctx->parent->device = &ovey_dev->base;
+#endif
 	opr_err("ret=%d\n", ret);
 	if (ret < 0) {
 		opr_err("alloc_ucontext() on parent device failed! %d\n", ret);
@@ -185,6 +218,10 @@ static int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *ud
 	/* XXX: That is very hack. We first pretend to be parent, so that
 	 * alloc_context in rdma-core works, then we switch to being ovey. */
 	ovey_dev->base.ops.driver_id = RDMA_DRIVER_OVEY;
+	return ret;
+
+  err:
+	kfree(ucontext);
 	return ret;
 }
 
@@ -308,14 +345,13 @@ static int ovey_destroy_ah(struct ib_ah *base_ah, u32 flags)
 static int ovey_mmap(struct ib_ucontext *base_ctx, struct vm_area_struct *vma)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
-	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->parent->device);
+	struct ovey_device *ovey_dev = to_ovey_dev(base_ctx->device);
 	int ret;
 
-	opr_info("verb invoked\n");
+	opr_info("verb invoked base_ctx %px vma %px base_dev %px ovey_dev %px\n", base_ctx, vma, base_ctx->device, ovey_dev);
+	opr_info("parent dev %px ctx %px\n", ovey_dev->parent, ovey_ctx->parent);
 
-	base_ctx->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.mmap(ovey_ctx->parent, vma);
-	base_ctx->device = &ovey_dev->base;
 	if (ret) {
 		opr_err("mmap() on parent device failed! %d\n", ret);
 	}
@@ -330,9 +366,7 @@ static void ovey_mmap_free(struct rdma_user_mmap_entry *rdma_entry)
 
 	opr_info("verb invoked\n");
 
-	base_ctx->device = ovey_dev->parent;
-	base_ctx->device->ops.mmap_free(rdma_entry);
-	base_ctx->device = &ovey_dev->base;
+	ovey_dev->parent->ops.mmap_free(rdma_entry);
 }
 
 static struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
@@ -440,7 +474,7 @@ static struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
 	}
-	ovey_mr->parent->device = ovey_pd->parent->device;
+	/* ovey_mr->parent->device = ovey_pd->parent->device; */
 	opr_info("verb invoked %s parent %s\n", ovey_pd->parent->device->name,
 		 pd->device->name);
 	ovey_mr->parent->pd = ovey_pd->parent;
@@ -504,6 +538,9 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
 	struct ovey_cq *ovey_cq = to_ovey_cq(base_cq);
+	struct uverbs_attr_bundle *attrs =
+		container_of(udata, struct uverbs_attr_bundle, driver_udata);
+	struct ovey_ucontext *ovey_uctx;
 	int err;
 
 	opr_info("verb invoked %px\n", udata);
@@ -515,12 +552,23 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 
 	opr_info("base_cq %px ovey_cq %px ovey_dev %px", base_cq, ovey_cq,
 		 ovey_dev);
-	opr_info("ovey_cq %px\n", ovey_cq);
+	opr_info("ovey_cq %px context %px\n", ovey_cq, base_cq->cq_context);
 
+	/* XXX: This a hack. I know that rxe driver uses this field to get the
+	 * address of the context. A proper way would be either to re-engineer
+	 * the context struct or make sure that I do this swap for all udata
+	 * fields around all parent calls */
+	if (udata) {
+		ovey_uctx = to_ovey_ctx(attrs->context);
+		attrs->context = ovey_uctx->parent;
+	}
 	ovey_cq->parent =
 		ib_alloc_cq_user(ovey_dev->parent, ovey_cq->base.cq_context,
 				 (int)attr->cqe, attr->comp_vector,
 				 IB_POLL_DIRECT, udata);
+	if (udata) {
+		attrs->context = &ovey_uctx->base;
+	}
 	if (IS_ERR(ovey_cq->parent)) {
 		opr_err("Failed to create cq: %ld %px\n", PTR_ERR(ovey_cq->parent), udata);
 		return PTR_ERR(ovey_cq->parent);
@@ -677,6 +725,9 @@ static struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
 	struct ib_qp_init_attr parent_attr;
 	struct ovey_qp *qp = NULL;
+	struct uverbs_attr_bundle *uattr =
+		container_of(udata, struct uverbs_attr_bundle, driver_udata);
+	struct ovey_ucontext *ovey_uctx;
 	int err = 0;
 
 	opr_info("verb invoked udata %px\n", udata);
@@ -689,7 +740,14 @@ static struct ib_qp *ovey_create_qp(struct ib_pd *pd,
 
 	ovey_qp_init_to_parent(attrs, &parent_attr);
 
+	if (udata) {
+		ovey_uctx = to_ovey_ctx(uattr->context);
+		uattr->context = ovey_uctx->parent;
+	}
 	qp->parent = ib_create_qp_user(ovey_pd->parent, &parent_attr, udata);
+	if (udata) {
+		uattr->context = &ovey_uctx->base;
+	}
 	if (IS_ERR(qp->parent)) {
 		opr_err("create_qp() failed for parent device\n");
 		err = PTR_ERR(qp->parent);
@@ -827,7 +885,6 @@ static int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	int ret;
-	opr_info("verb invoked\n");
 
 	if (!ovey_qp) {
 		opr_err("Failed to find the QP");
@@ -837,10 +894,6 @@ static int ovey_post_send(struct ib_qp *base_qp, const struct ib_send_wr *wr,
 	if (!ovey_qp->parent) {
 		return -EOPNOTSUPP;
 	}
-
-	opr_info("post_send qp ovey_dev %s parent_dev %s qp_dev %s\n",
-		 ovey_dev->base.name, ovey_dev->parent->name,
-		 ovey_qp->parent->device->name);
 
 	ret = ovey_dev->parent->ops.post_send(ovey_qp->parent, wr, bad_wr);
 	if (ret) {
