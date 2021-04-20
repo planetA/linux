@@ -228,9 +228,14 @@ static int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *ud
 static void ovey_dealloc_ucontext(struct ib_ucontext *base_ctx)
 {
 	struct ovey_ucontext *ovey_ctx = to_ovey_ctx(base_ctx);
-	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->parent->device);
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_ctx->base.device);
 
 	opr_info("verb invoked ucontext=%px==%px parent=%px\n", base_ctx, ovey_ctx, ovey_ctx->parent);
+	opr_info("verb invoked parent->device %px\n", ovey_ctx->parent->device);
+	opr_info("verb invoked ovey_dev %px\n", ovey_dev);
+	opr_info("verb invoked parent->device %s\n", ovey_ctx->parent->device->name);
+	opr_info("verb invoked ovey_dev->parent %px\n", ovey_dev->parent);
+	opr_info("verb invoked ovey_dev %px\n", ovey_dev->parent->ops.dealloc_ucontext);
 
 	if (!ovey_dev->parent->ops.dealloc_ucontext) {
 		return;
@@ -272,16 +277,22 @@ static int ovey_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	struct ovey_device *ovey_dev = to_ovey_dev(pd->device);
 	struct ovey_pd *ovey_pd = to_ovey_pd(pd);
 	int ret;
+	int usecnt, parent_usecnt;
 
 	opr_info("verb invoked uobject %px \n", pd->uobject);
 	opr_info("verb invoked ovey_pd %px \n", ovey_pd);
 	opr_info("verb invoked ovey_pd->parent %px \n", ovey_pd->parent);
 	opr_info("verb invoked %s \n", ovey_pd->parent->device->name);
+	opr_info("verb invoked ovey_dev->parent %px\n", ovey_dev->parent);
+	opr_info("verb invoked ovey_dev->parent %s\n", ovey_dev->parent->name);
+	usecnt = atomic_read(&pd->usecnt);
+	parent_usecnt = atomic_read(&ovey_pd->parent->usecnt);
+	opr_info("WAH usecnt %d parent %d\n", usecnt, parent_usecnt);
 
 #if 1
 	ret = ib_dealloc_pd_user(ovey_pd->parent, udata);
 #else
-	ovey_pd->parent->device = ovey_dev->parent;
+		ovey_pd->parent->device = ovey_dev->parent;
 	ret = ovey_dev->parent->ops.dealloc_pd(ovey_pd->parent, udata);
 	ovey_pd->parent->device = &ovey_dev->base;
 #endif
@@ -474,7 +485,7 @@ static struct ib_mr *ovey_get_dma_mr(struct ib_pd *pd, int rights)
 		ret = PTR_ERR(ovey_mr->parent);
 		goto err_out;
 	}
-	/* ovey_mr->parent->device = ovey_pd->parent->device; */
+	ovey_mr->parent->device = ovey_pd->parent->device;
 	opr_info("verb invoked %s parent %s\n", ovey_pd->parent->device->name,
 		 pd->device->name);
 	ovey_mr->parent->pd = ovey_pd->parent;
@@ -514,10 +525,11 @@ static int ovey_dereg_mr(struct ib_mr *base_mr, struct ib_udata *udata)
 	int ret = 0;
 
 	opr_info("verb invoked mr %px dev %px ovey_mr->parent %px\n", base_mr, ovey_dev, ovey_mr->parent);
-	if (ovey_mr->parent) {
-		ret = ovey_dev->parent->ops.dereg_mr(ovey_mr->parent, udata);
-	}
 
+	if (ovey_mr->parent) {
+		ret = ib_dereg_mr_user(ovey_mr->parent, udata);
+		/* 	ret = ovey_dev->parent->ops.dereg_mr(ovey_mr->parent, udata); */
+	}
 	kfree(base_mr);
 
 	return ret;
@@ -544,7 +556,6 @@ static int ovey_create_cq(struct ib_cq *base_cq,
 	int err;
 
 	opr_info("verb invoked %px\n", udata);
-	WARN_ON(udata == NULL);
 	// this is the function that also gets invoked after the syscall
 
 	// base_eq gets filled by ioctl syscall which triggers __ib_alloc_cq_user
@@ -641,6 +652,7 @@ static int ovey_destroy_cq(struct ib_cq *base_cq, struct ib_udata *udata)
 	struct ovey_device *ovey_dev = to_ovey_dev(base_cq->device);
 
 	opr_info("verb invoked\n");
+	opr_info("verb invoked ovey_dev->parent %px\n", ovey_dev->parent);
 
 	ib_destroy_cq_user(ovey_cq->parent, udata);
 	xa_erase(&cq_xarray, (uintptr_t)ovey_cq->parent);
@@ -954,6 +966,7 @@ static int ovey_destroy_qp(struct ib_qp *base_qp, struct ib_udata *udata)
 		return -EINVAL;
 	}
 
+	opr_info("verb invoked ovey_dev->parent %px\n", ovey_dev->parent);
 #if 1
 	ret = ib_destroy_qp_user(ovey_qp->parent, udata);
 #else

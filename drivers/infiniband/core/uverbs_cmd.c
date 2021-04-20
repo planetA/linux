@@ -442,6 +442,12 @@ static int ib_uverbs_alloc_pd(struct uverbs_attr_bundle *attrs)
 	pd->device  = ib_dev;
 	pd->uobject = uobj;
 	atomic_set(&pd->usecnt, 0);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 
 	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
 	rdma_restrack_set_name(&pd->res, NULL);
@@ -748,6 +754,12 @@ static int ib_uverbs_reg_mr(struct uverbs_attr_bundle *attrs)
 	mr->sig_attrs = NULL;
 	mr->uobject = uobj;
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	mr->iova = cmd.hca_va;
 
 	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
@@ -828,8 +840,20 @@ static int ib_uverbs_rereg_mr(struct uverbs_attr_bundle *attrs)
 
 	if (cmd.flags & IB_MR_REREG_PD) {
 		atomic_inc(&pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, pd, usecnt);
+		}
 		mr->pd = pd;
 		atomic_dec(&old_pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&old_pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, old_pd, usecnt);
+		}
 	}
 
 	if (cmd.flags & IB_MR_REREG_TRANS)
@@ -908,6 +932,12 @@ static int ib_uverbs_alloc_mw(struct uverbs_attr_bundle *attrs)
 		goto err_alloc;
 
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 
 	uobj->object = mw;
 	uobj_put_obj_read(pd);
@@ -1422,6 +1452,12 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 			goto err_cb;
 
 		atomic_inc(&pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, pd, usecnt);
+		}
 		if (attr.send_cq)
 			atomic_inc(&attr.send_cq->usecnt);
 		if (attr.recv_cq)
@@ -2930,6 +2966,12 @@ static int ib_uverbs_ex_create_wq(struct uverbs_attr_bundle *attrs)
 	wq->device = pd->device;
 	atomic_set(&wq->usecnt, 0);
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	atomic_inc(&cq->usecnt);
 	obj->uevent.event_file = READ_ONCE(attrs->ufile->default_async_file);
 	if (obj->uevent.event_file)

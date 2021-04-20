@@ -85,6 +85,12 @@ static int UVERBS_HANDLER(UVERBS_METHOD_WQ_CREATE)(
 	wq->wq_context = wq_init_attr.wq_context;
 	atomic_set(&wq->usecnt, 0);
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	atomic_inc(&cq->usecnt);
 	wq->uobject = obj;
 	uverbs_finalize_uobj_create(attrs, UVERBS_ATTR_CREATE_WQ_HANDLE);

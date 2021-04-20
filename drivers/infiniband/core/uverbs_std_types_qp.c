@@ -261,6 +261,12 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 
 	if (attr.qp_type != IB_QPT_XRC_TGT) {
 		atomic_inc(&pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, pd, usecnt);
+		}
 		if (attr.send_cq)
 			atomic_inc(&attr.send_cq->usecnt);
 		if (attr.recv_cq)

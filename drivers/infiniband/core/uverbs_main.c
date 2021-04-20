@@ -112,6 +112,12 @@ int uverbs_dealloc_mw(struct ib_mw *mw)
 		return ret;
 
 	atomic_dec(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	kfree(mw);
 	return ret;
 }

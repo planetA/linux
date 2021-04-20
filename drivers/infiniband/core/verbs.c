@@ -270,6 +270,12 @@ struct ib_pd *__ib_alloc_pd_user(struct ib_device *device, unsigned int flags,
 	pd->uobject = NULL;
 	pd->__internal_mr = NULL;
 	atomic_set(&pd->usecnt, 0);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	pd->flags = flags;
 
 	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
@@ -348,6 +354,12 @@ int ib_dealloc_pd_user(struct ib_pd *pd, struct ib_udata *udata)
 	/* uverbs manipulates usecnt with proper locking, while the kabi
 	   requires the caller to guarantee we can't race here. */
 	WARN_ON(atomic_read(&pd->usecnt));
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 
 	printk("WAH %s %d %s\n", __FUNCTION__, __LINE__, pd->device->name);
 	ret = pd->device->ops.dealloc_pd(pd, udata);
@@ -546,6 +558,12 @@ static struct ib_ah *_rdma_create_ah(struct ib_pd *pd,
 	}
 
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	return ah;
 }
 
@@ -986,6 +1004,12 @@ int rdma_destroy_ah_user(struct ib_ah *ah, u32 flags, struct ib_udata *udata)
 		return ret;
 
 	atomic_dec(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	if (sgid_attr)
 		rdma_put_gid_attr(sgid_attr);
 
@@ -1039,10 +1063,22 @@ struct ib_srq *ib_create_srq_user(struct ib_pd *pd,
 		atomic_inc(&srq->ext.xrc.xrcd->usecnt);
 	}
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 
 	ret = pd->device->ops.create_srq(srq, srq_init_attr, udata);
 	if (ret) {
 		atomic_dec(&srq->pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&srq->pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, srq->pd, usecnt);
+		}
 		if (srq->srq_type == IB_SRQT_XRC)
 			atomic_dec(&srq->ext.xrc.xrcd->usecnt);
 		if (ib_srq_has_cq(srq->srq_type))
@@ -1085,6 +1121,12 @@ int ib_destroy_srq_user(struct ib_srq *srq, struct ib_udata *udata)
 		return ret;
 
 	atomic_dec(&srq->pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&srq->pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       srq->pd, usecnt);
+	}
 	if (srq->srq_type == IB_SRQT_XRC)
 		atomic_dec(&srq->ext.xrc.xrcd->usecnt);
 	if (ib_srq_has_cq(srq->srq_type))
@@ -1267,6 +1309,12 @@ struct ib_qp *ib_create_qp_user(struct ib_pd *pd,
 	qp->xrcd    = NULL;
 
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	if (qp_init_attr->send_cq)
 		atomic_inc(&qp_init_attr->send_cq->usecnt);
 	if (qp_init_attr->rwq_ind_tbl)
@@ -1962,6 +2010,12 @@ int ib_destroy_qp_user(struct ib_qp *qp, struct ib_udata *udata)
 			rdma_put_gid_attr(av_sgid_attr);
 		if (pd)
 			atomic_dec(&pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, pd, usecnt);
+		}
 		if (scq)
 			atomic_dec(&scq->usecnt);
 		if (rcq)
@@ -2085,6 +2139,12 @@ struct ib_mr *ib_reg_user_mr_user(struct ib_pd *pd, u64 start, u64 length,
 	mr->pd = pd;
 	mr->dm = NULL;
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 
 	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
 	rdma_restrack_parent_name(&mr->res, &pd->res);
@@ -2120,9 +2180,18 @@ int ib_dereg_mr_user(struct ib_mr *mr, struct ib_udata *udata)
 	printk("WAH ib_dereg_mr_user pd %px internal_mr %px mr %px\n", pd,
 	       pd->__internal_mr, mr);
 	dump_stack();
+	printk("WAH ib_dereg_mr_user udata %px device %px \n", udata,
+	       mr->device);
 	ret = mr->device->ops.dereg_mr(mr, udata);
+	printk("WAH ib_dereg_mr_user %d udata %d %px\n", __LINE__, ret, pd);
 	if (!ret) {
 		atomic_dec(&pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, pd, usecnt);
+		}
 		if (dm)
 			atomic_dec(&dm->usecnt);
 		kfree(sig_attrs);
@@ -2169,6 +2238,12 @@ struct ib_mr *ib_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
 	mr->dm = NULL;
 	mr->uobject = NULL;
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	mr->need_inval = false;
 	mr->type = mr_type;
 	mr->sig_attrs = NULL;
@@ -2230,6 +2305,12 @@ struct ib_mr *ib_alloc_mr_integrity(struct ib_pd *pd,
 	mr->dm = NULL;
 	mr->uobject = NULL;
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	mr->need_inval = false;
 	mr->type = IB_MR_TYPE_INTEGRITY;
 	mr->sig_attrs = sig_attrs;
@@ -2407,6 +2488,12 @@ struct ib_wq *ib_create_wq(struct ib_pd *pd,
 		wq->pd = pd;
 		wq->uobject = NULL;
 		atomic_inc(&pd->usecnt);
+		{
+			int usecnt;
+			usecnt = atomic_read(&pd->usecnt);
+			printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__,
+			       __LINE__, pd, usecnt);
+		}
 		atomic_inc(&wq_attr->cq->usecnt);
 		atomic_set(&wq->usecnt, 0);
 	}
@@ -2433,6 +2520,12 @@ int ib_destroy_wq_user(struct ib_wq *wq, struct ib_udata *udata)
 		return ret;
 
 	atomic_dec(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	atomic_dec(&cq->usecnt);
 	return ret;
 }

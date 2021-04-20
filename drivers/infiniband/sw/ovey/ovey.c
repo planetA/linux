@@ -171,6 +171,7 @@ int ovey_delete_device(char *device_name)
 	struct ib_device *ovey_ib_dev;
 
 	ovey_ib_dev = ib_device_get_by_name(device_name, RDMA_DRIVER_UNKNOWN);
+	opr_info("WAH delete device %px", ovey_ib_dev);
 	if (!ovey_ib_dev) {
 		return -ENOENT;
 	}
