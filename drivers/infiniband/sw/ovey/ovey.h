@@ -96,11 +96,8 @@ struct ovey_device {
 	struct xarray qp_xa;
 };
 
-#define OVEY_UCONTEXT 1
 struct ovey_ucontext {
-#if OVEY_UCONTEXT
 	struct ib_ucontext base;
-#endif
 	struct ib_ucontext *parent;
 };
 
@@ -141,22 +138,9 @@ static inline u32 qp_id(struct ovey_qp *qp)
 	return *qp_id_p(qp);
 }
 
-#define INIT_OVEY_OBJ_SIZE(ovey_dev, ib_struct, parent_dev)                    \
-	ovey_dev->base.ops.size_ib_##ib_struct =                               \
-		(parent_dev->ops.size_ib_##ib_struct +                         \
-		 sizeof(struct ovey_##ib_struct))
-
-#define OVEY_UCONTEXT 1
-
 static inline struct ovey_ucontext *to_ovey_ctx(struct ib_ucontext *base_ctx)
 {
-#if OVEY_UCONTEXT
 	return container_of(base_ctx, struct ovey_ucontext, base);
-#else
-	return (struct ovey_ucontext *)((uintptr_t)base_ctx +
-					base_ctx->device->ops.size_ib_ucontext -
-					sizeof(struct ovey_ucontext));
-#endif
 }
 
 static inline struct ovey_device *to_ovey_dev(struct ib_device *base_dev)
