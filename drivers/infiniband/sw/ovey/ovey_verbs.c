@@ -201,7 +201,6 @@ static int ovey_alloc_ucontext(struct ib_ucontext *base_ctx, struct ib_udata *ud
 
 	/* XXX: That is very hack. We first pretend to be parent, so that
 	 * alloc_context in rdma-core works, then we switch to being ovey. */
-	ovey_dev->base.ops.driver_id = RDMA_DRIVER_OVEY;
 	return ret;
 
   err:
