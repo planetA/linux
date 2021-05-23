@@ -362,7 +362,6 @@ static struct ib_mr *ovey_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
 	if (!ovey_mr->parent)
 		opr_err("ib_alloc_mr() on parent device failed\n");
 	return &ovey_mr->base;
-	//return ib_alloc_mr(ovey_pd->parent, mr_type, max_sge);
 }
 
 /*

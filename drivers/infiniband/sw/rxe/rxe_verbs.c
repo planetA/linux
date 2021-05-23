@@ -991,8 +991,6 @@ static struct ib_mr *rxe_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 	struct rxe_mem *mr;
 	int err;
 
-	printk("WAH %s:%d %px\n", __FUNCTION__, __LINE__, rxe);
-
 	if (mr_type != IB_MR_TYPE_MEM_REG)
 		return ERR_PTR(-EINVAL);
 
@@ -1003,9 +1001,6 @@ static struct ib_mr *rxe_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 	}
 
 	rxe_add_index(&mr->pelem);
-	printk("WAH rxe_add_index %d from %s %d\n", mr->pelem.index,
-	       __FUNCTION__, __LINE__);
-
 	rxe_add_ref(&pd->pelem);
 
 	err = rxe_mem_init_fast(pd, max_num_sg, mr);

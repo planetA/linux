@@ -293,12 +293,10 @@ void rxe_add_index(struct rxe_pool_entry *elem)
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
-	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	elem->index = alloc_index(pool);
 	insert_index(pool, elem);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
-	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 }
 
 void rxe_drop_index(struct rxe_pool_entry *elem)
@@ -306,12 +304,10 @@ void rxe_drop_index(struct rxe_pool_entry *elem)
 	struct rxe_pool *pool = elem->pool;
 	unsigned long flags;
 
-	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 	write_lock_irqsave(&pool->pool_lock, flags);
 	clear_bit(elem->index - pool->min_index, pool->table);
 	rb_erase(&elem->node, &pool->tree);
 	write_unlock_irqrestore(&pool->pool_lock, flags);
-	printk("WAH %s %d: %px\n", __func__, __LINE__, elem);
 }
 
 void *rxe_alloc(struct rxe_pool *pool)
