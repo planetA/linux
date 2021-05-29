@@ -238,9 +238,13 @@ int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 		opr_err("received no valid value for OVEY_A_VIRT_NET_UUID_STR!\n");
 		goto err;
 	}
-	ovey_device_info.node_guid =
-		ocp_get_u64_attribute(info, OVEY_A_NODE_GUID);
-	if (!ovey_device_info.node_guid) {
+  ret = ocp_get_u64_attribute(info, OVEY_A_NODE_GUID, &ovey_device_info.node_guid);
+  if (ret) {
+    opr_err("received no valid value for OVEY_A_NODE_GUID!\n");
+		goto err;
+	}
+  ret = ocp_get_u64_attribute(info, OVEY_A_NODE_LID, &ovey_device_info.node_lid);
+  if (ret) {
 		opr_err("received no valid value for OVEY_A_NODE_GUID!\n");
 		goto err;
 	}
@@ -467,6 +471,7 @@ int ocp_cb_daemon_hello(struct sk_buff *skb, struct genl_info *info)
 	struct sk_buff *reply_skb;
 	u32 sending_socket_port_id;
 	enum OcpSocketKind received_socket_kind_attribute, netlink_hdr_port_id;
+	int ret;
 
 	// Not necessarily the PID of the sending process. The first socket from the process
 	// gets the process id assigned (due to my testing) and all further processes
@@ -478,8 +483,10 @@ int ocp_cb_daemon_hello(struct sk_buff *skb, struct genl_info *info)
 	// in userland and kernel (knowing what socket a packet came from), I want to ensure that the
 	// information is transferred via attribute as well as .nl_pid (of netlink header)
 
-	received_socket_kind_attribute =
-		ocp_get_u32_attribute(info, OVEY_A_SOCKET_KIND);
+	ret =	ocp_get_u32_attribute(info, OVEY_A_SOCKET_KIND, &received_socket_kind_attribute);
+	if (ret) {
+					return ret;
+	}
 
 	opr_info("OCP-request: OVEY_C_DAEMON_HELLO\n");
 	opr_info("    sending_socket_port_id (source socket id)    =%d\n",
@@ -527,6 +534,7 @@ int ocp_cb_daemon_bye(struct sk_buff *skb, struct genl_info *info)
 	struct sk_buff *reply_skb;
 	u32 sending_socket_port_id;
 	enum OcpSocketKind received_socket_kind_attribute, netlink_hdr_port_id;
+	int ret;
 
 	// Not necessarily the PID of the sending process. The first socket from the process
 	// gets the process id assigned (due to my testing) and all further processes
@@ -538,8 +546,10 @@ int ocp_cb_daemon_bye(struct sk_buff *skb, struct genl_info *info)
 	// in userland and kernel (knowing what socket a packet came from), I want to ensure that the
 	// information is transferred via attribute as well as .nl_pid (of netlink header)
 
-	received_socket_kind_attribute =
-		ocp_get_u32_attribute(info, OVEY_A_SOCKET_KIND);
+	ret =	ocp_get_u32_attribute(info, OVEY_A_SOCKET_KIND, &received_socket_kind_attribute);
+	if (ret) {
+					return ret;
+	}
 
 	opr_info("OCP-request: OVEY_C_DAEMON_BYE\n");
 	opr_info("    sending_socket_port_id (source socket id)    =%d\n",
@@ -603,13 +613,17 @@ int ocp_cb_debug_initiate_request(struct sk_buff *skb, struct genl_info *info)
 
 int ocp_cb_resolve_completion(struct sk_buff *skb, struct genl_info *info)
 {
-	u64 completion_id;
-	opr_info("OCP-request: OVEY_C_RESOLVE_COMPLETION\n");
+				u64 completion_id;
+				int ret;
+				opr_info("OCP-request: OVEY_C_RESOLVE_COMPLETION\n");
 
-	completion_id = ocp_get_u64_attribute(info, OVEY_A_COMPLETION_ID);
-	opr_info("Completion ID is %lld\n", completion_id);
-	ovey_completion_resolve_by_id(completion_id);
-	return 0;
+				ret = ocp_get_u64_attribute(info, OVEY_A_COMPLETION_ID, &completion_id);
+				opr_info("Completion ID is %lld: ret=%d\n", completion_id, ret);
+				if (ret) {
+								return -EINVAL;
+				}
+				ovey_completion_resolve_by_id(completion_id);
+				return 0;
 };
 
 int ocp_cb_debug_resolve_all_completions(struct sk_buff *skb,

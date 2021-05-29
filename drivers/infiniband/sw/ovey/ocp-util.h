@@ -32,22 +32,31 @@ void ocp_reply_with_error(struct genl_info *info, int err_code);
 char * ocp_get_string_attribute(struct genl_info *info, enum OveyAttribute attribute);
 
 /**
+ * Convenient function to get mandatory u16 parameter from netlink attributes.
+ *
+ * @param info Info of incoming genl request
+ * @param attribute OveyAttribute
+ * @param value pointer to the data inside info.
+ */
+int ocp_get_u16_attribute(struct genl_info *info, enum OveyAttribute attribute, u16 *value);
+
+/**
+ * Convenient function to get mandatory u16 parameter from netlink attributes.
+ *
+ * @param info Info of incoming genl request
+ * @param attribute OveyAttribute
+ * @param value pointer to the data inside info.
+ */
+int ocp_get_u32_attribute(struct genl_info *info, enum OveyAttribute attribute, u32 *value);
+
+/**
  * Convenient function to get mandatory u64 parameter from netlink attributes.
  *
  * @param info Info of incoming genl request
  * @param attribute OveyAttribute
- * @return NULL or pointer to the data inside info.
+ * @param value pointer to the data inside info.
  */
-u64 ocp_get_u64_attribute(struct genl_info *info, enum OveyAttribute attribute);
-
-/**
- * Convenient function to get mandatory u32 parameter from netlink attributes.
- *
- * @param info Info of incoming genl request
- * @param attribute OveyAttribute
- * @return NULL or pointer to the data inside info.
- */
-u32 ocp_get_u32_attribute(struct genl_info *info, enum OveyAttribute attribute);
+int ocp_get_u64_attribute(struct genl_info *info, enum OveyAttribute attribute, u64 *value);
 
 /**
  * Like ocp_get_string_attribute() but copies the string into a specified buffer.

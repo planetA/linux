@@ -43,22 +43,23 @@ struct ovey_completion_chain * ovey_completion_find_by_id(u64 id) {
     return NULL;
 }
 
-int ovey_completion_resolve_by_id(u64 completion_id) {
-    struct ovey_completion_chain * chain_node = ovey_completion_find_by_id(completion_id);
+int ovey_completion_resolve_by_id(u64 completion_id)
+{
+				struct ovey_completion_chain * chain_node = ovey_completion_find_by_id(completion_id);
 
-    opr_info("ovey_completion_resolve_by_id(%lld)!", completion_id);
-    if (chain_node == NULL) {
-        opr_err("The completion chain doesn't know the element %lld\n", completion_id);
-        return -EINVAL;
-    }
-    if (chain_node->completion_resolved) {
-        opr_err("The completion chain item with id %lld is already resolved\n", completion_id);
-        return -1;
-    }
-    opr_info("chain_node=%px\n", chain_node);
-    complete(&chain_node->completion);
-    chain_node->completion_resolved = true;
-    return 0;
+				opr_info("ovey_completion_resolve_by_id(%lld)!", completion_id);
+				if (chain_node == NULL) {
+								opr_err("The completion chain doesn't know the element %lld\n", completion_id);
+								return -EINVAL;
+				}
+				if (chain_node->completion_resolved) {
+								opr_err("The completion chain item with id %lld is already resolved\n", completion_id);
+								return -1;
+				}
+				opr_info("chain_node=%px\n", chain_node);
+				complete(&chain_node->completion);
+				chain_node->completion_resolved = true;
+				return 0;
 }
 
 /**

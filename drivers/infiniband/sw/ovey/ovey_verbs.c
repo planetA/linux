@@ -66,26 +66,37 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	req_sk_buf = ocp_nlmsg_new();
 	hdr = ocp_kernel_request_put(req_sk_buf,
 				     OVEY_C_STORE_VIRT_PROPERTY_PORT_LID);
-	nla_put_u64_64bit(req_sk_buf, OVEY_A_COMPLETION_ID, chain_node->req_id,
-			  0);
-	nla_put_u32(req_sk_buf, OVEY_A_REAL_PROPERTY_U32, virt_lid.orig);
-	nla_put_u32(req_sk_buf, OVEY_A_VIRT_PROPERTY_U32, virt_lid.virt);
+	if (!hdr) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	ret = nla_put_u64_64bit(req_sk_buf, OVEY_A_COMPLETION_ID, chain_node->req_id, 0);
+	if (ret) {
+		goto out;
+	}
+	ret = nla_put_u32(req_sk_buf, OVEY_A_REAL_PROPERTY_U32, virt_lid.orig);
+	if (ret) {
+		goto out;
+	}
+	ret = nla_put_u32(req_sk_buf, OVEY_A_VIRT_PROPERTY_U32, virt_lid.virt);
+	if (ret) {
+		goto out;
+	}
 	/* finalize the message, IMPORTANT! Update length attribute etc */
 	genlmsg_end(req_sk_buf, hdr);
 	// sending request to daemon via "kernel to daemon" socket
-	nlmsg_unicast(ocp_sockets.genl_sock, req_sk_buf,
-		      ocp_sockets.kernel_daemon_to_sock_pid);
+	ret = nlmsg_unicast(ocp_sockets.genl_sock, req_sk_buf,
+			    ocp_sockets.kernel_daemon_to_sock_pid);
 
 	ret = wait_for_completion_killable(&chain_node->completion);
-	if (ret == 0) {
-		// success
-		opr_info("wait_for_completion_killable returned 0");
-	} else {
+	if (ret) {
 		// process got killed while waiting for the completion
 		opr_err("wait_for_completion_killable returned %d", ret);
 		return -EINVAL;
 	}
 
+  out:
+	opr_info("wait_for_completion_killable returned %d", ret);
 	return ret;
 }
 

@@ -29,10 +29,13 @@ enum OveyAttribute {
     // String: used e.g. in OVEY_C_NEW_DEVICE
     OVEY_A_PARENT_DEVICE,
 
-    // u64 (big endian!): guid of new ovey device
+    // u64: GUID of the new ovey device
     OVEY_A_NODE_GUID,
 
-    // u64 (big endian!): guid of the parent device of the ovey device
+    // u64: LID of the new ovey device
+    OVEY_A_NODE_LID,
+
+    // u64: guid of the parent device of the ovey device
     OVEY_A_PARENT_NODE_GUID,
 
     // String@36 + \0 (null terminated) that represents a v4 uuid (like 7b36a8ed-24b6-46c7-9a61-ef3c3a39d52e).
@@ -80,7 +83,8 @@ enum OveyOperation {
      * Description: Creates a new Ovey ibverbs device and attaches a parent device to it.
      *              Operation is usually triggered by ovey daemon.
      * Direction:   From daemon to kernel.
-     * Request:     OVEY_C_NEW_DEVICE(OVEY_A_VIRT_DEVICE, OVEY_A_PARENT_DEVICE, OVEY_A_NODE_GUID, OVEY_A_VIRT_NET_UUID_STR)
+     * Request:     OVEY_C_NEW_DEVICE(OVEY_A_VIRT_DEVICE, OVEY_A_PARENT_DEVICE,
+     *               OVEY_A_NODE_GUID, OVEY_A_NODE_LID, OVEY_A_VIRT_NET_UUID_STR)
      * Response:    OVEY_C_NEW_DEVICE()
      */
     OVEY_C_NEW_DEVICE,
@@ -105,11 +109,12 @@ enum OveyOperation {
     OVEY_C_DEBUG_RESPOND_ERROR,
 
     /*
-     * Description: Command to ask for device information (like parent device, guid, and virt. network id).
+     * Description: Command to ask for device information (like parent device, GUID, LID, and virt. network id).
      * Like OVEY_C_PARENT_DEVICE_NAME but with more data.
      * Direction:   From daemon to kernel.
      * Request:     OVEY_C_DEVICE_INFO(OVEY_A_VIRT_DEVICE)
-     * Response:    OVEY_C_DEVICE_INFO(OVEY_A_PARENT_DEVICE, OVEY_A_NODE_GUID, OVEY_A_VIRT_NET_UUID_STR)
+     * Response:    OVEY_C_DEVICE_INFO(OVEY_A_PARENT_DEVICE, OVEY_A_NODE_GUID,
+     *              OVEY_A_NODE_LID, OVEY_A_VIRT_NET_UUID_STR)
      */
     OVEY_C_DEVICE_INFO,
 
@@ -210,29 +215,33 @@ enum OcpSocketKind {
  * @return Name of enum value, that has static lifetime and must not be freed.
  */
 __attribute__((unused))
-static char * ovey_a_to_string(enum OveyAttribute attr) {
-    switch (attr) {
-        case OVEY_A_MSG: {
-            return "OVEY_A_MSG";
-        }
-        case OVEY_A_VIRT_DEVICE: {
-            return "OVEY_A_VIRT_DEVICE";
-        }
-        case OVEY_A_PARENT_DEVICE: {
-            return "OVEY_A_PARENT_DEVICE";
-        }
-        case OVEY_A_NODE_GUID: {
-            return "OVEY_A_NODE_GUID";
-        }
-        case OVEY_A_PARENT_NODE_GUID: {
-            return "OVEY_A_PARENT_NODE_GUID";
-        }
-        case OVEY_A_VIRT_NET_UUID_STR: {
-            return "OVEY_A_VIRT_NET_UUID_STR";
-        }
-        default:
-            return "<unknown>";
-    }
+static char * ovey_a_to_string(enum OveyAttribute attr)
+{
+				switch (attr) {
+				case OVEY_A_MSG: {
+								return "OVEY_A_MSG";
+				}
+				case OVEY_A_VIRT_DEVICE: {
+								return "OVEY_A_VIRT_DEVICE";
+				}
+				case OVEY_A_PARENT_DEVICE: {
+								return "OVEY_A_PARENT_DEVICE";
+				}
+				case OVEY_A_NODE_GUID: {
+								return "OVEY_A_NODE_GUID";
+				}
+				case OVEY_A_NODE_LID: {
+								return "OVEY_A_NODE_LID";
+				}
+				case OVEY_A_PARENT_NODE_GUID: {
+								return "OVEY_A_PARENT_NODE_GUID";
+				}
+				case OVEY_A_VIRT_NET_UUID_STR: {
+								return "OVEY_A_VIRT_NET_UUID_STR";
+				}
+				default:
+								return "<unknown>";
+				}
 }
 
 /**

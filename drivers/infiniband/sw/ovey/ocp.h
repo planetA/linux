@@ -20,18 +20,20 @@ extern struct genl_family ovey_gnl_family;
 // All pointers inside the struct are pointers OWNED BY OTHER FUNCTIONS.
 // Don't free them!
 struct ovey_device_info {
-    // e.g. "ovey0"
-    char const * device_name;
-    // e.g. "rxe0"
-    char const * parent_device_name;
-    // the virtual guid that identifies this node. Corresponds with the
-    // value inside Ovey Coordinator.
-    __be64 node_guid;
-    // the guid of the real, physical device.
-    __be64 parent_node_guid;
-    // the uuid v4 that describes to what virtual network this device belongs.
-    // Corresponds with the value inside Ovey Coordinator.
-    char const * virt_network_id;
+				// e.g. "ovey0"
+				char const * device_name;
+				// e.g. "rxe0"
+				char const * parent_device_name;
+				// the virtual guid that identifies this node. Corresponds with the
+				// value inside Ovey Coordinator.
+				u64 node_guid;
+				// the virtual LID of a node
+				u64 node_lid;
+				// the guid of the real, physical device.
+				u64 parent_node_guid;
+				// the uuid v4 that describes to what virtual network this device belongs.
+				// Corresponds with the value inside Ovey Coordinator.
+				char const * virt_network_id;
 };
 
 struct ocp_sockets {

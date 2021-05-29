@@ -73,48 +73,61 @@ void ocp_reply_with_error(struct genl_info *info, int err_code)
 	}
 }
 
-u64 ocp_get_u64_attribute(struct genl_info *info, enum OveyAttribute attribute)
+int ocp_get_u16_attribute(struct genl_info *info, enum OveyAttribute attribute, u16 *value)
 {
-	struct nlattr *na = info->attrs[attribute];
-	u64 *value_ptr;
-	u64 value;
+				struct nlattr *na = info->attrs[attribute];
+				u16 *value_ptr;
 
-	if (!na) {
-		opr_err("no attribute OveyAttribute::%s in message!\n",
-			ovey_a_to_string(attribute));
-		return 0; // I assume that we don't use valid "0" values in OCP and we can use 0 as error indicator
-	}
+				if (!na) {
+								opr_err("no attribute OveyAttribute::%s in message!\n",
+												ovey_a_to_string(attribute));
+								return -EINVAL;
+				}
 
-	value_ptr = (u64 *)(nla_data(na));
-	value = *value_ptr;
-	if (value == 0) {
-		opr_err("warning: received 0 but we expect 0 to be the error value/indicator of no value. refactor maybe?! OveyAttribute[%d]\n",
-			attribute);
-	} else {
-		opr_info(
-			"received u64 value for OveyAttribute::%s is %lld [%#016llx]\n",
-			ovey_a_to_string(attribute), value, value);
-	}
+				value_ptr = (u16 *)(nla_data(na));
+				*value = *value_ptr;
+				opr_info("received u16 value for OveyAttribute::%s is %d [%#08x]\n",
+								ovey_a_to_string(attribute), *value, *value);
 
-	return value;
+				return 0;
 }
 
-u32 ocp_get_u32_attribute(struct genl_info *info, enum OveyAttribute attribute)
+int ocp_get_u32_attribute(struct genl_info *info, enum OveyAttribute attribute, u32 *value)
 {
-	struct nlattr *na = info->attrs[attribute];
-	u32 *value_ptr;
-	u32 value;
+				struct nlattr *na = info->attrs[attribute];
+				u32 *value_ptr;
 
-	if (!na) {
-		opr_err("no attribute OveyAttribute::%s in message!\n",
-			ovey_a_to_string(attribute));
-		return 0; // I assume that we don't use valid "0" values in OCP and we can use 0 as error indicator
-	}
+				if (!na) {
+								opr_err("no attribute OveyAttribute::%s in message!\n",
+												ovey_a_to_string(attribute));
+								return -EINVAL;
+				}
 
-	value_ptr = (u32 *)(nla_data(na));
-	value = *value_ptr;
+				value_ptr = (u32 *)(nla_data(na));
+				*value = *value_ptr;
+				opr_info("received u32 value for OveyAttribute::%s is %u [%#08x]\n",
+								ovey_a_to_string(attribute), *value, *value);
 
-	return value;
+				return 0;
+}
+
+int ocp_get_u64_attribute(struct genl_info *info, enum OveyAttribute attribute, u64 *value)
+{
+				struct nlattr *na = info->attrs[attribute];
+				u64 *value_ptr;
+
+				if (!na) {
+								opr_err("no attribute OveyAttribute::%s in message!\n",
+												ovey_a_to_string(attribute));
+								return -EINVAL;
+				}
+
+				value_ptr = (u64 *)(nla_data(na));
+				*value = *value_ptr;
+				opr_info("received u64 value for OveyAttribute::%s is %lld [%#016llx]\n",
+								ovey_a_to_string(attribute), *value, *value);
+
+				return 0;
 }
 
 char *ocp_get_string_attribute(struct genl_info *info,
