@@ -1,6 +1,7 @@
 #ifndef _OCP_H
 #define _OCP_H
 
+#include <linux/uuid.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
 
@@ -13,6 +14,22 @@
 // Make this accessible from other c files
 extern struct genl_family ovey_gnl_family;
 
+/**
+ * struct ovey_create_device_info
+ * @name - Name of the new ovey device
+ * @parent - Name of the parent device
+ * @network - UUID of the network. For now serves as a cookie.
+ */
+struct ovey_create_device_info {
+	// e.g. "ovey0"
+	char name[IB_DEVICE_NAME_MAX];
+	// e.g. "rxe0"
+	char parent[IB_DEVICE_NAME_MAX];
+	// the uuid v4 that describes to what virtual network this device belongs.
+	// Corresponds with the value inside Ovey Coordinator.
+	uuid_t network;
+};
+
 // This struct is used as intermediate struct for the
 // OVEY_C_DEVICE_INFO OCP operation. This is assembled either before it is destructed and send via netlink
 // or assembled after the properties where received via OCP.
@@ -20,20 +37,20 @@ extern struct genl_family ovey_gnl_family;
 // All pointers inside the struct are pointers OWNED BY OTHER FUNCTIONS.
 // Don't free them!
 struct ovey_device_info {
-				// e.g. "ovey0"
-				char const * device_name;
-				// e.g. "rxe0"
-				char const * parent_device_name;
-				// the virtual guid that identifies this node. Corresponds with the
-				// value inside Ovey Coordinator.
-				u64 node_guid;
-				// the virtual LID of a node
-				u64 node_lid;
-				// the guid of the real, physical device.
-				u64 parent_node_guid;
-				// the uuid v4 that describes to what virtual network this device belongs.
-				// Corresponds with the value inside Ovey Coordinator.
-				char const * virt_network_id;
+	// e.g. "ovey0"
+	char const * device_name;
+	// e.g. "rxe0"
+	char const * parent_device_name;
+	// the virtual guid that identifies this node. Corresponds with the
+	// value inside Ovey Coordinator.
+	u64 node_guid;
+	// the virtual LID of a node
+	u64 node_lid;
+	// the guid of the real, physical device.
+	u64 parent_node_guid;
+	// the uuid v4 that describes to what virtual network this device belongs.
+	// Corresponds with the value inside Ovey Coordinator.
+	uuid_t network;
 };
 
 struct ocp_sockets {

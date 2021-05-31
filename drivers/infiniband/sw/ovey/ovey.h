@@ -44,8 +44,6 @@ struct ovey_qp;
 
 int ovey_qp_add(struct ovey_device *ovey_dev, struct ovey_qp *qp);
 void ovey_free_qp(struct kref *ref);
-/* Checks whether the new device name matches "ovey[0-9]+". */
-int ovey_verify_new_device_name(char const *);
 
 #define ovey_dbg(ibdev, fmt, ...)                                               \
 	ibdev_dbg(ibdev, "%s: " fmt, __func__, ##__VA_ARGS__)
@@ -70,10 +68,6 @@ int ovey_verify_new_device_name(char const *);
 	ibdev_dbg(&cep->sdev->base_dev, "CEP[0x%pK] %s: " fmt,                 \
 		  cep, __func__, ##__VA_ARGS__)
 
-// a UUID v4 (like 7b36a8ed-24b6-46c7-9a61-ef3c3a39d52e) is 36 chars long
-#define UUID_V4_STR_LEN 36
-#define VIRT_NETWORK_ID_STR_LEN UUID_V4_STR_LEN
-
 struct ovey_device {
 	// The ib_device data structure of the virtual device.
 	// Seems like this MUST BE FIRST PROPERTY of the struct!
@@ -85,12 +79,7 @@ struct ovey_device {
 	struct net_device *ndev;
 
 	// Virtual networks are identified by a uuid.
-	// Because I don't need to process the ID here and just have to store
-	// it, I just store it's easy to read string representation.
-	// +1: NULL Terminated; even tho we know the length, I decided to null-terminate
-	// it because it makes the life easier. Otherwise I have to know everywhere that
-	// I know the exact length of it.
-	char virt_network_id[VIRT_NETWORK_ID_STR_LEN + 1];
+	uuid_t network;
 
 	// TODO remove probably
 	struct xarray qp_xa;
@@ -177,7 +166,8 @@ static inline struct ovey_qp *to_ovey_qp(struct ib_qp *base_qp)
 
 // Creates a new Ovey Verbs Device if it doesn't exists yet. It will allocate memory
 // and register the device internally.
-int ovey_new_device_if_not_exists(struct ovey_device_info const * ovey_device_info, struct ib_device * const parent);
+int ovey_create_device(const struct ovey_create_device_info * ovey_device_info,
+		struct ib_device * const parent);
 
 int ovey_delete_device(char *device_name);
 

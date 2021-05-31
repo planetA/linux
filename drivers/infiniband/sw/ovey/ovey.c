@@ -15,12 +15,19 @@ MODULE_LICENSE("GPL");
 
 extern const struct ib_device_ops ovey_device_ops;
 
+
+
+static int get_device_info(struct ovey_device_info *dev_info)
+{
+  return 0;
+}
+
 /**
  * Allocates a new ib device and initializes it.
  * This initializes the ib_core-related (basic) stuff as well as Ovey specific attributes.
  */
-static struct ovey_device *ovey_alloc_and_setup_new_device(
-	struct ovey_device_info const *const ovey_device_info,
+static struct ovey_device *__ovey_create_device(
+	const struct ovey_device_info *device_info,
 	struct ib_device *const parent)
 {
 	struct ovey_device *ovey_dev = NULL;
@@ -33,8 +40,9 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 
 	// init device_info/ovey related stuff
 
-	strcpy(ovey_dev->virt_network_id, ovey_device_info->virt_network_id);
-	ovey_dev->base.node_guid = ovey_device_info->node_guid;
+	uuid_copy(&ovey_dev->network, &device_info->network);
+	/* ovey_dev->base.node_guid = device_info->node_guid; */
+	ovey_dev->base.node_guid = 444;
 
 	// ----------------------------------------------------------------------------------
 	// init other/verbs related stuff
@@ -119,7 +127,7 @@ static struct ovey_device *ovey_alloc_and_setup_new_device(
 	}
 
 	opr_info("invoked\n");
-	ret = ib_register_device(&ovey_dev->base, ovey_device_info->device_name, NULL);
+	ret = ib_register_device(&ovey_dev->base, device_info->device_name, NULL);
 	if (ret) {
 		opr_err("ovey: device registration error %d\n", ret);
 		goto error;
@@ -135,33 +143,62 @@ error:
 	return ERR_PTR(-EINVAL);
 }
 
-int ovey_new_device_if_not_exists(
-	struct ovey_device_info const *const ovey_device_info,
-	struct ib_device *const parent)
+/**
+ * oveyd_lease_device - Request ovey daemon to lease the device identifiers.
+ *
+ */
+int oveyd_lease_device(uuid_t network, struct ovey_device_info *device)
+{
+	return 0;
+}
+
+int ovey_create_device(
+	const struct ovey_create_device_info *create_info,
+	struct ib_device *parent)
 {
 	struct ib_device *ovey_ib_dev;
 	struct ovey_device *ovey_dev = NULL;
+	struct ovey_device_info device_info;
+	int ret = 0;
 
 	opr_info("invoked\n");
 
-	ovey_ib_dev = ib_device_get_by_name(ovey_device_info->device_name,
-					    RDMA_DRIVER_UNKNOWN);
+	parent = ib_device_get_by_name(create_info->parent, RDMA_DRIVER_UNKNOWN);
+	if (!parent) {
+		opr_err("parent device '%s'not found by ib_device_get_by_name()\n",
+			create_info->parent);
+		ret = -ENODEV;
+		goto err;
+	}
+
+	ovey_ib_dev = ib_device_get_by_name(create_info->name, RDMA_DRIVER_UNKNOWN);
 	if (ovey_ib_dev) {
 		opr_info("invoked\n");
-		ib_device_put(ovey_ib_dev);
-		return -EEXIST;
+		ret = -EEXIST;
+		goto err_put;
 	}
 	opr_info("invoked\n");
 
-	ovey_dev = ovey_alloc_and_setup_new_device(ovey_device_info, parent);
+	ret = oveyd_lease_device(create_info->network, &device_info);
+	if (ret) {
+		goto err_put;
+	}
+
+	ovey_dev = __ovey_create_device(&device_info, parent);
 	opr_info("invoked: %px\n", ovey_dev);
 	if (IS_ERR(ovey_dev)) {
 		opr_err("ovey_device_register() failed: %ld\n",
 			PTR_ERR(ovey_dev));
-		return PTR_ERR(ovey_dev);
+		ret = PTR_ERR(ovey_dev);
+		goto err_put;
 	}
 
 	return 0;
+err_put:
+	ib_device_put(ovey_ib_dev);
+	ib_device_put(parent);
+err:
+	return ret;
 }
 
 int ovey_delete_device(char *device_name)
@@ -178,32 +215,6 @@ int ovey_delete_device(char *device_name)
 
 	return 0;
 }
-
-/* Checks whether the new device name matches "ovey[0-9]+". */
-int ovey_verify_new_device_name(char const *name)
-{
-	int i;
-	char c;
-	size_t len;
-	size_t expected_min_len;
-
-	len = strlen(name);
-	expected_min_len = strlen(OVEY_DEVICE_NAME_PREFIX) + 1;
-
-	if (len < expected_min_len) {
-		return 0;
-	}
-
-	// checks if only numbers are in the name.
-	for (i = expected_min_len; i < len; i++) {
-		c = name[i];
-		if (c < '0' || c > '9') {
-			return 0;
-		}
-	}
-
-	return 1;
-};
 
 struct ovey_device_info *
 get_device_info_by_name(char const *const ovey_dev_name,
@@ -224,13 +235,13 @@ get_device_info_by_name(char const *const ovey_dev_name,
 	dest->parent_device_name = ovey_dev->parent->name;
 	dest->node_guid = ovey_dev->base.node_guid;
 	dest->parent_node_guid = ovey_dev->parent->node_guid;
-	dest->virt_network_id = ovey_dev->virt_network_id;
+	uuid_copy(&dest->network, &ovey_dev->network);
 
 	opr_info("get_device_info_by_name() for device='%s'\n", ovey_dev_name);
 	opr_info("    parent_device_name='%s'\n", dest->parent_device_name);
-	opr_info("    guid (be)         ='%016llx'\n", dest->node_guid);
-	opr_info("    parent guid (be)  ='%016llx'\n", dest->parent_node_guid);
-	opr_info("    virt_network_id   ='%s'\n", dest->virt_network_id);
+	opr_info("    guid              ='%016llx'\n", dest->node_guid);
+	opr_info("    parent guid       ='%016llx'\n", dest->parent_node_guid);
+	opr_info("    virt_network_id   ='%pUb'\n", &dest->network);
 
 	// release memory again; counterpart of ib_device_get_by_name
 	ib_device_put(ovey_ib_dev);

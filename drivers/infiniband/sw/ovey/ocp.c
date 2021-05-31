@@ -25,20 +25,32 @@ static struct nla_policy ovey_genl_policy[OVEY_A_MAX + 1] = {
 	[OVEY_A_COMPLETION_ID] = { .type = NLA_U64 },
 };
 
+static struct nla_policy ovey_create_device_policy[] = {
+	[OVEY_A_VIRT_DEVICE] = {
+		.type = NLA_NUL_STRING,
+		.len = IB_DEVICE_NAME_MAX - 1,
+	},
+	[OVEY_A_PARENT_DEVICE] = {
+		.type = NLA_NUL_STRING,
+		.len = IB_DEVICE_NAME_MAX - 1,
+	},
+	[OVEY_A_VIRT_NET_UUID_STR] = {
+		.type = NLA_NUL_STRING,
+		.len = IB_DEVICE_NAME_MAX - 1,
+	},
+};
+
 /**
  * Connects each OveyOperation (ocp-properties.h) with a specific callback method.
  */
 static const struct genl_ops ovey_gnl_ops[] = {
-	{ .cmd = OVEY_C_ECHO,
-	  .validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-	  .flags = 0,
-	  .doit = ocp_cb_echo,
-	  .dumpit = NULL },
-	{ .cmd = OVEY_C_NEW_DEVICE,
-	  .validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-	  .flags = 0,
-	  .doit = ocp_cb_new_device,
-	  .dumpit = NULL },
+	{
+		.cmd = OVEY_C_NEW_DEVICE,
+		.doit = ocp_cb_new_device,
+		.flags = GENL_UNS_ADMIN_PERM,
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
+		.policy = ovey_create_device_policy,
+	},
 	{ .cmd = OVEY_C_DELETE_DEVICE,
 	  .validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 	  .flags = 0,
@@ -212,83 +224,52 @@ int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 {
 	struct sk_buff *reply_skb;
 	void *msg_head;
-	int ret = 0;
 	struct ib_device *parent;
-	struct ovey_device_info ovey_device_info;
+	struct ovey_create_device_info create_info;
+	char uuid_str[UUID_STRING_LEN];
+	int ret = 0;
 
 	opr_info("OCP-request: OVEY_C_NEW_DEVICE\n");
 
-	// we only get a reference; we don't own the data
-	ovey_device_info.device_name =
-		ocp_get_string_attribute(info, OVEY_A_VIRT_DEVICE);
-	if (!ovey_device_info.device_name) {
-		opr_err("received no valid value for OVEY_A_VIRT_DEVICE!\n");
-		goto err;
-	}
-	// we only get a reference; we don't own the data
-	ovey_device_info.parent_device_name =
-		ocp_get_string_attribute(info, OVEY_A_PARENT_DEVICE);
-	if (!ovey_device_info.parent_device_name) {
-		opr_err("received no valid value for OVEY_A_PARENT_DEVICE!\n");
-		goto err;
-	}
-	ovey_device_info.virt_network_id =
-		ocp_get_string_attribute(info, OVEY_A_VIRT_NET_UUID_STR);
-	if (!ovey_device_info.virt_network_id) {
-		opr_err("received no valid value for OVEY_A_VIRT_NET_UUID_STR!\n");
-		goto err;
-	}
-  ret = ocp_get_u64_attribute(info, OVEY_A_NODE_GUID, &ovey_device_info.node_guid);
-  if (ret) {
-    opr_err("received no valid value for OVEY_A_NODE_GUID!\n");
-		goto err;
-	}
-  ret = ocp_get_u64_attribute(info, OVEY_A_NODE_LID, &ovey_device_info.node_lid);
-  if (ret) {
-		opr_err("received no valid value for OVEY_A_NODE_GUID!\n");
-		goto err;
+	if ((!info->attrs[OVEY_A_VIRT_DEVICE]) ||
+		(!info->attrs[OVEY_A_PARENT_DEVICE]) ||
+		(!info->attrs[OVEY_A_VIRT_NET_UUID_STR])) {
+		opr_err("Need to set all attributes for device creation");
+		return -EINVAL;
 	}
 
-	parent = ib_device_get_by_name(ovey_device_info.parent_device_name,
-				       RDMA_DRIVER_UNKNOWN);
-	if (!parent) {
-		opr_err("parent device '%s'not found by ib_device_get_by_name()\n",
-			ovey_device_info.parent_device_name);
-		ret = -EINVAL;
-		goto err;
+	nla_strlcpy(create_info.name, info->attrs[OVEY_A_VIRT_DEVICE],
+		sizeof(create_info.name));
+	nla_strlcpy(create_info.parent, info->attrs[OVEY_A_PARENT_DEVICE],
+		sizeof(create_info.parent));
+	nla_strlcpy(uuid_str, info->attrs[OVEY_A_VIRT_NET_UUID_STR], sizeof(uuid_str));
+
+	ret = uuid_parse(uuid_str, &create_info.network);
+	if (ret) {
+		return ret;
 	}
 
-	opr_info("Request to create a new Ovey device:\n");
-	opr_info("    device_name        = %s\n", ovey_device_info.device_name);
-	opr_info("    parent_device_name = %s\n",
-		 ovey_device_info.parent_device_name);
-	opr_info("    node_guid (be)     = %016llx\n",
-		 ovey_device_info.node_guid);
-	opr_info("    virt_network_id)   = %s\n",
-		 ovey_device_info.virt_network_id);
+	opr_info("Request to create a new Ovey device:\n"
+		"    device_name        = %s\n"
+		"    parent_device_name = %s\n"
+		"    virt_network_id)   = %pUb\n",
+		create_info.name, create_info.parent, &create_info.network);
 
-	if (!ovey_verify_new_device_name(ovey_device_info.device_name)) {
-		opr_err("name of new device (%s) doesn't match pattern!\n",
-			ovey_device_info.device_name);
-		ret = -EINVAL;
-		goto err;
-	}
-
-	ret = ovey_new_device_if_not_exists(&ovey_device_info, parent);
+	ret = ovey_create_device(&create_info, parent);
 	if (ret) {
 		opr_err("ovey_new_device_if_not_exists() failed because of %d!\n",
 			ret);
-		goto err_put;
+		goto err;
 	}
 
 	opr_info("new Ovey device '%s' successfully created\n",
-		 ovey_device_info.device_name);
+		create_info.name);
 
 	reply_skb = ocp_nlmsg_new();
 	if (reply_skb == NULL) {
 		opr_err("ocp_nlmsg_new() failed because of ENOMEM!\n");
 		ret = -ENOMEM;
-		goto err_put;
+		goto err;
 	}
 
 	/* create the message headers */
@@ -296,7 +277,7 @@ int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 	if (msg_head == NULL) {
 		opr_err("ocp_genlmsg_put_reply() failed because of ENOMEM!\n");
 		ret = -ENOMEM;
-		goto err_put;
+		goto err;
 	}
 
 	/* finalize the message */
@@ -307,10 +288,6 @@ int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 	// same as genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid)
 	// see https://elixir.bootlin.com/linux/v5.8.9/source/include/net/genetlink.h#L326
 	return genlmsg_reply(reply_skb, info);
-
-err_put:
-	ib_device_put(parent);
-	goto err;
 
 err:
 	ocp_reply_with_error(info, ret);
@@ -430,20 +407,21 @@ int ocp_cb_device_info(struct sk_buff *skb, struct genl_info *info)
 			ret);
 		goto err_free;
 	}
-	ret = nla_put_be64(reply_skb, OVEY_A_NODE_GUID, device_info.node_guid,
+	ret = nla_put_u64_64bit(reply_skb, OVEY_A_NODE_GUID, device_info.node_guid,
 			   0);
 	if (ret < 0) {
 		opr_err("nla_put_string() for OVEY_A_NODE_GUID failed because of %d\n",
 			ret);
 		goto err_free;
 	}
-	ret = nla_put_be64(reply_skb, OVEY_A_PARENT_NODE_GUID,
+	ret = nla_put_u64_64bit(reply_skb, OVEY_A_PARENT_NODE_GUID,
 			   device_info.parent_node_guid, 0);
 	if (ret < 0) {
 		opr_err("nla_put_string() for OVEY_A_PARENT_NODE_GUID failed because of %d\n",
 			ret);
 		goto err_free;
 	}
+#if 0
 	ret = nla_put_string(reply_skb, OVEY_A_VIRT_NET_UUID_STR,
 			     device_info.virt_network_id);
 	if (ret < 0) {
@@ -451,6 +429,7 @@ int ocp_cb_device_info(struct sk_buff *skb, struct genl_info *info)
 			ret);
 		goto err_free;
 	}
+#endif
 	/* finalize the message */
 	genlmsg_end(reply_skb, msg_head);
 
