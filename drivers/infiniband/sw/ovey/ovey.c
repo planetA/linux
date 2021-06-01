@@ -16,47 +16,29 @@ MODULE_LICENSE("GPL");
 extern const struct ib_device_ops ovey_device_ops;
 
 
-
-static int get_device_info(struct ovey_device_info *dev_info)
-{
-  return 0;
-}
-
 /**
  * Allocates a new ib device and initializes it.
  * This initializes the ib_core-related (basic) stuff as well as Ovey specific attributes.
  */
-static struct ovey_device *__ovey_create_device(
-	const struct ovey_device_info *device_info,
-	struct ib_device *const parent)
+static int ovey_init_device(const char *ibdev_name, struct ovey_device *ovey_dev)
 {
-	struct ovey_device *ovey_dev = NULL;
 	struct net_device *netdev = NULL;
 	int ret;
-
-	ovey_dev = ib_alloc_device(ovey_device, base);
-	if (!ovey_dev)
-		return NULL;
-
 	// init device_info/ovey related stuff
 
-	uuid_copy(&ovey_dev->network, &device_info->network);
-	/* ovey_dev->base.node_guid = device_info->node_guid; */
-	ovey_dev->base.node_guid = 444;
 
 	// ----------------------------------------------------------------------------------
 	// init other/verbs related stuff
 
-	ovey_dev->parent = parent;
 	// support all verbs that parent device supports
-	ovey_dev->base.uverbs_cmd_mask = parent->uverbs_cmd_mask;
+	ovey_dev->base.uverbs_cmd_mask = ovey_dev->parent->uverbs_cmd_mask;
 	// support all verbs that parent device supports
-	ovey_dev->base.uverbs_ex_cmd_mask = parent->uverbs_ex_cmd_mask;
+	ovey_dev->base.uverbs_ex_cmd_mask = ovey_dev->parent->uverbs_ex_cmd_mask;
 
 	// defines the transport type to the Userland (like in ibv_devinfo)
 	// see https://elixir.bootlin.com/linux/latest/source/drivers/infiniband/core/verbs.c#L226
 	// (function rdma_node_get_transport())
-	ovey_dev->base.node_type = parent->node_type;
+	ovey_dev->base.node_type = ovey_dev->parent->node_type;
 
 	memcpy(ovey_dev->base.node_desc, OVEY_NODE_DESC_COMMON,
 	       sizeof(OVEY_NODE_DESC_COMMON));
@@ -64,11 +46,11 @@ static struct ovey_device *__ovey_create_device(
 	/*
 	 * current model: one-to-one device association:
 	 */
-	ovey_dev->base.phys_port_cnt = parent->phys_port_cnt;
-	ovey_dev->base.dev.parent = parent->dev.parent;
-	ovey_dev->base.dev.dma_ops = parent->dev.dma_ops;
-	ovey_dev->base.dev.dma_parms = parent->dev.dma_parms;
-	ovey_dev->base.num_comp_vectors = parent->num_comp_vectors;
+	ovey_dev->base.phys_port_cnt = ovey_dev->parent->phys_port_cnt;
+	ovey_dev->base.dev.parent = ovey_dev->parent->dev.parent;
+	ovey_dev->base.dev.dma_ops = ovey_dev->parent->dev.dma_ops;
+	ovey_dev->base.dev.dma_parms = ovey_dev->parent->dev.dma_parms;
+	ovey_dev->base.num_comp_vectors = ovey_dev->parent->num_comp_vectors;
 
 	xa_init_flags(&ovey_dev->qp_xa, XA_FLAGS_ALLOC1);
 
@@ -77,13 +59,13 @@ static struct ovey_device *__ovey_create_device(
 	ovey_dev->base.ops.driver_id = RDMA_DRIVER_OVEY;
 
 	// no we make some changes
-	ovey_dev->base.ops.uverbs_abi_ver = parent->ops.uverbs_abi_ver;
+	ovey_dev->base.ops.uverbs_abi_ver = ovey_dev->parent->ops.uverbs_abi_ver;
 
 	// then we set ops (verbs) null that are not supported by parent driver
 	// this is the right way; returning -EOPNOTSUPP inside the verbs doesn't work nicely
 #define UNSET_OVEY_OP_IF_NOT_AVAILABLE(name)                                   \
 	do {                                                                   \
-		if (!parent->ops.name)                                         \
+		if (!ovey_dev->parent->ops.name)			\
 			ovey_dev->base.ops.name = NULL;                        \
 	} while (0)
 
@@ -119,7 +101,7 @@ static struct ovey_device *__ovey_create_device(
 	UNSET_OVEY_OP_IF_NOT_AVAILABLE(query_pkey);
 	UNSET_OVEY_OP_IF_NOT_AVAILABLE(query_qp);
 
-	netdev = ib_device_get_netdev(parent, 1);
+	netdev = ib_device_get_netdev(ovey_dev->parent, 1);
 	ret = ib_device_set_netdev(&ovey_dev->base, netdev, 1);
 	if (ret) {
 		opr_err("ovey: set netdev error %d\n", ret);
@@ -127,7 +109,7 @@ static struct ovey_device *__ovey_create_device(
 	}
 
 	opr_info("invoked\n");
-	ret = ib_register_device(&ovey_dev->base, device_info->device_name, NULL);
+	ret = ib_register_device(&ovey_dev->base, ibdev_name, NULL);
 	if (ret) {
 		opr_err("ovey: device registration error %d\n", ret);
 		goto error;
@@ -135,20 +117,20 @@ static struct ovey_device *__ovey_create_device(
 
 	opr_info("registered\n");
 
-	return ovey_dev;
+	return 0;
 
 error:
-	ib_dealloc_device(&ovey_dev->base);
-
-	return ERR_PTR(-EINVAL);
+	return -EINVAL;
 }
 
 /**
  * oveyd_lease_device - Request ovey daemon to lease the device identifiers.
  *
  */
-int oveyd_lease_device(const uuid_t *network, struct ovey_device_info *device)
+int oveyd_lease_device(struct ovey_device *ovey_dev)
 {
+	/* ovey_dev->base.node_guid = device_info->node_guid; */
+	ovey_dev->base.node_guid = 444;
 	return 0;
 }
 
@@ -163,7 +145,6 @@ static int ovey_create_device(const char *ibdev_name, const char *parent_name,
 {
 	struct ib_device *ovey_ib_dev;
 	struct ovey_device *ovey_dev = NULL;
-	struct ovey_device_info device_info;
 	struct ib_device *parent;
 	int ret = 0;
 
@@ -180,28 +161,38 @@ static int ovey_create_device(const char *ibdev_name, const char *parent_name,
 	ovey_ib_dev = ib_device_get_by_name(ibdev_name, RDMA_DRIVER_UNKNOWN);
 	if (ovey_ib_dev) {
 		opr_info("invoked\n");
+		ib_device_put(ovey_ib_dev);
 		ret = -EEXIST;
 		goto err_put;
 	}
 	opr_info("invoked\n");
 
-	ret = oveyd_lease_device(network, &device_info);
-	if (ret) {
-		goto err_put;
-	}
-
-	ovey_dev = __ovey_create_device(&device_info, parent);
-	opr_info("invoked: %px\n", ovey_dev);
-	if (IS_ERR(ovey_dev)) {
-		opr_err("ovey_device_register() failed: %ld\n",
-			PTR_ERR(ovey_dev));
+	ovey_dev = ib_alloc_device(ovey_device, base);
+	if (!ovey_dev) {
 		ret = PTR_ERR(ovey_dev);
 		goto err_put;
 	}
 
+	uuid_copy(&ovey_dev->network, &ovey_dev->network);
+	ovey_dev->parent = parent;
+
+	/* Request all important IDs from the coordinator */
+	ret = oveyd_lease_device(ovey_dev);
+	if (ret) {
+		goto err_free;
+	}
+
+	ret = ovey_init_device(ibdev_name, ovey_dev);
+	opr_info("invoked: %px\n", ovey_dev);
+	if (ret) {
+		opr_err("ovey_device_register() failed: %d\n", ret);
+		goto err_free;
+	}
+
 	return 0;
+err_free:
+	ib_dealloc_device(&ovey_dev->base);
 err_put:
-	ib_device_put(ovey_ib_dev);
 	ib_device_put(parent);
 err:
 	return ret;

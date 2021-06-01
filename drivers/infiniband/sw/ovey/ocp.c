@@ -165,7 +165,6 @@ int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 {
 	struct sk_buff *msg;
 	void *msg_head;
-	struct ib_device *parent;
 	struct ovey_create_device_info create_info;
 	char uuid_str[UUID_STRING_LEN];
 	int ret = 0;

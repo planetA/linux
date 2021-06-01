@@ -1517,7 +1517,7 @@ static int nldev_newlink_virt(const char *ibdev_name, const char *type,
 {
 	const struct rdma_link_ops *ops;
 	char rdmadev_name[IB_DEVICE_NAME_MAX];
-	char net_uuid_str[UUID_STRING_LEN];
+	char net_uuid_str[UUID_STRING_LEN + 1];
 	uuid_t net_uuid;
 	int err;
 
