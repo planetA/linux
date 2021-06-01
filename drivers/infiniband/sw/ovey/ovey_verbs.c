@@ -62,6 +62,7 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	attr->lid = virt_lid.virt;
 	// END VIRTUALIZE PROPERTY PORT->LID
 
+#if 0
 	chain_node = ovey_completion_add_entry();
 	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
 	hdr = ocpmsg_put(msg, OVEY_C_STORE_VIRT_PROPERTY_PORT_LID);
@@ -73,6 +74,7 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	if (ret) {
 		goto out;
 	}
+#if 0
 	ret = nla_put_u32(msg, OVEY_A_REAL_PROPERTY_U32, virt_lid.orig);
 	if (ret) {
 		goto out;
@@ -81,6 +83,7 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	if (ret) {
 		goto out;
 	}
+#endif
 	/* finalize the message, IMPORTANT! Update length attribute etc */
 	genlmsg_end(msg, hdr);
 	// sending request to daemon via "kernel to daemon" socket
@@ -93,6 +96,7 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 		opr_err("wait_for_completion_killable returned %d", ret);
 		return -EINVAL;
 	}
+#endif
 
   out:
 	opr_info("wait_for_completion_killable returned %d", ret);

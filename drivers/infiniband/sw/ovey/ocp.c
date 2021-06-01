@@ -399,7 +399,7 @@ int ocp_cb_daemon_hello(struct sk_buff *skb, struct genl_info *info)
 
 	ret =	ocp_get_u32_attribute(info, OVEY_A_SOCKET_KIND, &received_socket_kind_attribute);
 	if (ret) {
-					return ret;
+		return ret;
 	}
 
 	opr_info("OCP-request: OVEY_C_DAEMON_HELLO\n");

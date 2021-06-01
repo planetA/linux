@@ -50,14 +50,6 @@ enum OveyAttribute {
     // and sends it to the userland. Ovey Daemon will then return
     OVEY_A_COMPLETION_ID,
 
-    // Value that describes a virtualized value of a u32 value, e.g. port lid.
-    // Comes always as pair with OVEY_A_REAL_PROPERTY_U32.
-    OVEY_A_VIRT_PROPERTY_U32,
-
-    // Value that describes a real value of a u32 value, e.g. port lid.
-    // Comes always as pair with OVEY_A_VIRT_PROPERTY_U32.
-    OVEY_A_REAL_PROPERTY_U32,
-
     // Helper to find count of enum members in code.
     __OVEY_A_MAX,
 };
@@ -76,7 +68,7 @@ enum OveyOperation {
      *              Operation is usually triggered by ovey daemon.
      * Direction:   From daemon to kernel.
      * Request:     OVEY_C_NEW_DEVICE(OVEY_A_VIRT_DEVICE, OVEY_A_PARENT_DEVICE,
-     *               OVEY_A_NODE_GUID, OVEY_A_NODE_LID, OVEY_A_VIRT_NET_UUID_STR)
+     *              OVEY_A_NODE_GUID, OVEY_A_NODE_LID, OVEY_A_VIRT_NET_UUID_STR)
      * Response:    OVEY_C_NEW_DEVICE()
      */
     OVEY_C_NEW_DEVICE,
@@ -157,14 +149,6 @@ enum OveyOperation {
      * Data:        <None>
      */
     OVEY_C_KERNEL_MODULE_BYE,
-
-    /*
-     * Description: The kernel sends the request to the daemon so that it can save the data in the coordinator.
-     *
-     * Direction:   Request from kernel to daemon.
-     * Data:        <None>
-     */
-    OVEY_C_STORE_VIRT_PROPERTY_PORT_LID,
 
     // Helper to find count of enum members in code.
     __OVEY_C_MAX,
