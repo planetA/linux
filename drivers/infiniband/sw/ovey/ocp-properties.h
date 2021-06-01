@@ -21,6 +21,7 @@ enum OveyAttribute {
     OVEY_A_UNSPEC,
 
     // String: used e.g. in echo message
+		/* TODO: Delete */
     OVEY_A_MSG,
 
     // String: used e.g. in OVEY_C_NEW_DEVICE, OVEY_C_DELETE_DEVICE, and OVEY_C_ASK_PARENT_DEVICE
@@ -69,15 +70,6 @@ enum OveyAttribute {
 enum OveyOperation {
     // unspecified / unused
     OVEY_C_UNSPEC,
-
-    /*
-     * Description: Sends a string to the receiving side and expects an echo message.
-     *              Operation is usually triggered by ovey daemon.
-     * Direction:   From daemon to kernel.
-     * Request:     OVEY_C_ECHO(OVEY_A_MSG)
-     * Response:    OVEY_C_ECHO(OVEY_A_MSG)
-     */
-    OVEY_C_ECHO,
 
     /*
      * Description: Creates a new Ovey ibverbs device and attaches a parent device to it.
@@ -136,17 +128,6 @@ enum OveyOperation {
      * Response:    OVEY_C_DAEMON_BYE(enum OcpSocketKind: u32)
      */
     OVEY_C_DAEMON_BYE,
-
-    /*
-     * Description: Debug command that initiates a Kernel request via OCP.
-     *              This should be triggered from the Daemon-to-Kernel socket.
-     *
-     * Direction:   From daemon to kernel.
-     * Request:     OVEY_C_DEBUG_INITIATE_REQUEST()
-     * Response:    Kernel to Daemon-Socket: OVEY_C_DEBUG_INITIATE_REQUEST()
-     *              Daemon to Kernel-Socket: OVEY_C_DEBUG_INITIATE_REQUEST()
-     */
-    OVEY_C_DEBUG_INITIATE_REQUEST,
 
     /*
      * Description: The daemon replies with this over the "kernel to daemon"-socket to answer
@@ -253,9 +234,6 @@ static char * ovey_a_to_string(enum OveyAttribute attr)
 __attribute__((unused))
 static char * ovey_op_to_string(enum OveyOperation attr) {
     switch (attr) {
-        case OVEY_C_ECHO: {
-            return "OVEY_C_ECHO";
-        }
         case OVEY_C_NEW_DEVICE: {
             return "OVEY_C_NEW_DEVICE";
         }

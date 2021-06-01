@@ -3,11 +3,11 @@
 
 void ocp_reply_with_error(struct genl_info *info, int err_code)
 {
-	struct sk_buff *reply_skb;
-	int rc;
+	struct sk_buff *msg;
 	struct nlmsghdr *nlmsghdr;
 	struct nlmsgerr *nlmsgerr;
 	size_t payload_size;
+	int rc;
 
 	// netlink standard expects a negative error code.
 	// at this point it can happen that we may receive
@@ -26,9 +26,9 @@ void ocp_reply_with_error(struct genl_info *info, int err_code)
 	opr_info("OCP replying with ERROR(%d) message\n", err_code);
 
 	// just allocates memory
-	reply_skb = ocp_nlmsg_new();
-	if (reply_skb == NULL) {
-		opr_err("ocp_nlmsg_new() failed\n");
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (msg == NULL) {
+		opr_err("nlmsg_new() failed\n");
 		return;
 	}
 
@@ -39,7 +39,7 @@ void ocp_reply_with_error(struct genl_info *info, int err_code)
 
 	// puts attributes into netlink header and returns the pointer to the
 	// beginning of the netlink header (inside the socket buffer)
-	nlmsghdr = nlmsg_put(reply_skb, info->snd_portid, 0, NLMSG_ERROR,
+	nlmsghdr = nlmsg_put(msg, info->snd_portid, 0, NLMSG_ERROR,
 			     payload_size, 0);
 	if (nlmsghdr == NULL) {
 		opr_err("genlmsg_put() failed because of ENOMEM\n");
@@ -61,11 +61,10 @@ void ocp_reply_with_error(struct genl_info *info, int err_code)
 	nlmsgerr->msg.nlmsg_len = sizeof(struct nlmsghdr);
 
 	// update size in netlink header
-	nlmsg_end(reply_skb, nlmsghdr);
+	nlmsg_end(msg, nlmsghdr);
 
 	// Send the message back to the sender
-	rc = nlmsg_unicast(genl_info_net(info)->genl_sock, reply_skb,
-			   info->snd_portid);
+	rc = nlmsg_unicast(genl_info_net(info)->genl_sock, msg, info->snd_portid);
 
 	if (rc != 0) {
 		opr_err("genlmsg_reply() failed because of %d\n", rc);
@@ -180,10 +179,6 @@ int ocp_get_string_attribute_copy(struct genl_info *info,
 	return ret;
 };
 
-struct sk_buff *ocp_nlmsg_new(void)
-{
-	return nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
-};
 
 struct nlmsghdr *ocp_genlmsg_put_reply(struct sk_buff *skb,
 				       struct genl_info *info)
@@ -208,25 +203,6 @@ struct nlmsghdr *ocp_genlmsg_put_reply(struct sk_buff *skb,
 	err = PTR_ERR_OR_ZERO(hdr);
 	if (err) {
 		opr_err("failed because of %d", err);
-	}
-	return hdr;
-}
-
-struct nlmsghdr *ocp_kernel_request_put(struct sk_buff *req_sk_buf,
-					enum OveyOperation cmd)
-{
-	struct nlmsghdr *hdr =
-		genlmsg_put(req_sk_buf,
-			    // port id in netlink header
-			    KERNEL_INITIATED_REQUESTS_SOCKET,
-			    // I don't use/check sequences
-			    0,
-			    &ovey_gnl_family, // struct genl_family *
-			    0, // flags: int (for netlink header)
-			    cmd // cmd: u8 (for generic netlink header);
-		);
-	if (hdr == NULL) {
-		opr_err("genlmsg_put() returned NULL, ENOMEM?!\n");
 	}
 	return hdr;
 }

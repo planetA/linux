@@ -102,12 +102,6 @@ int ocp_fini(void);
 
 /**
  * Callback called by generic netlink, if a message with cmd
- * OveyOperation::OVEY_C_ECHO was received.
- */
-int ocp_cb_echo(struct sk_buff *skb, struct genl_info *info);
-
-/**
- * Callback called by generic netlink, if a message with cmd
  * OveyOperation::OVEY_C_NEW_DEVICE was received.
  */
 int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info);
@@ -141,12 +135,6 @@ int ocp_cb_daemon_hello(struct sk_buff *skb, struct genl_info *info);
  * OveyOperation::OVEY_C_DAEMON_BYE was received.
  */
 int ocp_cb_daemon_bye(struct sk_buff *skb, struct genl_info *info);
-
-/**
- * Callback called by generic netlink, if a message with cmd
- * OveyOperation::OVEY_C_DEBUG_INITIATE_REQUEST was received.
- */
-int ocp_cb_debug_initiate_request(struct sk_buff *skb, struct genl_info *info);
 
 /**
  * Callback called by generic netlink, if a message with cmd

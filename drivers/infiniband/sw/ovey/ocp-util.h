@@ -70,12 +70,6 @@ int ocp_get_u64_attribute(struct genl_info *info, enum OveyAttribute attribute, 
 int ocp_get_string_attribute_copy(struct genl_info *info, enum OveyAttribute attribute, char * buff, size_t len);
 
 /**
- * Convenient wrapper around nlmsg_new(). Can be used for Kernel OCP replies as well as Kernel OCP requests.
- * @return Buffer to socket.
- */
-struct sk_buff * ocp_nlmsg_new(void);
-
-/**
  * Convenient OCP-specific wrapper around genlmsg_put() to store netlink header
  * with generic netlink header as payload in the buffer.
  *
@@ -97,5 +91,10 @@ struct nlmsghdr * ocp_kernel_request_put(struct sk_buff *, enum OveyOperation);
  */
 int ocp_send_kernel_request(struct sk_buff *);
 
+static inline struct nlmsghdr *ocpmsg_put(struct sk_buff *msg, u8 cmd)
+{
+  return genlmsg_put(msg, KERNEL_INITIATED_REQUESTS_SOCKET,
+                     0, &ovey_gnl_family, 0, cmd);
+}
 
 #endif /* _OCP_UTIL_H */

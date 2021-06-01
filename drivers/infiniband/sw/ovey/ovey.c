@@ -147,31 +147,37 @@ error:
  * oveyd_lease_device - Request ovey daemon to lease the device identifiers.
  *
  */
-int oveyd_lease_device(uuid_t network, struct ovey_device_info *device)
+int oveyd_lease_device(const uuid_t *network, struct ovey_device_info *device)
 {
 	return 0;
 }
 
-int ovey_create_device(
-	const struct ovey_create_device_info *create_info,
-	struct ib_device *parent)
+/**
+ * ovey_create_device creates a new Ovey device.
+ * @param ibdev_name is name of the new device.
+ * @param parent_name is name of the parent RDMA device.
+ * @param network is the UUID of the network the device is attached to.
+*/
+static int ovey_create_device(const char *ibdev_name, const char *parent_name,
+			const uuid_t *network)
 {
 	struct ib_device *ovey_ib_dev;
 	struct ovey_device *ovey_dev = NULL;
 	struct ovey_device_info device_info;
+	struct ib_device *parent;
 	int ret = 0;
 
 	opr_info("invoked\n");
 
-	parent = ib_device_get_by_name(create_info->parent, RDMA_DRIVER_UNKNOWN);
+	parent = ib_device_get_by_name(parent_name, RDMA_DRIVER_UNKNOWN);
 	if (!parent) {
 		opr_err("parent device '%s'not found by ib_device_get_by_name()\n",
-			create_info->parent);
+			parent_name);
 		ret = -ENODEV;
 		goto err;
 	}
 
-	ovey_ib_dev = ib_device_get_by_name(create_info->name, RDMA_DRIVER_UNKNOWN);
+	ovey_ib_dev = ib_device_get_by_name(ibdev_name, RDMA_DRIVER_UNKNOWN);
 	if (ovey_ib_dev) {
 		opr_info("invoked\n");
 		ret = -EEXIST;
@@ -179,7 +185,7 @@ int ovey_create_device(
 	}
 	opr_info("invoked\n");
 
-	ret = oveyd_lease_device(create_info->network, &device_info);
+	ret = oveyd_lease_device(network, &device_info);
 	if (ret) {
 		goto err_put;
 	}
@@ -250,6 +256,25 @@ get_device_info_by_name(char const *const ovey_dev_name,
 	return dest;
 }
 
+int ovey_newlink_virt(const char *ibdev_name, const char *parent, const uuid_t *network)
+{
+	int ret = 0;
+
+	ret = ovey_create_device(ibdev_name, parent, network);
+	if (ret) {
+		opr_err("ovey_new_device_if_not_exists() failed because of %d!\n",
+			ret);
+		goto err;
+	}
+err:
+	return ret;
+}
+
+static struct rdma_link_ops ovey_link_ops = {
+	.type = "ovey",
+	.newlink_virt = ovey_newlink_virt,
+};
+
 static int __init ovey_module_init(void)
 {
 	int err;
@@ -262,13 +287,14 @@ static int __init ovey_module_init(void)
 	}
 
 	INIT_LIST_HEAD(&ovey_completion_list.list_item);
+	rdma_link_register(&ovey_link_ops);
 
 	// START: Test code to test completion lists
 	/*struct ovey_completion_chain * item = ovey_completion_add_entry();
-	ovey_completion_resolve_by_id(item->req_id);
-    item = ovey_completion_add_entry();
-    ovey_completion_resolve_by_id(item->req_id);
-    ovey_completion_add_entry();*/
+	  ovey_completion_resolve_by_id(item->req_id);
+	  item = ovey_completion_add_entry();
+	  ovey_completion_resolve_by_id(item->req_id);
+	  ovey_completion_add_entry();*/
 	// END:   Test code to test completion lists
 
 	return 0;
@@ -281,6 +307,7 @@ static void __exit ovey_module_exit(void)
 	// TODO tell daemon that Kernel module gets unloaded
 
 	ovey_completion_clear();
+	rdma_link_unregister(&ovey_link_ops);
 
 	// unregisters all "ovey" devices
 	ib_unregister_driver(RDMA_DRIVER_OVEY);

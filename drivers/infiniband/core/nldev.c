@@ -1512,6 +1512,42 @@ void rdma_link_unregister(struct rdma_link_ops *ops)
 }
 EXPORT_SYMBOL(rdma_link_unregister);
 
+static int nldev_newlink_virt(const char *ibdev_name, const char *type,
+			struct nlattr *tb[])
+{
+	const struct rdma_link_ops *ops;
+	char rdmadev_name[IB_DEVICE_NAME_MAX];
+	char net_uuid_str[UUID_STRING_LEN];
+	uuid_t net_uuid;
+	int err;
+
+	nla_strlcpy(rdmadev_name, tb[RDMA_NLDEV_ATTR_RDMADEV_NAME],
+		sizeof(rdmadev_name));
+	nla_strlcpy(net_uuid_str, tb[RDMA_NLDEV_ATTR_NET_UUID],
+		sizeof(net_uuid_str));
+
+	err = uuid_parse(net_uuid_str, &net_uuid);
+	if (err) {
+		return err;
+	}
+
+	down_read(&link_ops_rwsem);
+	ops = link_ops_get(type);
+#ifdef CONFIG_MODULES
+	if (!ops) {
+		up_read(&link_ops_rwsem);
+		request_module("rdma-link-%s", type);
+		down_read(&link_ops_rwsem);
+		ops = link_ops_get(type);
+	}
+#endif
+	err = ops && ops->newlink_virt ?
+		ops->newlink_virt(ibdev_name, rdmadev_name, &net_uuid) : -EINVAL;
+	up_read(&link_ops_rwsem);
+
+	return err;
+}
+
 static int nldev_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			  struct netlink_ext_ack *extack)
 {
@@ -1526,15 +1562,25 @@ static int nldev_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	err = nlmsg_parse_deprecated(nlh, 0, tb, RDMA_NLDEV_ATTR_MAX - 1,
 				     nldev_policy, extack);
 	if (err || !tb[RDMA_NLDEV_ATTR_DEV_NAME] ||
-	    !tb[RDMA_NLDEV_ATTR_LINK_TYPE] || !tb[RDMA_NLDEV_ATTR_NDEV_NAME])
+	    !tb[RDMA_NLDEV_ATTR_LINK_TYPE])
 		return -EINVAL;
 
 	nla_strlcpy(ibdev_name, tb[RDMA_NLDEV_ATTR_DEV_NAME],
-		    sizeof(ibdev_name));
+		sizeof(ibdev_name));
 	if (strchr(ibdev_name, '%') || strlen(ibdev_name) == 0)
 		return -EINVAL;
-
 	nla_strlcpy(type, tb[RDMA_NLDEV_ATTR_LINK_TYPE], sizeof(type));
+
+	if ((!tb[RDMA_NLDEV_ATTR_NDEV_NAME]) &&
+		tb[RDMA_NLDEV_ATTR_RDMADEV_NAME] && tb[RDMA_NLDEV_ATTR_NET_UUID]) {
+		/* NDEV attribute was not set. RDMA dev and network uuid
+		 * attributes were set. This is an indication of a virtual
+		 * device request. */
+		return nldev_newlink_virt(ibdev_name, type, tb);
+	} else if (!tb[RDMA_NLDEV_ATTR_NDEV_NAME]) {
+		return -EINVAL;
+	}
+
 	nla_strlcpy(ndev_name, tb[RDMA_NLDEV_ATTR_NDEV_NAME],
 		    sizeof(ndev_name));
 
@@ -1552,7 +1598,7 @@ static int nldev_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		ops = link_ops_get(type);
 	}
 #endif
-	err = ops ? ops->newlink(ibdev_name, ndev) : -EINVAL;
+	err = ops && ops->newlink ? ops->newlink(ibdev_name, ndev) : -EINVAL;
 	up_read(&link_ops_rwsem);
 	dev_put(ndev);
 

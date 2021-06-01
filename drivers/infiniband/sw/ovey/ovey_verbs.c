@@ -42,7 +42,7 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	struct ovey_completion_chain *chain_node;
 	struct ovey_virt_lid virt_lid;
-	struct sk_buff *req_sk_buf;
+	struct sk_buff *msg;
 	struct nlmsghdr *hdr;
 	int ret;
 
@@ -63,29 +63,28 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	// END VIRTUALIZE PROPERTY PORT->LID
 
 	chain_node = ovey_completion_add_entry();
-	req_sk_buf = ocp_nlmsg_new();
-	hdr = ocp_kernel_request_put(req_sk_buf,
-				     OVEY_C_STORE_VIRT_PROPERTY_PORT_LID);
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	hdr = ocpmsg_put(msg, OVEY_C_STORE_VIRT_PROPERTY_PORT_LID);
 	if (!hdr) {
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = nla_put_u64_64bit(req_sk_buf, OVEY_A_COMPLETION_ID, chain_node->req_id, 0);
+	ret = nla_put_u64_64bit(msg, OVEY_A_COMPLETION_ID, chain_node->req_id, 0);
 	if (ret) {
 		goto out;
 	}
-	ret = nla_put_u32(req_sk_buf, OVEY_A_REAL_PROPERTY_U32, virt_lid.orig);
+	ret = nla_put_u32(msg, OVEY_A_REAL_PROPERTY_U32, virt_lid.orig);
 	if (ret) {
 		goto out;
 	}
-	ret = nla_put_u32(req_sk_buf, OVEY_A_VIRT_PROPERTY_U32, virt_lid.virt);
+	ret = nla_put_u32(msg, OVEY_A_VIRT_PROPERTY_U32, virt_lid.virt);
 	if (ret) {
 		goto out;
 	}
 	/* finalize the message, IMPORTANT! Update length attribute etc */
-	genlmsg_end(req_sk_buf, hdr);
+	genlmsg_end(msg, hdr);
 	// sending request to daemon via "kernel to daemon" socket
-	ret = nlmsg_unicast(ocp_sockets.genl_sock, req_sk_buf,
+	ret = nlmsg_unicast(ocp_sockets.genl_sock, msg,
 			    ocp_sockets.kernel_daemon_to_sock_pid);
 
 	ret = wait_for_completion_killable(&chain_node->completion);
@@ -788,7 +787,7 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
 	struct ovey_completion_chain *chain_node;
 	struct nlmsghdr *hdr;
-	struct sk_buff *req_sk_buf;
+	struct sk_buff *msg;
 	int ret;
 	opr_info("verb invoked\n");
 	opr_info("modify qp ovey_dev %s parent_dev %s qp_dev %s\n",
@@ -805,14 +804,13 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 	}
 
 	chain_node = ovey_completion_add_entry();
-	req_sk_buf = ocp_nlmsg_new();
-	hdr = ocp_kernel_request_put(req_sk_buf, OVEY_C_RESOLVE_COMPLETION);
-	nla_put_u64_64bit(req_sk_buf, OVEY_A_COMPLETION_ID, chain_node->req_id,
-			  0);
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	hdr = ocpmsg_put(msg, OVEY_C_RESOLVE_COMPLETION);
+	nla_put_u64_64bit(msg, OVEY_A_COMPLETION_ID, chain_node->req_id, 0);
 	/* finalize the message, IMPORTANT! Update length attribute etc */
-	genlmsg_end(req_sk_buf, hdr);
+	genlmsg_end(msg, hdr);
 	// sending request to daemon via "kernel to daemon" socket
-	nlmsg_unicast(ocp_sockets.genl_sock, req_sk_buf,
+	nlmsg_unicast(ocp_sockets.genl_sock, msg,
 		      ocp_sockets.kernel_daemon_to_sock_pid);
 
 	ret = wait_for_completion_killable(&chain_node->completion);

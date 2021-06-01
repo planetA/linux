@@ -164,10 +164,6 @@ static inline struct ovey_qp *to_ovey_qp(struct ib_qp *base_qp)
 
 // functions that must be accessible from ocp.c
 
-// Creates a new Ovey Verbs Device if it doesn't exists yet. It will allocate memory
-// and register the device internally.
-int ovey_create_device(const struct ovey_create_device_info * ovey_device_info,
-		struct ib_device * const parent);
 
 int ovey_delete_device(char *device_name);
 

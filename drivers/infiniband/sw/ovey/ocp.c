@@ -76,11 +76,6 @@ static const struct genl_ops ovey_gnl_ops[] = {
 	  .flags = 0,
 	  .doit = ocp_cb_daemon_bye,
 	  .dumpit = NULL },
-	{ .cmd = OVEY_C_DEBUG_INITIATE_REQUEST,
-	  .validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-	  .flags = 0,
-	  .doit = ocp_cb_debug_initiate_request,
-	  .dumpit = NULL },
 	{ .cmd = OVEY_C_RESOLVE_COMPLETION,
 	  .validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 	  .flags = 0,
@@ -107,7 +102,7 @@ struct ocp_sockets ocp_sockets = {
 /*
  * Family + Protocol definition for OCP on top of generic netlink.
  */
-struct genl_family ovey_gnl_family = {
+struct genl_family ovey_gnl_family __ro_after_init = {
 	.hdrsize = 0,
 	.name = OVEY_NL_FAMILY_NAME,
 	.version = 1,
@@ -116,11 +111,11 @@ struct genl_family ovey_gnl_family = {
 	.policy = ovey_genl_policy,
 	.module = THIS_MODULE,
 	.ops = ovey_gnl_ops,
+	.n_ops = ARRAY_SIZE(ovey_gnl_ops),
 	// allow parallel ops (no lock) is really important, especially during debugging
 	// otherwise if we create a completion via OCP we can't complete it from another
 	// OCP call, because the netlink lock is locked.. (:
 	.parallel_ops = 1,
-	.n_ops = ARRAY_SIZE(ovey_gnl_ops),
 };
 
 int ocp_init(void)
@@ -135,20 +130,30 @@ int ocp_init(void)
 
 int ocp_fini(void)
 {
+	struct sk_buff *msg;
+	struct nlmsghdr *hdr;
 	int res;
-	if (ocp_daemon_sockets_are_known()) {
-		// Tell daemon that we are gone
-		struct sk_buff *ocp_msg = ocp_nlmsg_new();
-		/*struct nlmsghdr * hdr = */ ocp_kernel_request_put(
-			ocp_msg, OVEY_C_KERNEL_MODULE_BYE);
-		// finalize not needed, because we don't have properties added
-		if (ocp_send_kernel_request(ocp_msg)) {
-			opr_err("Couldn't send OVEY_C_KERNEL_MODULE_BYE to daemon.\n");
-		} else {
-			opr_info("Sent OVEY_C_KERNEL_MODULE_BYE to daemon.\n");
-		}
+
+	if (!ocp_daemon_sockets_are_known()) {
+		goto out;
 	}
 
+	/* Tell daemon that we are gone */
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	hdr = ocpmsg_put(msg, OVEY_C_KERNEL_MODULE_BYE);
+	if (!hdr) {
+		goto out;
+	}
+
+	/* finalize not needed, because we don't have properties added */
+	if (ocp_send_kernel_request(msg)) {
+		opr_err("Couldn't send OVEY_C_KERNEL_MODULE_BYE to daemon.\n");
+		goto out;
+	}
+
+	opr_info("Sent OVEY_C_KERNEL_MODULE_BYE to daemon.\n");
+
+out:
 	res = genl_unregister_family(&ovey_gnl_family);
 	if (res < 0) {
 		opr_err("Failed to unregister netlink family: %d\n", res);
@@ -156,78 +161,16 @@ int ocp_fini(void)
 	return res;
 }
 
-/**
- * Callback called by generic netlink, if a message with cmd
- * OveyOperation::OVEY_C_ECHO was received.
- */
-int ocp_cb_echo(struct sk_buff *skb, struct genl_info *info)
-{
-	struct sk_buff *reply_skb;
-	char *recv_msg;
-	void *msg_head;
-	int ret;
-
-	opr_info("OCP-request: OVEY_C_ECHO\n");
-	// the nlhdr->nlmsg_pid (port-id) allows us to use identify multiple sockets
-	// from the same process id
-	opr_info("snd_portid is: %d\n", info->snd_portid);
-	opr_info("info->nlhdr->nlmsg_pid: %d\n", info->nlhdr->nlmsg_pid);
-
-	reply_skb = ocp_nlmsg_new();
-	if (reply_skb == NULL) {
-		opr_err("ocp_nlmsg_new() failed because of ENOMEM\n");
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	/* For each attribute there is an index in info->attrs which points to a nlattr structure
-	 * in this structure the data is given
-	 */
-
-	recv_msg = ocp_get_string_attribute(info, OVEY_A_MSG);
-	if (!recv_msg) {
-		opr_err("no OVEY_A_MSG!\n");
-		ret = -EINVAL;
-		goto err;
-	}
-
-	/* create the message headers */
-	msg_head = ocp_genlmsg_put_reply(reply_skb, info);
-	if (msg_head == NULL) {
-		opr_err("ocp_genlmsg_put_reply() failed because of ENOMEM\n");
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	/* add a OVEY_A_MSG attribute to return the message */
-	ret = nla_put_string(reply_skb, OVEY_A_MSG, recv_msg);
-	if (ret < 0) {
-		opr_err("nla_put_string() failed because of %d\n", ret);
-		goto err_free;
-	}
-	/* finalize the message */
-	genlmsg_end(reply_skb, msg_head);
-
-	// same as genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid)
-	// see https://elixir.bootlin.com/linux/v5.8.9/source/include/net/genetlink.h#L326
-	return genlmsg_reply(reply_skb, info);
-
-err_free:
-	nlmsg_free(reply_skb);
-
-err:
-	ocp_reply_with_error(info, ret);
-	return ret;
-}
-
 int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 {
-	struct sk_buff *reply_skb;
+	struct sk_buff *msg;
 	void *msg_head;
 	struct ib_device *parent;
 	struct ovey_create_device_info create_info;
 	char uuid_str[UUID_STRING_LEN];
 	int ret = 0;
+
+	return -EINVAL;
 
 	opr_info("OCP-request: OVEY_C_NEW_DEVICE\n");
 
@@ -255,25 +198,18 @@ int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 		"    virt_network_id)   = %pUb\n",
 		create_info.name, create_info.parent, &create_info.network);
 
-	ret = ovey_create_device(&create_info, parent);
-	if (ret) {
-		opr_err("ovey_new_device_if_not_exists() failed because of %d!\n",
-			ret);
-		goto err;
-	}
-
 	opr_info("new Ovey device '%s' successfully created\n",
 		create_info.name);
 
-	reply_skb = ocp_nlmsg_new();
-	if (reply_skb == NULL) {
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (msg == NULL) {
 		opr_err("ocp_nlmsg_new() failed because of ENOMEM!\n");
 		ret = -ENOMEM;
 		goto err;
 	}
 
 	/* create the message headers */
-	msg_head = ocp_genlmsg_put_reply(reply_skb, info);
+	msg_head = ocp_genlmsg_put_reply(msg, info);
 	if (msg_head == NULL) {
 		opr_err("ocp_genlmsg_put_reply() failed because of ENOMEM!\n");
 		ret = -ENOMEM;
@@ -281,13 +217,13 @@ int ocp_cb_new_device(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	/* finalize the message */
-	genlmsg_end(reply_skb, msg_head);
+	genlmsg_end(msg, msg_head);
 
 	opr_info("OCP: replying with success to caller\n");
 
-	// same as genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid)
+	// same as genlmsg_unicast(genl_info_net(info), msg, info->snd_portid)
 	// see https://elixir.bootlin.com/linux/v5.8.9/source/include/net/genetlink.h#L326
-	return genlmsg_reply(reply_skb, info);
+	return genlmsg_reply(msg, info);
 
 err:
 	ocp_reply_with_error(info, ret);
@@ -296,7 +232,7 @@ err:
 
 int ocp_cb_delete_device(struct sk_buff *skb, struct genl_info *info)
 {
-	struct sk_buff *reply_skb;
+	struct sk_buff *msg;
 	void *msg_head;
 	int ret = 0;
 	char *device_name;
@@ -317,15 +253,15 @@ int ocp_cb_delete_device(struct sk_buff *skb, struct genl_info *info)
 		goto err;
 	}
 
-	reply_skb = ocp_nlmsg_new();
-	if (reply_skb == NULL) {
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (msg == NULL) {
 		opr_err("ocp_nlmsg_new() failed because of ENOMEM\n");
 		ret = -ENOMEM;
 		goto err;
 	}
 
 	/* create the message headers */
-	msg_head = ocp_genlmsg_put_reply(reply_skb, info);
+	msg_head = ocp_genlmsg_put_reply(msg, info);
 	if (msg_head == NULL) {
 		opr_err("ocp_genlmsg_put_reply() failed because of ENOMEM\n");
 		ret = -ENOMEM;
@@ -333,11 +269,11 @@ int ocp_cb_delete_device(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	/* finalize the message */
-	genlmsg_end(reply_skb, msg_head);
+	genlmsg_end(msg, msg_head);
 
 	// same as genlmsg_unicast(genl_info_net(info), skb, info->snd_portid)
 	// see https://elixir.bootlin.com/linux/v5.8.9/source/include/net/genetlink.h#L326
-	return genlmsg_reply(reply_skb, info);
+	return genlmsg_reply(msg, info);
 
 err:
 	ocp_reply_with_error(info, ret);
@@ -354,7 +290,7 @@ int ocp_cb_debug_respond_error(struct sk_buff *skb, struct genl_info *info)
 
 int ocp_cb_device_info(struct sk_buff *skb, struct genl_info *info)
 {
-	struct sk_buff *reply_skb;
+	struct sk_buff *msg;
 	struct ovey_device_info device_info;
 	void *msg_head;
 	int ret;
@@ -378,43 +314,43 @@ int ocp_cb_device_info(struct sk_buff *skb, struct genl_info *info)
 		goto err;
 	}
 
-	reply_skb = ocp_nlmsg_new();
-	if (reply_skb == NULL) {
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	if (msg == NULL) {
 		opr_err("ocp_nlmsg_new() failed because of ENOMEM\n");
 		ret = -ENOMEM;
 		goto err;
 	}
 
 	/* create the message headers */
-	msg_head = ocp_genlmsg_put_reply(reply_skb, info);
+	msg_head = ocp_genlmsg_put_reply(msg, info);
 	if (msg_head == NULL) {
 		opr_err("ocp_genlmsg_put_reply() failed because of ENOMEM\n");
 		ret = -ENOMEM;
 		goto err_free;
 	}
 
-	ret = nla_put_string(reply_skb, OVEY_A_VIRT_DEVICE,
+	ret = nla_put_string(msg, OVEY_A_VIRT_DEVICE,
 			     device_info.device_name);
 	if (ret < 0) {
 		opr_err("nla_put_string() for OVEY_A_VIRT_DEVICE failed because of %d\n",
 			ret);
 		goto err_free;
 	}
-	ret = nla_put_string(reply_skb, OVEY_A_PARENT_DEVICE,
+	ret = nla_put_string(msg, OVEY_A_PARENT_DEVICE,
 			     device_info.parent_device_name);
 	if (ret < 0) {
 		opr_err("nla_put_string() for OVEY_A_PARENT_DEVICE failed because of %d\n",
 			ret);
 		goto err_free;
 	}
-	ret = nla_put_u64_64bit(reply_skb, OVEY_A_NODE_GUID, device_info.node_guid,
+	ret = nla_put_u64_64bit(msg, OVEY_A_NODE_GUID, device_info.node_guid,
 			   0);
 	if (ret < 0) {
 		opr_err("nla_put_string() for OVEY_A_NODE_GUID failed because of %d\n",
 			ret);
 		goto err_free;
 	}
-	ret = nla_put_u64_64bit(reply_skb, OVEY_A_PARENT_NODE_GUID,
+	ret = nla_put_u64_64bit(msg, OVEY_A_PARENT_NODE_GUID,
 			   device_info.parent_node_guid, 0);
 	if (ret < 0) {
 		opr_err("nla_put_string() for OVEY_A_PARENT_NODE_GUID failed because of %d\n",
@@ -422,7 +358,7 @@ int ocp_cb_device_info(struct sk_buff *skb, struct genl_info *info)
 		goto err_free;
 	}
 #if 0
-	ret = nla_put_string(reply_skb, OVEY_A_VIRT_NET_UUID_STR,
+	ret = nla_put_string(msg, OVEY_A_VIRT_NET_UUID_STR,
 			     device_info.virt_network_id);
 	if (ret < 0) {
 		opr_err("nla_put_string() for OVEY_A_VIRT_NET_UUID_STR failed because of %d\n",
@@ -431,14 +367,14 @@ int ocp_cb_device_info(struct sk_buff *skb, struct genl_info *info)
 	}
 #endif
 	/* finalize the message */
-	genlmsg_end(reply_skb, msg_head);
+	genlmsg_end(msg, msg_head);
 
-	// same as genlmsg_unicast(genl_info_net(info), reply_skb, info->snd_portid)
+	// same as genlmsg_unicast(genl_info_net(info), msg, info->snd_portid)
 	// see https://elixir.bootlin.com/linux/v5.8.9/source/include/net/genetlink.h#L326
-	return genlmsg_reply(reply_skb, info);
+	return genlmsg_reply(msg, info);
 
 err_free:
-	nlmsg_free(reply_skb);
+	nlmsg_free(msg);
 
 err:
 	ocp_reply_with_error(info, EINVAL);
@@ -447,7 +383,7 @@ err:
 
 int ocp_cb_daemon_hello(struct sk_buff *skb, struct genl_info *info)
 {
-	struct sk_buff *reply_skb;
+	struct sk_buff *msg;
 	u32 sending_socket_port_id;
 	enum OcpSocketKind received_socket_kind_attribute, netlink_hdr_port_id;
 	int ret;
@@ -503,14 +439,14 @@ int ocp_cb_daemon_hello(struct sk_buff *skb, struct genl_info *info)
 		return -1;
 	}
 
-	reply_skb = ocp_nlmsg_new();
-	ocp_genlmsg_put_reply(reply_skb, info);
-	return genlmsg_reply(reply_skb, info);
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	ocp_genlmsg_put_reply(msg, info);
+	return genlmsg_reply(msg, info);
 };
 
 int ocp_cb_daemon_bye(struct sk_buff *skb, struct genl_info *info)
 {
-	struct sk_buff *reply_skb;
+	struct sk_buff *msg;
 	u32 sending_socket_port_id;
 	enum OcpSocketKind received_socket_kind_attribute, netlink_hdr_port_id;
 	int ret;
@@ -564,30 +500,9 @@ int ocp_cb_daemon_bye(struct sk_buff *skb, struct genl_info *info)
 		return -1;
 	}
 
-	reply_skb = ocp_nlmsg_new();
-	ocp_genlmsg_put_reply(reply_skb, info);
-	return genlmsg_reply(reply_skb, info);
-};
-
-int ocp_cb_debug_initiate_request(struct sk_buff *skb, struct genl_info *info)
-{
-	struct sk_buff *reply_skb_d_to_k_sock;
-	struct sk_buff *reply_skb_k_to_d_sock;
-	opr_info("OCP-request: OVEY_C_DEBUG_INITIATE_REQUEST\n");
-	reply_skb_d_to_k_sock = ocp_nlmsg_new();
-	reply_skb_k_to_d_sock = ocp_nlmsg_new();
-
-	// TODO don't be too pity in the userland because
-	//  in this case so far nl_pid will show the wrong value
-	//  on the other socket
-	ocp_genlmsg_put_reply(reply_skb_d_to_k_sock, info);
-	ocp_genlmsg_put_reply(reply_skb_k_to_d_sock, info);
-	genlmsg_reply(reply_skb_d_to_k_sock, info);
-
-	// address right socket
-	info->snd_portid = ocp_sockets.kernel_daemon_to_sock_pid;
-	genlmsg_reply(reply_skb_k_to_d_sock, info);
-	return 0;
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+	ocp_genlmsg_put_reply(msg, info);
+	return genlmsg_reply(msg, info);
 };
 
 int ocp_cb_resolve_completion(struct sk_buff *skb, struct genl_info *info)
@@ -608,7 +523,7 @@ int ocp_cb_resolve_completion(struct sk_buff *skb, struct genl_info *info)
 int ocp_cb_debug_resolve_all_completions(struct sk_buff *skb,
 					 struct genl_info *info)
 {
-	struct sk_buff *reply_skb;
+	struct sk_buff *msg;
 	struct ovey_completion_chain *curr, *n;
 
 	opr_info("OCP-request: OVEY_C_DEBUG_RESOLVE_ALL_COMPLETIONS\n");
@@ -627,11 +542,11 @@ opr_info(
 		}
 	}
 
-	reply_skb = ocp_nlmsg_new();
+	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
 
-	ocp_genlmsg_put_reply(reply_skb, info);
+	ocp_genlmsg_put_reply(msg, info);
 
-	genlmsg_reply(reply_skb, info);
+	genlmsg_reply(msg, info);
 	return 0;
 }
 
