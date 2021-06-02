@@ -5,5 +5,4 @@ rdma_ovey-y := \
 	ovey_qp.o \
 	ovey.o \
 	ocp.o \
-	ocp-util.o \
-	completions.o
+	ocp-util.o

@@ -5,7 +5,6 @@
 #include "ocp.h"
 #include "ovey.h"
 #include "ocp-util.h"
-#include "completions.h"
 #include "virtualized_properties.h"
 
 DEFINE_XARRAY(cq_xarray);
@@ -40,7 +39,6 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 			   struct ib_port_attr *attr)
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
-	struct ovey_completion_chain *chain_node;
 	struct ovey_virt_lid virt_lid;
 	struct sk_buff *msg;
 	struct nlmsghdr *hdr;
@@ -63,15 +61,10 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	// END VIRTUALIZE PROPERTY PORT->LID
 
 #if 0
-	chain_node = ovey_completion_add_entry();
 	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
 	hdr = ocpmsg_put(msg, OVEY_C_STORE_VIRT_PROPERTY_PORT_LID);
 	if (!hdr) {
 		ret = -ENOMEM;
-		goto out;
-	}
-	ret = nla_put_u64_64bit(msg, OVEY_A_COMPLETION_ID, chain_node->req_id, 0);
-	if (ret) {
 		goto out;
 	}
 #if 0
@@ -90,7 +83,7 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	ret = nlmsg_unicast(ocp_sockets.genl_sock, msg,
 			    ocp_sockets.kernel_daemon_to_sock_pid);
 
-	ret = wait_for_completion_killable(&chain_node->completion);
+	ret = wait_for_completion_killable(&completion);
 	if (ret) {
 		// process got killed while waiting for the completion
 		opr_err("wait_for_completion_killable returned %d", ret);
@@ -789,7 +782,6 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
-	struct ovey_completion_chain *chain_node;
 	struct nlmsghdr *hdr;
 	struct sk_buff *msg;
 	int ret;
@@ -807,25 +799,22 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		return -EOPNOTSUPP;
 	}
 
-	chain_node = ovey_completion_add_entry();
 	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+#if 0
 	hdr = ocpmsg_put(msg, OVEY_C_RESOLVE_COMPLETION);
-	nla_put_u64_64bit(msg, OVEY_A_COMPLETION_ID, chain_node->req_id, 0);
 	/* finalize the message, IMPORTANT! Update length attribute etc */
 	genlmsg_end(msg, hdr);
 	// sending request to daemon via "kernel to daemon" socket
 	nlmsg_unicast(ocp_sockets.genl_sock, msg,
 		      ocp_sockets.kernel_daemon_to_sock_pid);
 
-	ret = wait_for_completion_killable(&chain_node->completion);
-	if (ret == 0) {
-		// success
-		opr_info("wait_for_completion_killable returned 0");
-	} else {
+	ret = wait_for_completion_killable(&completion);
+	if (ret) {
 		// process got killed while waiting for the completion
 		opr_err("wait_for_completion_killable returned %d", ret);
 		return -EINVAL;
 	}
+#endif
 
 	opr_info("modify 2 qp ovey_dev %s parent_dev %s qp_dev %s\n",
 		 ovey_dev->base.name, ovey_dev->parent->name,

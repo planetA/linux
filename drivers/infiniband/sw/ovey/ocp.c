@@ -8,7 +8,6 @@
 #include "ocp.h"
 #include "ocp-properties.h"
 #include "ocp-util.h"
-#include "completions.h"
 
 /**
  * Connects each OveyAttribute (ocp-properties.h) with a data type netlink
@@ -80,11 +79,6 @@ static const struct genl_ops ovey_gnl_ops[] = {
 	  .validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 	  .flags = 0,
 	  .doit = ocp_cb_resolve_completion,
-	  .dumpit = NULL },
-	{ .cmd = OVEY_C_DEBUG_RESOLVE_ALL_COMPLETIONS,
-	  .validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-	  .flags = 0,
-	  .doit = ocp_cb_debug_resolve_all_completions,
 	  .dumpit = NULL },
 };
 
@@ -506,48 +500,8 @@ int ocp_cb_daemon_bye(struct sk_buff *skb, struct genl_info *info)
 
 int ocp_cb_resolve_completion(struct sk_buff *skb, struct genl_info *info)
 {
-				u64 completion_id;
-				int ret;
-				opr_info("OCP-request: OVEY_C_RESOLVE_COMPLETION\n");
-
-				ret = ocp_get_u64_attribute(info, OVEY_A_COMPLETION_ID, &completion_id);
-				opr_info("Completion ID is %lld: ret=%d\n", completion_id, ret);
-				if (ret) {
-								return -EINVAL;
-				}
-				ovey_completion_resolve_by_id(completion_id);
-				return 0;
+	return -ENOTSUPP;
 };
-
-int ocp_cb_debug_resolve_all_completions(struct sk_buff *skb,
-					 struct genl_info *info)
-{
-	struct sk_buff *msg;
-	struct ovey_completion_chain *curr, *n;
-
-	opr_info("OCP-request: OVEY_C_DEBUG_RESOLVE_ALL_COMPLETIONS\n");
-
-	list_for_each_entry_safe (curr, n, &ovey_completion_list.list_item,
-				  list_item) {
-		if (!curr->completion_resolved) {
-			opr_info(
-				"Entry with completion_id=%lld not resolved yet: resolving now\n",
-				curr->req_id);
-			ovey_completion_resolve_by_id(curr->req_id);
-		} else {
-opr_info(
-				"Entry with completion_id=%lld already resolved\n",
-				curr->req_id);
-		}
-	}
-
-	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
-
-	ocp_genlmsg_put_reply(msg, info);
-
-	genlmsg_reply(msg, info);
-	return 0;
-}
 
 int ocp_daemon_sockets_are_known(void)
 {

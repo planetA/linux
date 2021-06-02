@@ -1,10 +1,13 @@
 // Needs at least Linux 5.4 to compile (because of iverbs api)
 
+#include <linux/cdev.h>
+#include <linux/wait.h>
+
+#include <asm/uaccess.h>
 #include <net/addrconf.h>
 
 #include "ovey.h"
 #include "ocp.h"
-#include "completions.h"
 
 MODULE_AUTHOR("Maksym Planeta");
 MODULE_AUTHOR("Philipp Schuster");
@@ -15,6 +18,49 @@ MODULE_LICENSE("GPL");
 
 extern const struct ib_device_ops ovey_device_ops;
 
+static DEFINE_SPINLOCK(oveyd_lock);
+static struct list_head oveyd_request_list = LIST_HEAD_INIT(oveyd_request_list);
+static DECLARE_WAIT_QUEUE_HEAD(ovey_eventdev_queue);
+atomic_t oveyd_next_seq = ATOMIC_INIT(1);
+
+enum oveyd_req_type {
+	OVEYD_REQ_LEASE_DEVICE,
+};
+
+/* Ovey daemon request to lease device */
+struct oveydr_lease_device {
+
+};
+
+struct oveydr_lease_device_resp {
+
+};
+
+struct oveyd_req_pkt {
+	u8 type;
+	u8 len;
+	u32 seq;
+	uuid_t network;
+	union {
+		struct oveydr_lease_device lease_device;
+	};
+};
+
+struct oveyd_resp_pkt {
+	u8 type;
+	u8 len;
+	u32 seq;
+	union {
+		struct oveydr_lease_device_resp lease_device;
+	};
+};
+
+struct oveyd_request {
+	struct list_head head;
+	struct completion *completion;
+	struct oveyd_req_pkt req;
+	struct oveyd_resp_pkt resp;
+};
 
 /**
  * Allocates a new ib device and initializes it.
@@ -24,8 +70,8 @@ static int ovey_init_device(const char *ibdev_name, struct ovey_device *ovey_dev
 {
 	struct net_device *netdev = NULL;
 	int ret;
-	// init device_info/ovey related stuff
 
+	// init device_info/ovey related stuff
 
 	// ----------------------------------------------------------------------------------
 	// init other/verbs related stuff
@@ -129,9 +175,49 @@ error:
  */
 int oveyd_lease_device(struct ovey_device *ovey_dev)
 {
+	int ret;
+	unsigned long flags;
+	struct oveyd_request request;
+
+	request.req.type = OVEYD_REQ_LEASE_DEVICE;
+	request.req.len = sizeof(request.req);
+	request.req.seq = atomic_fetch_add(1, &oveyd_next_seq);
+	uuid_copy(&request.req.network, &ovey_dev->network);
+	request.completion = &ovey_dev->completion;
+
+	printk("Create new request %u\n", request.req.seq);
+
+	spin_lock_irqsave(&oveyd_lock, flags);
+	reinit_completion(&ovey_dev->completion);
+
+	list_add_tail(&request.head, &oveyd_request_list);
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+	wake_up(&ovey_eventdev_queue);
+
+	ret = wait_for_completion_killable_timeout(
+		&ovey_dev->completion, OVEY_TIMEOUT);
+	if (ret == -ERESTARTSYS) {
+		/* Killed */
+		goto out;
+	} else if (ret == 0) {
+		/* Timeout */
+		ret = -ECONNREFUSED;
+		goto out;
+	} else if (ret > 0) {
+		/* Completed */
+		ret = -ENOTSUPP;
+	}
+
 	/* ovey_dev->base.node_guid = device_info->node_guid; */
 	ovey_dev->base.node_guid = 444;
-	return 0;
+
+out:
+	printk("Delete request %u\n", request.req.seq);
+	spin_lock_irqsave(&oveyd_lock, flags);
+	list_del(&request.head);
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+
+	return ret;
 }
 
 /**
@@ -175,6 +261,7 @@ static int ovey_create_device(const char *ibdev_name, const char *parent_name,
 
 	uuid_copy(&ovey_dev->network, &ovey_dev->network);
 	ovey_dev->parent = parent;
+	init_completion(&ovey_dev->completion);
 
 	/* Request all important IDs from the coordinator */
 	ret = oveyd_lease_device(ovey_dev);
@@ -266,6 +353,205 @@ static struct rdma_link_ops ovey_link_ops = {
 	.newlink_virt = ovey_newlink_virt,
 };
 
+static int ovey_eventdev_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static unsigned int ovey_eventdev_poll(struct file *file, struct poll_table_struct *poll_table)
+{
+	return 0;
+}
+
+/**
+ * ovey_eventdev_read - read from eventfile
+ *
+ * @offset - the driver will pick an event with a sequence number that is at
+ * least as large as offset / sizeof(req).
+ */
+static ssize_t ovey_eventdev_read(struct file *file, char __user *buf, size_t count, loff_t *offset)
+{
+	struct oveyd_request *i, *tmp, *found = NULL;
+	struct oveyd_req_pkt req;
+	unsigned long flags;
+	int ret;
+	int min_seq;
+
+	if (*offset % sizeof(req) != 0) {
+		return -EINVAL;
+	}
+
+	if (count < sizeof(req)) {
+		return -ENOMEM;
+	}
+
+	min_seq = *offset / sizeof(req);
+	printk("Read min_seq %d\n", min_seq);
+
+	if (!access_ok(buf, sizeof(req))) {
+		return -EACCES;
+	}
+
+	ret = wait_event_interruptible(ovey_eventdev_queue,
+				!list_empty(&oveyd_request_list));
+	if (ret) {
+		return -EINTR;
+	}
+
+	spin_lock_irqsave(&oveyd_lock, flags);
+
+	list_for_each_entry_safe(i, tmp, &oveyd_request_list, head) {
+		printk("List element %px %u min_seq %d\n", i, i->req.seq, min_seq);
+		if (min_seq > i->req.seq) {
+			continue;
+		}
+
+		/* Found the resp */
+		found = i;
+		break;
+	}
+
+	if (found) {
+		memcpy(&req, &found->req, sizeof(req));
+	}
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+
+	printk("Found element %px\n", found);
+
+	if (!found) {
+		return 0;
+	}
+
+	ret = copy_to_user(buf, &req, sizeof(req));
+	if (ret) {
+		/* We need to implement proper reaction to failed copy to kame
+		 * sure the event does not get lost. */
+		BUG();
+		return -EFAULT;
+	}
+
+	*offset = (req.seq + 1) * sizeof(req);
+
+	printk("Read: Offset %lld\n", *offset);
+
+	return sizeof(req);
+}
+
+static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
+				size_t count, loff_t *offset)
+{
+	struct oveyd_request *i, *tmp, *found = NULL;
+	unsigned long flags;
+	struct oveyd_resp_pkt resp;
+	int ret;
+
+	if (*offset % sizeof(struct oveyd_req_pkt) != 0) {
+		/* We use offset only for reading. */
+		return -EINVAL;
+	}
+
+	if (count < sizeof(resp)) {
+		/* Give enough memory for at least single response */
+		return -ENOMEM;
+	}
+
+	if (!access_ok(buf, sizeof(resp))) {
+		return -EACCES;
+	}
+
+	ret = copy_from_user(&resp, buf, sizeof(resp));
+	if (ret) {
+		return -EFAULT;
+	}
+
+	spin_lock_irqsave(&oveyd_lock, flags);
+	list_for_each_entry_safe(i, tmp, &oveyd_request_list, head) {
+		if (i->req.seq != resp.seq) {
+			continue;
+		}
+
+		/* Found the resp */
+		found = i;
+		break;
+
+	}
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+
+	if (!found) {
+		return -EINVAL;
+	}
+
+	memcpy(&found->resp, &resp, sizeof(resp));
+	complete_all(found->completion);
+
+	return sizeof(resp);
+}
+
+static const struct file_operations ovey_eventdev_fops = {
+	.owner = THIS_MODULE,
+	.open = ovey_eventdev_open,
+	.poll = ovey_eventdev_poll,
+	.read = ovey_eventdev_read,
+	.write = ovey_eventdev_write,
+};
+
+static int eventdev_major = 0;
+static struct class *ovey_eventdev_class = NULL;
+static struct cdev ovey_cdev;
+
+static int __init ovey_eventdev_init(void)
+{
+	struct device *device;
+	int err;
+	dev_t dev;
+
+	err = alloc_chrdev_region(&dev, 0, 1, "ovey");
+	if (err < 0) {
+		goto err1;
+	}
+	eventdev_major = MAJOR(dev);
+
+	ovey_eventdev_class = class_create(THIS_MODULE, "ovey");
+	if (IS_ERR(ovey_eventdev_class)) {
+		err = PTR_ERR(ovey_eventdev_class);
+		goto err2;
+	}
+
+	cdev_init(&ovey_cdev, &ovey_eventdev_fops);
+	ovey_cdev.owner = THIS_MODULE;
+
+	err = cdev_add(&ovey_cdev, MKDEV(eventdev_major, 0), 1);
+	if (err < 0) {
+		goto err3;
+	}
+
+	device = device_create(ovey_eventdev_class, NULL,
+			MKDEV(eventdev_major, 0), NULL, "ovey");
+	if (IS_ERR(device)) {
+		err = PTR_ERR(device);
+		goto err3;
+	}
+
+	return 0;
+
+err3:
+	class_destroy(ovey_eventdev_class);
+err2:
+	unregister_chrdev_region(MKDEV(eventdev_major, 0), MINORMASK);
+err1:
+	return err;
+}
+
+static void __exit ovey_eventdev_exit(void)
+{
+	device_destroy(ovey_eventdev_class, MKDEV(eventdev_major, 0));
+
+	class_unregister(ovey_eventdev_class);
+	class_destroy(ovey_eventdev_class);
+
+	unregister_chrdev_region(MKDEV(eventdev_major, 0), MINORMASK);
+}
+
 static int __init ovey_module_init(void)
 {
 	int err;
@@ -277,18 +563,18 @@ static int __init ovey_module_init(void)
 		return err;
 	}
 
-	INIT_LIST_HEAD(&ovey_completion_list.list_item);
+	err = ovey_eventdev_init();
+	if (err < 0) {
+		goto err1;
+	}
+
 	rdma_link_register(&ovey_link_ops);
 
-	// START: Test code to test completion lists
-	/*struct ovey_completion_chain * item = ovey_completion_add_entry();
-	  ovey_completion_resolve_by_id(item->req_id);
-	  item = ovey_completion_add_entry();
-	  ovey_completion_resolve_by_id(item->req_id);
-	  ovey_completion_add_entry();*/
-	// END:   Test code to test completion lists
-
 	return 0;
+
+err1:
+	ocp_fini();
+	return err;
 }
 
 static void __exit ovey_module_exit(void)
@@ -297,11 +583,12 @@ static void __exit ovey_module_exit(void)
 
 	// TODO tell daemon that Kernel module gets unloaded
 
-	ovey_completion_clear();
 	rdma_link_unregister(&ovey_link_ops);
 
 	// unregisters all "ovey" devices
 	ib_unregister_driver(RDMA_DRIVER_OVEY);
+
+	ovey_eventdev_exit();
 
 	// unregister ovey netlink family
 	ocp_fini();

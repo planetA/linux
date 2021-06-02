@@ -68,6 +68,8 @@ void ovey_free_qp(struct kref *ref);
 	ibdev_dbg(&cep->sdev->base_dev, "CEP[0x%pK] %s: " fmt,                 \
 		  cep, __func__, ##__VA_ARGS__)
 
+#define OVEY_TIMEOUT (5*HZ)
+
 struct ovey_device {
 	// The ib_device data structure of the virtual device.
 	// Seems like this MUST BE FIRST PROPERTY of the struct!
@@ -81,6 +83,7 @@ struct ovey_device {
 	// Virtual networks are identified by a uuid.
 	uuid_t network;
 
+	struct completion completion;
 	// TODO remove probably
 	struct xarray qp_xa;
 };
