@@ -2,9 +2,7 @@
 #include <rdma/restrack.h>
 #include <rdma/uverbs_ioctl.h>
 
-#include "ocp.h"
 #include "ovey.h"
-#include "ocp-util.h"
 #include "virtualized_properties.h"
 
 DEFINE_XARRAY(cq_xarray);
@@ -20,11 +18,6 @@ static int ovey_query_device(struct ib_device *base_dev, struct ib_device_attr *
 	int ret;
 
 	opr_info("verb invoked\n");
-
-	if (ocp_sockets.kernel_daemon_to_sock_pid == -1) {
-		opr_err("Can't query device. Ovey Daemon is unknown!");
-		return -EINVAL;
-	}
 
 	// forward operation to parent
 	ret = ovey_dev->parent->ops.query_device(ovey_dev->parent, attr, udata);
@@ -60,38 +53,8 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 	attr->lid = virt_lid.virt;
 	// END VIRTUALIZE PROPERTY PORT->LID
 
-#if 0
-	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
-	hdr = ocpmsg_put(msg, OVEY_C_STORE_VIRT_PROPERTY_PORT_LID);
-	if (!hdr) {
-		ret = -ENOMEM;
-		goto out;
-	}
-#if 0
-	ret = nla_put_u32(msg, OVEY_A_REAL_PROPERTY_U32, virt_lid.orig);
-	if (ret) {
-		goto out;
-	}
-	ret = nla_put_u32(msg, OVEY_A_VIRT_PROPERTY_U32, virt_lid.virt);
-	if (ret) {
-		goto out;
-	}
-#endif
-	/* finalize the message, IMPORTANT! Update length attribute etc */
-	genlmsg_end(msg, hdr);
-	// sending request to daemon via "kernel to daemon" socket
-	ret = nlmsg_unicast(ocp_sockets.genl_sock, msg,
-			    ocp_sockets.kernel_daemon_to_sock_pid);
+	WARN(1, "Unimplemented\n");
 
-	ret = wait_for_completion_killable(&completion);
-	if (ret) {
-		// process got killed while waiting for the completion
-		opr_err("wait_for_completion_killable returned %d", ret);
-		return -EINVAL;
-	}
-#endif
-
-  out:
 	opr_info("wait_for_completion_killable returned %d", ret);
 	return ret;
 }
@@ -782,8 +745,6 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_qp->device);
 	struct ovey_qp *ovey_qp = to_ovey_qp(base_qp);
-	struct nlmsghdr *hdr;
-	struct sk_buff *msg;
 	int ret;
 	opr_info("verb invoked\n");
 	opr_info("modify qp ovey_dev %s parent_dev %s qp_dev %s\n",
@@ -799,22 +760,7 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		return -EOPNOTSUPP;
 	}
 
-	msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
-#if 0
-	hdr = ocpmsg_put(msg, OVEY_C_RESOLVE_COMPLETION);
-	/* finalize the message, IMPORTANT! Update length attribute etc */
-	genlmsg_end(msg, hdr);
-	// sending request to daemon via "kernel to daemon" socket
-	nlmsg_unicast(ocp_sockets.genl_sock, msg,
-		      ocp_sockets.kernel_daemon_to_sock_pid);
-
-	ret = wait_for_completion_killable(&completion);
-	if (ret) {
-		// process got killed while waiting for the completion
-		opr_err("wait_for_completion_killable returned %d", ret);
-		return -EINVAL;
-	}
-#endif
+	WARN(1, "Unimplemented\n");
 
 	opr_info("modify 2 qp ovey_dev %s parent_dev %s qp_dev %s\n",
 		 ovey_dev->base.name, ovey_dev->parent->name,

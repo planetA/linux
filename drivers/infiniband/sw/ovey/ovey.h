@@ -8,7 +8,6 @@
 
 // #include <rdma/ovey-abi.h>
 #include "rdma/ovey-abi.h"
-#include "ocp.h" // for struct ovey_device_info
 
 /**
  * like __FILE__ but without the path.
@@ -181,5 +180,28 @@ int ovey_delete_device(char *device_name);
  * @return NULL or pointer to dest
  */
 struct ovey_device_info * get_device_info_by_name(char const * const ovey_dev_name, struct ovey_device_info * dest);
+
+// This struct is used as intermediate struct for the
+// OVEY_C_DEVICE_INFO OCP operation. This is assembled either before it is destructed and send via netlink
+// or assembled after the properties where received via OCP.
+// It bundles all needed information before it's data can be written into the netlink packet.
+// All pointers inside the struct are pointers OWNED BY OTHER FUNCTIONS.
+// Don't free them!
+struct ovey_device_info {
+	// e.g. "ovey0"
+	char const *device_name;
+	// e.g. "rxe0"
+	char const *parent_device_name;
+	// the virtual guid that identifies this node. Corresponds with the
+	// value inside Ovey Coordinator.
+	u64 node_guid;
+	// the virtual LID of a node
+	u64 node_lid;
+	// the guid of the real, physical device.
+	u64 parent_node_guid;
+	// the uuid v4 that describes to what virtual network this device belongs.
+	// Corresponds with the value inside Ovey Coordinator.
+	uuid_t network;
+};
 
 #endif  /* OVEY_H */
