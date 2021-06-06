@@ -21,21 +21,20 @@ int oveyd_lease_device(struct ovey_device *ovey_dev)
 	int ret;
 	unsigned long flags;
 	struct oveyd_request request;
-	struct oveydr_lease_device *cmd = &request.req.lease_device;
 
 	memset(&request.req, 0, sizeof(request.req));
-	cmd->hdr.type = OVEYD_REQ_LEASE_DEVICE;
-	cmd->hdr.len = sizeof(request.req);
-	cmd->hdr.seq = atomic_fetch_add(1, &oveyd_next_seq);
-	uuid_copy(&cmd->hdr.network, &ovey_dev->network);
-	printk("Create header %pUb from %pUb\n", &cmd->hdr.network,
+	request.req.type = OVEYD_REQ_LEASE_DEVICE;
+	request.req.len = sizeof(request.req);
+	request.req.seq = atomic_fetch_add(1, &oveyd_next_seq);
+	uuid_copy(&request.req.network, &ovey_dev->network);
+	printk("Create header %pUb from %pUb\n", &request.req.network,
 		&ovey_dev->network);
 
 	request.req.lease_device.guid = ovey_dev->parent->node_guid;
 
 	request.completion = &ovey_dev->completion;
 
-	printk("Create new request %u\n", cmd->hdr.seq);
+	printk("Create new request %u\n", request.req.seq);
 
 	spin_lock_irqsave(&oveyd_lock, flags);
 	reinit_completion(&ovey_dev->completion);
@@ -68,7 +67,7 @@ int oveyd_lease_device(struct ovey_device *ovey_dev)
 	ovey_dev->base.node_guid = request.resp.lease_device.guid;
 
 out:
-	printk("Delete request %u\n", cmd->hdr.seq);
+	printk("Delete request %u\n", request.req.seq);
 	spin_lock_irqsave(&oveyd_lock, flags);
 	list_del(&request.head);
 	spin_unlock_irqrestore(&oveyd_lock, flags);
@@ -82,10 +81,10 @@ static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 {
 	struct oveyd_request *i, *tmp, *found = NULL;
 	unsigned long flags;
-	union oveyd_resp_pkt resp;
+	struct oveyd_resp_pkt resp;
 	int ret;
 
-	if (*offset % sizeof(union oveyd_req_pkt) != 0) {
+	if (*offset % sizeof(struct oveyd_req_pkt) != 0) {
 		/* We use offset only for reading. */
 		return -EINVAL;
 	}
@@ -106,7 +105,7 @@ static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 
 	spin_lock_irqsave(&oveyd_lock, flags);
 	list_for_each_entry_safe(i, tmp, &oveyd_request_list, head) {
-		if (i->req.hdr.seq != resp.hdr.seq) {
+		if (i->req.seq != resp.seq) {
 			continue;
 		}
 
@@ -135,7 +134,7 @@ static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 static ssize_t ovey_eventdev_read(struct file *file, char __user *buf, size_t count, loff_t *offset)
 {
 	struct oveyd_request *i, *tmp, *found = NULL;
-	union oveyd_req_pkt req;
+	struct oveyd_req_pkt req;
 	unsigned long flags;
 	int ret;
 	int min_seq;
@@ -164,8 +163,8 @@ static ssize_t ovey_eventdev_read(struct file *file, char __user *buf, size_t co
 	spin_lock_irqsave(&oveyd_lock, flags);
 
 	list_for_each_entry_safe(i, tmp, &oveyd_request_list, head) {
-		printk("List element %px %u min_seq %d\n", i, i->req.hdr.seq, min_seq);
-		if (min_seq > i->req.hdr.seq) {
+		printk("List element %px %u min_seq %d\n", i, i->req.seq, min_seq);
+		if (min_seq > i->req.seq) {
 			continue;
 		}
 
@@ -193,7 +192,7 @@ static ssize_t ovey_eventdev_read(struct file *file, char __user *buf, size_t co
 		return -EFAULT;
 	}
 
-	*offset = (req.hdr.seq + 1) * sizeof(req);
+	*offset = (req.seq + 1) * sizeof(req);
 
 	printk("Read: Offset %lld\n", *offset);
 
