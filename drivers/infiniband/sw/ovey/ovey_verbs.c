@@ -761,7 +761,12 @@ static int ovey_modify_qp(struct ib_qp *base_qp, struct ib_qp_attr *qp_attr,
 		return -EOPNOTSUPP;
 	}
 
-	WARN(1, "Unimplemented\n");
+	if (qp_attr_mask & IB_QP_AV) {
+		ret = oveyd_resolve_av(ovey_qp, &qp_attr->ah_attr);
+		if (ret < 0) {
+			return ret;
+		}
+	}
 
 	opr_info("modify 2 qp ovey_dev %s parent_dev %s qp_dev %s\n",
 		 ovey_dev->base.name, ovey_dev->parent->name,

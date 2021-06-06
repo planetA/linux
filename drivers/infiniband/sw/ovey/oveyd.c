@@ -142,6 +142,84 @@ out:
 	return ret;
 }
 
+static int oveyd_resolve_av_global(struct ovey_qp *ovey_qp, struct rdma_ah_attr *ah)
+{
+	int ret;
+	struct ovey_device *ovey_dev = to_ovey_dev(ovey_qp->base.device);
+	struct oveyd_request request;
+	unsigned long flags;
+	const struct ib_global_route *grh;
+
+	if (!(rdma_ah_get_ah_flags(ah) & IB_AH_GRH)) {
+		return -EOPNOTSUPP;
+	}
+
+	grh = rdma_ah_read_grh(ah);
+
+	memset(&request.req, 0, sizeof(request.req));
+	request.req.type = OVEYD_REQ_RESOLVE_GID;
+	request.req.len = sizeof(request.req);
+	request.req.seq = atomic_fetch_add(1, &oveyd_next_seq);
+	uuid_copy(&request.req.network, &ovey_dev->network);
+	printk("Create header %pUb from %pUb\n", &request.req.network,
+	       &ovey_dev->network);
+
+	request.req.resolve_gid.subnet_prefix = grh->dgid.global.subnet_prefix;
+	request.req.resolve_gid.interface_id = grh->dgid.global.interface_id;
+
+	request.completion = &ovey_dev->completion;
+
+	printk("Create new request %u\n", request.req.seq);
+
+	spin_lock_irqsave(&oveyd_lock, flags);
+	reinit_completion(&ovey_dev->completion);
+
+	list_add_tail(&request.head, &oveyd_request_list);
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+	wake_up(&ovey_eventdev_queue);
+
+	ret = wait_for_completion_killable_timeout(&ovey_dev->completion,
+						   OVEY_TIMEOUT);
+	printk("Wait over %d\n", ret);
+	if (ret == -ERESTARTSYS) {
+		/* Killed */
+		goto out;
+	} else if (ret == 0) {
+		/* Timeout */
+		ret = -ECONNREFUSED;
+		goto out;
+	} else if (ret > 0) {
+		/* ret indicates time before timeout, not an error. */
+		ret = 0;
+	}
+
+	/* No other error code should be possible */
+	BUG_ON(ret < 0);
+
+	printk("Received reply %llx-%llx to %llx-%llx\n",
+	       request.req.resolve_gid.interface_id,
+	       request.req.resolve_gid.subnet_prefix,
+	       request.resp.resolve_gid.interface_id,
+	       request.resp.resolve_gid.subnet_prefix);
+
+	/* Completed */
+	rdma_ah_set_subnet_prefix(ah, request.resp.resolve_gid.subnet_prefix);
+	rdma_ah_set_interface_id(ah, request.resp.resolve_gid.interface_id);
+
+out:
+	printk("Delete request %u\n", request.req.seq);
+	spin_lock_irqsave(&oveyd_lock, flags);
+	list_del(&request.head);
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+
+	return ret;
+}
+
+int oveyd_resolve_av(struct ovey_qp *ovey_qp, struct rdma_ah_attr *ah)
+{
+	return oveyd_resolve_av_global(ovey_qp, ah);
+}
+
 
 static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 				size_t count, loff_t *offset)
