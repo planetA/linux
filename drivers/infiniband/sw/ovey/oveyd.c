@@ -75,6 +75,73 @@ out:
 	return ret;
 }
 
+int oveyd_lease_gid(struct ovey_device *ovey_dev, u8 port, int idx,
+		union ib_gid *gid)
+{
+	int ret;
+	unsigned long flags;
+	struct oveyd_request request;
+
+	memset(&request.req, 0, sizeof(request.req));
+	request.req.type = OVEYD_REQ_LEASE_GID;
+	request.req.len = sizeof(request.req);
+	request.req.seq = atomic_fetch_add(1, &oveyd_next_seq);
+	uuid_copy(&request.req.network, &ovey_dev->network);
+	printk("Create header %pUb from %pUb\n", &request.req.network,
+		&ovey_dev->network);
+
+	request.req.lease_gid.port = port;
+	request.req.lease_gid.idx = idx;
+	request.req.lease_gid.subnet_prefix = gid->global.subnet_prefix;
+	request.req.lease_gid.interface_id = gid->global.interface_id;
+
+	request.completion = &ovey_dev->completion;
+
+	printk("Create new request %u\n", request.req.seq);
+
+	spin_lock_irqsave(&oveyd_lock, flags);
+	reinit_completion(&ovey_dev->completion);
+
+	list_add_tail(&request.head, &oveyd_request_list);
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+	wake_up(&ovey_eventdev_queue);
+
+	ret = wait_for_completion_killable_timeout(
+		&ovey_dev->completion, OVEY_TIMEOUT);
+	printk("Wait over %d\n", ret);
+	if (ret == -ERESTARTSYS) {
+		/* Killed */
+		goto out;
+	} else if (ret == 0) {
+		/* Timeout */
+		ret = -ECONNREFUSED;
+		goto out;
+	} else if (ret > 0) {
+		/* ret indicates time before timeout, not an error. */
+		ret = 0;
+	}
+
+	/* No other error code should be possible */
+	BUG_ON(ret < 0);
+
+	printk("Received reply %llx-%llx to %llx-%llx\n",
+	       request.req.lease_gid.interface_id,
+	       request.req.lease_gid.subnet_prefix,
+	       request.resp.lease_gid.interface_id,
+	       request.resp.lease_gid.subnet_prefix);
+	/* Completed */
+	gid->global.subnet_prefix = request.resp.lease_gid.subnet_prefix;
+	gid->global.interface_id = request.resp.lease_gid.interface_id;
+
+out:
+	printk("Delete request %u\n", request.req.seq);
+	spin_lock_irqsave(&oveyd_lock, flags);
+	list_del(&request.head);
+	spin_unlock_irqrestore(&oveyd_lock, flags);
+
+	return ret;
+}
+
 
 static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 				size_t count, loff_t *offset)
@@ -84,31 +151,39 @@ static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 	struct oveyd_resp_pkt resp;
 	int ret;
 
+	printk("Received write request %d", __LINE__);
+
 	if (*offset % sizeof(struct oveyd_req_pkt) != 0) {
 		/* We use offset only for reading. */
 		return -EINVAL;
 	}
 
-	if (count < sizeof(resp)) {
+	printk("Received write request %d %lu %lu", __LINE__, count, sizeof(resp));
+	if (count > sizeof(resp)) {
 		/* Give enough memory for at least single response */
 		return -ENOMEM;
 	}
 
+	printk("Received write request %d", __LINE__);
 	if (!access_ok(buf, sizeof(resp))) {
 		return -EACCES;
 	}
 
-	ret = copy_from_user(&resp, buf, sizeof(resp));
+	printk("Received write request %d", __LINE__);
+	ret = copy_from_user(&resp, buf, count);
 	if (ret) {
 		return -EFAULT;
 	}
 
+	printk("Received write request %d", __LINE__);
 	spin_lock_irqsave(&oveyd_lock, flags);
 	list_for_each_entry_safe(i, tmp, &oveyd_request_list, head) {
+		printk("Received write request %d", __LINE__);
 		if (i->req.seq != resp.seq) {
 			continue;
 		}
 
+		printk("Received write request %d", __LINE__);
 		found = i;
 		/* Found the resp */
 		break;
@@ -116,13 +191,16 @@ static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 	}
 	spin_unlock_irqrestore(&oveyd_lock, flags);
 
+	printk("Received write request %d", __LINE__);
 	if (!found) {
 		return -EINVAL;
 	}
+	printk("Received write request %d", __LINE__);
 
 	memcpy(&found->resp, &resp, sizeof(resp));
 	complete_all(found->completion);
 
+	printk("Received write request %d %lu", __LINE__, sizeof(resp));
 	return sizeof(resp);
 }
 /**

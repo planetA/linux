@@ -3,6 +3,7 @@
 #include <rdma/uverbs_ioctl.h>
 
 #include "ovey.h"
+#include "oveyd.h"
 #include "virtualized_properties.h"
 
 DEFINE_XARRAY(cq_xarray);
@@ -33,8 +34,6 @@ static int ovey_query_port(struct ib_device *base_dev, u8 port,
 {
 	struct ovey_device *ovey_dev = to_ovey_dev(base_dev);
 	struct ovey_virt_lid virt_lid;
-	struct sk_buff *msg;
-	struct nlmsghdr *hdr;
 	int ret;
 
 	opr_info("verb invoked\n");
@@ -71,6 +70,8 @@ static int ovey_query_gid(struct ib_device *base_dev, u8 port, int idx,
 	if (ret) {
 		opr_err("query_gid() on parent device failed! %d\n", ret);
 	}
+
+	oveyd_lease_gid(ovey_dev, port, idx, gid);
 
 	return ret;
 }

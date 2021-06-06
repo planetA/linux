@@ -14,9 +14,13 @@ struct oveydr_lease_device {
 	__be64 guid;
 };
 
-struct oveydr_lease_device_resp {
+/* Ovey daemon request to lease device */
+struct oveydr_lease_gid {
 	/* Header must always go first */
-	__be64 guid;
+	u16 port;
+	u32 idx;
+	__be64 subnet_prefix;
+	__be64 interface_id;
 };
 
 struct oveyd_req_pkt {
@@ -27,6 +31,7 @@ struct oveyd_req_pkt {
 	uuid_t network;
 	union {
 		struct oveydr_lease_device lease_device;
+		struct oveydr_lease_gid lease_gid;
 	};
 };
 
@@ -35,7 +40,8 @@ struct oveyd_resp_pkt {
 	u16 len;
 	u32 seq;
 	union {
-		struct oveydr_lease_device_resp lease_device;
+		struct oveydr_lease_device lease_device;
+		struct oveydr_lease_gid lease_gid;
 	};
 };
 
@@ -47,6 +53,8 @@ struct oveyd_request {
 };
 
 int oveyd_lease_device(struct ovey_device *ovey_dev);
+int oveyd_lease_gid(struct ovey_device *ovey_dev, u8 port, int idx,
+		union ib_gid *gid);
 
 int ovey_eventdev_init(void);
 void ovey_eventdev_exit(void);
