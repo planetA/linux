@@ -562,9 +562,8 @@ struct mm_struct {
 		u32 pasid;
 #endif
 
-#ifdef CONFIG_FASTCALL
 	bool fastcall_registered;
-#endif
+
 	} __randomize_layout;
 
 
