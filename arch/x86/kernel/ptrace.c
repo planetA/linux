@@ -748,6 +748,12 @@ long arch_ptrace(struct task_struct *child, long request,
 		break;
 
 	case PTRACE_GETREGS:	/* Get all gp regs from the child. */
+		mmap_read_lock(mm);	
+		if (mm->fastcall_registered) {
+			mmap_read_unlock(mm);
+			return -EPERM;
+		}
+		mmap_read_unlock(mm);
 		return copy_regset_to_user(child,
 					   task_user_regset_view(current),
 					   REGSET_GENERAL,
@@ -755,6 +761,12 @@ long arch_ptrace(struct task_struct *child, long request,
 					   datap);
 
 	case PTRACE_SETREGS:	/* Set all gp regs in the child. */
+		mmap_read_lock(mm);	
+		if (mm->fastcall_registered) {
+			mmap_read_unlock(mm);
+			return -EPERM;
+		}
+		mmap_read_unlock(mm);
 		return copy_regset_from_user(child,
 					     task_user_regset_view(current),
 					     REGSET_GENERAL,
