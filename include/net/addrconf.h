@@ -162,6 +162,7 @@ static inline int addrconf_ifid_eui48(u8 *eui, struct net_device *dev)
 	 * scope according to RFC2373.
 	 */
 
+	printk("WAH %s %d device %s\n", __FUNCTION__, __LINE__, dev->name);
 	addrconf_addr_eui48_base(eui, dev->dev_addr);
 
 	if (dev->dev_id) {

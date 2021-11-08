@@ -223,7 +223,13 @@ int ib_alloc_ucontext(struct uverbs_attr_bundle *attrs)
 		return -ENOMEM;
 
 	ucontext->device = ib_dev;
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ucontext->device);
+	printk("WAH %s:%d %s", __FUNCTION__, __LINE__, ucontext->device->name);
 	ucontext->ufile = ufile;
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ufile->device);
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ufile->device->ib_dev);
+	printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
+	       ufile->device->ib_dev->name);
 	xa_init_flags(&ucontext->mmap_xa, XA_FLAGS_ALLOC);
 
 	rdma_restrack_new(&ucontext->res, RDMA_RESTRACK_CTX);
@@ -251,8 +257,17 @@ int ib_init_ucontext(struct uverbs_attr_bundle *attrs)
 	if (ret)
 		goto err;
 
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ucontext);
+	if (!IS_ERR(ucontext)) {
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ucontext->device);
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ucontext->device);
+		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
+		       ucontext->device->name);
+	}
+
 	ret = ucontext->device->ops.alloc_ucontext(ucontext,
 						   &attrs->driver_udata);
+	printk("WAH %s:%d %s", __FUNCTION__, __LINE__, ucontext->device->name);
 	if (ret)
 		goto err_uncharge;
 
@@ -284,6 +299,16 @@ static int ib_uverbs_get_context(struct uverbs_attr_bundle *attrs)
 	struct ib_device *ib_dev;
 	struct ib_uobject *uobj;
 	int ret;
+
+	struct ib_ucontext *uctx;
+	uctx = ib_uverbs_get_ucontext(attrs);
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx);
+	if (!IS_ERR(uctx)) {
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
+		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
+		       uctx->device->name);
+	}
 
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -329,7 +354,7 @@ static void copy_query_dev_fields(struct ib_ucontext *ucontext,
 				  struct ib_uverbs_query_device_resp *resp,
 				  struct ib_device_attr *attr)
 {
-	struct ib_device *ib_dev = ucontext->device;
+	struct ib_device *ib_dev = ib_get_ucontext_device(ucontext);
 
 	resp->fw_ver		= attr->fw_ver;
 	resp->node_guid		= ib_dev->node_guid;
@@ -376,6 +401,7 @@ static int ib_uverbs_query_device(struct uverbs_attr_bundle *attrs)
 	struct ib_uverbs_query_device      cmd;
 	struct ib_uverbs_query_device_resp resp;
 	struct ib_ucontext *ucontext;
+	struct ib_device *ib_dev;
 	int ret;
 
 	ucontext = ib_uverbs_get_ucontext(attrs);
@@ -386,8 +412,9 @@ static int ib_uverbs_query_device(struct uverbs_attr_bundle *attrs)
 	if (ret)
 		return ret;
 
+	ib_dev = ib_get_ucontext_device(ucontext);
 	memset(&resp, 0, sizeof resp);
-	copy_query_dev_fields(ucontext, &resp, &ucontext->device->attrs);
+	copy_query_dev_fields(ucontext, &resp, &ib_dev->attrs);
 
 	return uverbs_response(attrs, &resp, sizeof(resp));
 }
@@ -404,7 +431,7 @@ static int ib_uverbs_query_port(struct uverbs_attr_bundle *attrs)
 	ucontext = ib_uverbs_get_ucontext(attrs);
 	if (IS_ERR(ucontext))
 		return PTR_ERR(ucontext);
-	ib_dev = ucontext->device;
+	ib_dev = ib_get_ucontext_device(ucontext);
 
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1565,6 +1592,7 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, cmd->comp_channel);
 	if (cmd->comp_channel >= 0) {
 		ev_file = ib_uverbs_lookup_comp_file(cmd->comp_channel, attrs);
 		if (IS_ERR(ev_file)) {
@@ -1592,6 +1620,7 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	cq->event_handler = ib_uverbs_cq_event_handler;
 	cq->cq_context    = ev_file ? &ev_file->ev_queue : NULL;
 	atomic_set(&cq->usecnt, 0);
+	printk("WAH %s %d cq_context=%px\n", __FUNCTION__, __LINE__, cq->cq_context);
 
 	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
 	rdma_restrack_set_name(&cq->res, NULL);
@@ -1610,6 +1639,9 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	resp.base.cq_handle = obj->uevent.uobject.id;
 	resp.base.cqe = cq->cqe;
 	resp.response_length = uverbs_response_length(attrs, sizeof(resp));
+	printk("WAH %s %d cq_handle=%d cqe=%d\n", __FUNCTION__, __LINE__,
+		resp.base.cq_handle,
+		cq->cqe);
 	return uverbs_response(attrs, &resp, sizeof(resp));
 
 err_free:
@@ -1620,6 +1652,7 @@ err_file:
 		ib_uverbs_release_ucq(ev_file, obj);
 err:
 	uobj_alloc_abort(&obj->uevent.uobject, attrs);
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 	return ret;
 }
 
@@ -1629,9 +1662,12 @@ static int ib_uverbs_create_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_uverbs_ex_create_cq	cmd_ex;
 	int ret;
 
+	printk("WAH %s %d\n", __FUNCTION__, __LINE__);
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
-	if (ret)
+	if (ret) {
+		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, ret);
 		return ret;
+	}
 
 	memset(&cmd_ex, 0, sizeof(cmd_ex));
 	cmd_ex.user_handle = cmd.user_handle;
@@ -3523,6 +3559,12 @@ static int ib_uverbs_ex_create_wq(struct uverbs_attr_bundle *attrs)
 	wq->device = pd->device;
 	atomic_set(&wq->usecnt, 0);
 	atomic_inc(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	atomic_inc(&cq->usecnt);
 	obj->uevent.event_file = READ_ONCE(attrs->ufile->default_async_file);
 	if (obj->uevent.event_file)
@@ -4184,7 +4226,7 @@ static int ib_uverbs_ex_query_device(struct uverbs_attr_bundle *attrs)
 	ucontext = ib_uverbs_get_ucontext(attrs);
 	if (IS_ERR(ucontext))
 		return PTR_ERR(ucontext);
-	ib_dev = ucontext->device;
+	ib_dev = ib_get_ucontext_device(ucontext);
 
 	err = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (err)

@@ -209,9 +209,11 @@ static void ib_cq_completion_workqueue(struct ib_cq *cq, void *private)
  * specified context. The ULP must use wr->wr_cqe instead of wr->wr_id
  * to use this CQ abstraction.
  */
-struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private, int nr_cqe,
-			    int comp_vector, enum ib_poll_context poll_ctx,
-			    const char *caller)
+struct ib_cq *__ib_alloc_cq_user(struct ib_device *dev, void *private,
+				 int nr_cqe, int comp_vector,
+				 enum ib_poll_context poll_ctx,
+				 struct ib_udata *udata,
+				 const char *caller)
 {
 	struct ib_cq_init_attr cq_attr = {
 		.cqe		= nr_cqe,
@@ -237,7 +239,7 @@ struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private, int nr_cqe,
 	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
 	rdma_restrack_set_name(&cq->res, caller);
 
-	ret = dev->ops.create_cq(cq, &cq_attr, NULL);
+	ret = dev->ops.create_cq(cq, &cq_attr, udata);
 	if (ret)
 		goto out_free_wc;
 
@@ -281,7 +283,7 @@ out_free_cq:
 	trace_cq_alloc_error(nr_cqe, comp_vector, poll_ctx, ret);
 	return ERR_PTR(ret);
 }
-EXPORT_SYMBOL(__ib_alloc_cq);
+EXPORT_SYMBOL(__ib_alloc_cq_user);
 
 /**
  * __ib_alloc_cq_any - allocate a completion queue
@@ -306,8 +308,8 @@ struct ib_cq *__ib_alloc_cq_any(struct ib_device *dev, void *private,
 			atomic_inc_return(&counter) %
 			min_t(int, dev->num_comp_vectors, num_online_cpus());
 
-	return __ib_alloc_cq(dev, private, nr_cqe, comp_vector, poll_ctx,
-			     caller);
+	return __ib_alloc_cq_user(dev, private, nr_cqe, comp_vector, poll_ctx, NULL,
+				  caller);
 }
 EXPORT_SYMBOL(__ib_alloc_cq_any);
 
@@ -319,32 +321,45 @@ void ib_free_cq(struct ib_cq *cq)
 {
 	int ret;
 
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	if (WARN_ON_ONCE(atomic_read(&cq->usecnt)))
 		return;
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	if (WARN_ON_ONCE(cq->cqe_used))
 		return;
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 
 	switch (cq->poll_ctx) {
 	case IB_POLL_DIRECT:
+		printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 		break;
 	case IB_POLL_SOFTIRQ:
+		printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 		irq_poll_disable(&cq->iop);
 		break;
 	case IB_POLL_WORKQUEUE:
 	case IB_POLL_UNBOUND_WORKQUEUE:
+		printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 		cancel_work_sync(&cq->work);
 		break;
 	default:
 		WARN_ON_ONCE(1);
 	}
 
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	rdma_dim_destroy(cq);
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	trace_cq_free(cq);
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	ret = cq->device->ops.destroy_cq(cq, NULL);
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	WARN_ONCE(ret, "Destroy of kernel CQ shouldn't fail");
 	rdma_restrack_del(&cq->res);
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	kfree(cq->wc);
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 	kfree(cq);
+	printk("WAH %s %d %px\n", __FUNCTION__, __LINE__, cq);
 }
 EXPORT_SYMBOL(ib_free_cq);
 

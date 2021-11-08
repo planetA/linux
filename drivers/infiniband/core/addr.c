@@ -167,6 +167,7 @@ static int ib_nl_ip_send_msg(struct rdma_dev_addr *dev_addr,
 	len += NLMSG_ALIGN(sizeof(*header));
 
 	skb = nlmsg_new(len, GFP_KERNEL);
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!skb);
 	if (!skb)
 		return -ENOMEM;
 
@@ -174,6 +175,7 @@ static int ib_nl_ip_send_msg(struct rdma_dev_addr *dev_addr,
 			    RDMA_NL_LS_OP_IP_RESOLVE, NLM_F_REQUEST);
 	if (!data) {
 		nlmsg_free(skb);
+		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!skb);
 		return -ENODATA;
 	}
 
@@ -189,6 +191,7 @@ static int ib_nl_ip_send_msg(struct rdma_dev_addr *dev_addr,
 	/* Make the request retry, so when we get the response from userspace
 	 * we will have something.
 	 */
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!skb);
 	return -ENODATA;
 }
 
@@ -279,6 +282,7 @@ int rdma_translate_ip(const struct sockaddr *addr,
 
 	if (dev_addr->bound_dev_if) {
 		dev = dev_get_by_index(dev_addr->net, dev_addr->bound_dev_if);
+		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!dev);
 		if (!dev)
 			return -ENODEV;
 		rdma_copy_src_l2_addr(dev_addr, dev);
@@ -331,11 +335,13 @@ static int dst_fetch_ha(const struct dst_entry *dst,
 	int ret = 0;
 
 	n = dst_neigh_lookup(dst, daddr);
+	printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!n);
 	if (!n)
 		return -ENODATA;
 
 	if (!(n->nud_state & NUD_VALID)) {
 		neigh_event_send(n, NULL);
+		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!n);
 		ret = -ENODATA;
 	} else {
 		neigh_ha_snapshot(dev_addr->dst_dev_addr, n, dst->dev);
@@ -626,6 +632,7 @@ static void process_one_req(struct work_struct *_work)
 	req = container_of(_work, struct addr_req, work.work);
 
 	if (req->status == -ENODATA) {
+		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!req);
 		src_in = (struct sockaddr *)&req->src_addr;
 		dst_in = (struct sockaddr *)&req->dst_addr;
 		req->status = addr_resolve(src_in, dst_in, req->addr,
@@ -634,6 +641,8 @@ static void process_one_req(struct work_struct *_work)
 		if (req->status && time_after_eq(jiffies, req->timeout)) {
 			req->status = -ETIMEDOUT;
 		} else if (req->status == -ENODATA) {
+			printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__,
+			       !!req);
 			/* requeue the work for retrying again */
 			spin_lock_bh(&lock);
 			if (!list_empty(&req->list))
@@ -704,6 +713,7 @@ int rdma_resolve_ip(struct sockaddr *src_addr, const struct sockaddr *dst_addr,
 		queue_req(req);
 		break;
 	case -ENODATA:
+		printk("WAH %s %d ret=%d\n", __FUNCTION__, __LINE__, !!req);
 		req->timeout = msecs_to_jiffies(timeout_ms) + jiffies;
 		queue_req(req);
 		break;

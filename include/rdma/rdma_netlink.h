@@ -114,6 +114,8 @@ struct rdma_link_ops {
 	struct list_head list;
 	const char *type;
 	int (*newlink)(const char *ibdev_name, struct net_device *ndev);
+	int (*newlink_virt)(const char *ibdev_name, struct net_device *ndev,
+			    const char *parent, const uuid_t *uuid);
 };
 
 void rdma_link_register(struct rdma_link_ops *ops);

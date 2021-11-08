@@ -112,6 +112,12 @@ int uverbs_dealloc_mw(struct ib_mw *mw)
 		return ret;
 
 	atomic_dec(&pd->usecnt);
+	{
+		int usecnt;
+		usecnt = atomic_read(&pd->usecnt);
+		printk("WAH %s %d pd %px usecnt %d\n", __FUNCTION__, __LINE__,
+		       pd, usecnt);
+	}
 	kfree(mw);
 	return ret;
 }
@@ -390,6 +396,7 @@ void ib_uverbs_comp_handler(struct ib_cq *cq, void *cq_context)
 	wake_up_interruptible(&ev_queue->poll_wait);
 	kill_fasync(&ev_queue->async_queue, SIGIO, POLL_IN);
 }
+EXPORT_SYMBOL(ib_uverbs_comp_handler);
 
 void ib_uverbs_async_handler(struct ib_uverbs_async_event_file *async_file,
 			     __u64 element, __u64 event,
@@ -481,7 +488,7 @@ void ib_uverbs_init_async_event_file(
 	struct ib_uverbs_async_event_file *async_file)
 {
 	struct ib_uverbs_file *uverbs_file = async_file->uobj.ufile;
-	struct ib_device *ib_dev = async_file->uobj.context->device;
+	struct ib_device *ib_dev = ib_get_ucontext_device(async_file->uobj.context);
 
 	ib_uverbs_init_event_queue(&async_file->ev_queue);
 
@@ -977,8 +984,13 @@ static int ib_uverbs_open(struct inode *inode, struct file *filp)
 
 		goto err;
 	}
+	printk("WAH %s %d ufile %px\n", __FUNCTION__, __LINE__, file);
 
 	file->device	 = dev;
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, file->device);
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, file->device);
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, file->device->ib_dev);
+	printk("WAH %s:%d %s", __FUNCTION__, __LINE__, ib_dev->name);
 	kref_init(&file->ref);
 	mutex_init(&file->ucontext_lock);
 

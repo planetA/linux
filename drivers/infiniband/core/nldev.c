@@ -81,10 +81,14 @@ static const struct nla_policy nldev_policy[RDMA_NLDEV_ATTR_MAX] = {
 	[RDMA_NLDEV_ATTR_NDEV_INDEX]		= { .type = NLA_U32 },
 	[RDMA_NLDEV_ATTR_NDEV_NAME]		= { .type = NLA_NUL_STRING,
 					.len = IFNAMSIZ },
+	[RDMA_NLDEV_ATTR_NET_UUID]	= { .type = NLA_NUL_STRING,
+					.len = UUID_STRING_LEN },
 	[RDMA_NLDEV_ATTR_NODE_GUID]		= { .type = NLA_U64 },
 	[RDMA_NLDEV_ATTR_PORT_INDEX]		= { .type = NLA_U32 },
 	[RDMA_NLDEV_ATTR_PORT_PHYS_STATE]	= { .type = NLA_U8 },
 	[RDMA_NLDEV_ATTR_PORT_STATE]		= { .type = NLA_U8 },
+	[RDMA_NLDEV_ATTR_RDMADEV_NAME]	= { .type = NLA_NUL_STRING,
+					.len = IB_DEVICE_NAME_MAX },
 	[RDMA_NLDEV_ATTR_RES_CM_ID]		= { .type = NLA_NESTED },
 	[RDMA_NLDEV_ATTR_RES_CM_IDN]		= { .type = NLA_U32 },
 	[RDMA_NLDEV_ATTR_RES_CM_ID_ENTRY]	= { .type = NLA_NESTED },
@@ -1688,6 +1692,46 @@ void rdma_link_unregister(struct rdma_link_ops *ops)
 }
 EXPORT_SYMBOL(rdma_link_unregister);
 
+static int nldev_newlink_virt(const char *ibdev_name, const char *type,
+			struct net_device *ndev, struct nlattr *tb[])
+{
+	const struct rdma_link_ops *ops;
+	char rdmadev_name[IB_DEVICE_NAME_MAX];
+	char net_uuid_str[UUID_STRING_LEN + 1];
+	uuid_t net_uuid;
+	int err;
+
+	if (!tb[RDMA_NLDEV_ATTR_RDMADEV_NAME] || !tb[RDMA_NLDEV_ATTR_NET_UUID]) {
+		return -EINVAL;
+	}
+
+	nla_strscpy(rdmadev_name, tb[RDMA_NLDEV_ATTR_RDMADEV_NAME],
+		sizeof(rdmadev_name));
+	nla_strscpy(net_uuid_str, tb[RDMA_NLDEV_ATTR_NET_UUID],
+		sizeof(net_uuid_str));
+
+	err = uuid_parse(net_uuid_str, &net_uuid);
+	if (err) {
+		return err;
+	}
+
+	down_read(&link_ops_rwsem);
+	ops = link_ops_get(type);
+#ifdef CONFIG_MODULES
+	if (!ops) {
+		up_read(&link_ops_rwsem);
+		request_module("rdma-link-%s", type);
+		down_read(&link_ops_rwsem);
+		ops = link_ops_get(type);
+	}
+#endif
+	err = ops && ops->newlink_virt ?
+		ops->newlink_virt(ibdev_name, ndev, rdmadev_name, &net_uuid) : -EINVAL;
+	up_read(&link_ops_rwsem);
+
+	return err;
+}
+
 static int nldev_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			  struct netlink_ext_ack *extack)
 {
@@ -1718,6 +1762,13 @@ static int nldev_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (!ndev)
 		return -ENODEV;
 
+	if (tb[RDMA_NLDEV_ATTR_RDMADEV_NAME] || tb[RDMA_NLDEV_ATTR_NET_UUID]) {
+		/* Either RDMA dev or network uuid attributes were set. This is
+		 * an indication of a virtual device request. */
+		return nldev_newlink_virt(ibdev_name, type, ndev, tb);
+	}
+
+
 	down_read(&link_ops_rwsem);
 	ops = link_ops_get(type);
 #ifdef CONFIG_MODULES
@@ -1728,7 +1779,7 @@ static int nldev_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		ops = link_ops_get(type);
 	}
 #endif
-	err = ops ? ops->newlink(ibdev_name, ndev) : -EINVAL;
+	err = ops && ops->newlink ? ops->newlink(ibdev_name, ndev) : -EINVAL;
 	up_read(&link_ops_rwsem);
 	dev_put(ndev);
 

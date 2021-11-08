@@ -1519,9 +1519,20 @@ struct ib_ucontext {
 	/*
 	 * Implementation details of the RDMA core, don't use in drivers:
 	 */
+	struct ib_device       *wrapper_device;
 	struct rdma_restrack_entry res;
 	struct xarray mmap_xa;
 };
+
+static inline
+struct ib_device *ib_get_ucontext_device(struct ib_ucontext *context)
+{
+	if (context->wrapper_device) {
+		return context->wrapper_device;
+	}
+
+	return context->device;
+}
 
 struct ib_uobject {
 	u64			user_handle;	/* handle given to us by userspace */
@@ -3518,8 +3529,8 @@ enum ib_pd_flags {
 	IB_PD_UNSAFE_GLOBAL_RKEY	= 0x01,
 };
 
-struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
-		const char *caller);
+struct ib_pd *__ib_alloc_pd_user(struct ib_device *device, unsigned int flags,
+				 struct ib_udata *udata, const char *caller);
 
 /**
  * ib_alloc_pd - Allocates an unused protection domain.
@@ -3533,7 +3544,9 @@ struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
  * memory operations.
  */
 #define ib_alloc_pd(device, flags) \
-	__ib_alloc_pd((device), (flags), KBUILD_MODNAME)
+	__ib_alloc_pd_user((device), (flags), NULL, KBUILD_MODNAME)
+#define ib_alloc_pd_user(device, flags, udata)                                 \
+	__ib_alloc_pd_user((device), (flags), udata, KBUILD_MODNAME)
 
 int ib_dealloc_pd_user(struct ib_pd *pd, struct ib_udata *udata);
 
@@ -3757,6 +3770,11 @@ static inline int ib_post_srq_recv(struct ib_srq *srq,
 					      bad_recv_wr ? : &dummy);
 }
 
+struct ib_qp *ib_create_qp_user(struct ib_device *dev, struct ib_pd *pd,
+				struct ib_qp_init_attr *attr,
+				struct ib_udata *udata,
+				struct ib_uqp_object *uobj, const char *caller);
+
 struct ib_qp *ib_create_qp_kernel(struct ib_pd *pd,
 				  struct ib_qp_init_attr *qp_init_attr,
 				  const char *caller);
@@ -3892,18 +3910,29 @@ static inline int ib_post_recv(struct ib_qp *qp,
 {
 	const struct ib_recv_wr *dummy;
 
-	return qp->device->ops.post_recv(qp, recv_wr, bad_recv_wr ? : &dummy);
+	return qp->device->ops.post_recv(qp, recv_wr, bad_recv_wr ?: &dummy);
 }
 
-struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private, int nr_cqe,
-			    int comp_vector, enum ib_poll_context poll_ctx,
-			    const char *caller);
+struct ib_cq *__ib_alloc_cq_user(struct ib_device *dev, void *private,
+				 int nr_cqe, int comp_vector,
+				 enum ib_poll_context poll_ctx,
+				 struct ib_udata *udata, const char *caller);
 static inline struct ib_cq *ib_alloc_cq(struct ib_device *dev, void *private,
 					int nr_cqe, int comp_vector,
 					enum ib_poll_context poll_ctx)
 {
-	return __ib_alloc_cq(dev, private, nr_cqe, comp_vector, poll_ctx,
-			     KBUILD_MODNAME);
+	return __ib_alloc_cq_user(dev, private, nr_cqe, comp_vector, poll_ctx,
+				  NULL, KBUILD_MODNAME);
+}
+
+static inline struct ib_cq *ib_alloc_cq_user(struct ib_device *dev,
+					     void *private, int nr_cqe,
+					     int comp_vector,
+					     enum ib_poll_context poll_ctx,
+					     struct ib_udata *udata)
+{
+	return __ib_alloc_cq_user(dev, private, nr_cqe, comp_vector, poll_ctx,
+				  udata, KBUILD_MODNAME);
 }
 
 struct ib_cq *__ib_alloc_cq_any(struct ib_device *dev, void *private,
@@ -3941,14 +3970,20 @@ int ib_process_cq_direct(struct ib_cq *cq, int budget);
  *
  * Users can examine the cq structure to determine the actual CQ size.
  */
-struct ib_cq *__ib_create_cq(struct ib_device *device,
-			     ib_comp_handler comp_handler,
-			     void (*event_handler)(struct ib_event *, void *),
-			     void *cq_context,
-			     const struct ib_cq_init_attr *cq_attr,
-			     const char *caller);
-#define ib_create_cq(device, cmp_hndlr, evt_hndlr, cq_ctxt, cq_attr) \
-	__ib_create_cq((device), (cmp_hndlr), (evt_hndlr), (cq_ctxt), (cq_attr), KBUILD_MODNAME)
+struct ib_cq *
+__ib_create_cq_user(struct ib_device *device, ib_comp_handler comp_handler,
+		    void (*event_handler)(struct ib_event *, void *),
+		    void *cq_context, const struct ib_cq_init_attr *cq_attr,
+		    struct ib_udata *udata, const char *caller);
+#define ib_create_cq(device, cmp_hndlr, evt_hndlr, cq_ctxt, cq_attr)           \
+	__ib_create_cq_user((device), (cmp_hndlr), (evt_hndlr), (cq_ctxt),     \
+			    (cq_attr), NULL, KBUILD_MODNAME)
+#define ib_create_cq_user(device, cmp_hndlr, evt_hndlr, cq_ctxt, cq_attr,      \
+			  udata)                                               \
+	__ib_create_cq((device), (cmp_hndlr), (evt_hndlr), (cq_ctxt),          \
+		       (cq_attr), (udata), KBUILD_MODNAME)
+
+void ib_uverbs_comp_handler(struct ib_cq *cq, void *cq_context);
 
 /**
  * ib_resize_cq - Modifies the capacity of the CQ.
@@ -4274,8 +4309,15 @@ static inline void ib_dma_sync_single_for_device(struct ib_device *dev,
 /* ib_reg_user_mr - register a memory region for virtual addresses from kernel
  * space. This function should be called when 'current' is the owning MM.
  */
-struct ib_mr *ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
-			     u64 virt_addr, int mr_access_flags);
+struct ib_mr *ib_reg_user_mr_user(struct ib_pd *pd, u64 start, u64 length,
+				  u64 virt_addr, int mr_access_flags,
+				  struct ib_udata *udata);
+static inline struct ib_mr *ib_reg_user_mr(struct ib_pd *pd, u64 start,
+					   u64 length, u64 virt_addr,
+					   int mr_access_flags)
+{
+	return ib_reg_user_mr_user(pd, start, length, virt_addr, mr_access_flags, NULL);
+}
 
 /* ib_advise_mr -  give an advice about an address range in a memory region */
 int ib_advise_mr(struct ib_pd *pd, enum ib_uverbs_advise_mr_advice advice,
@@ -4596,7 +4638,7 @@ static inline struct ib_global_route
 	return &attr->grh;
 }
 
-static inline void rdma_ah_set_dgid_raw(struct rdma_ah_attr *attr, void *dgid)
+static inline void rdma_ah_set_dgid_raw(struct rdma_ah_attr *attr, const void *dgid)
 {
 	struct ib_global_route *grh = rdma_ah_retrieve_grh(attr);
 
