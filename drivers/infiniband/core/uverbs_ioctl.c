@@ -417,7 +417,7 @@ static int ib_uverbs_run_method(struct bundle_priv *pbundle,
 	size_t uattrs_size = array_size(sizeof(*pbundle->uattrs), num_attrs);
 	unsigned int destroy_bkey = pbundle->method_elm->destroy_bkey;
 	unsigned int i;
-	int ret;
+	int ret = 0;
 
 	/* See uverbs_disassociate_api() */
 	handler = srcu_dereference(
@@ -450,6 +450,16 @@ static int ib_uverbs_run_method(struct bundle_priv *pbundle,
 				  UVERBS_ATTR_UHW_IN, UVERBS_ATTR_UHW_OUT);
 	else
 		pbundle->bundle.driver_udata = (struct ib_udata){};
+
+	struct ib_ucontext *uctx;
+	uctx = ib_uverbs_get_ucontext(&pbundle->bundle);
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx);
+	if (!IS_ERR(uctx)) {
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
+		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
+		       uctx->device->name);
+	}
 
 	if (destroy_bkey != UVERBS_API_ATTR_BKEY_LEN) {
 		struct uverbs_obj_attr *destroy_attr =
@@ -549,7 +559,7 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	struct bundle_priv *pbundle;
 	struct bundle_priv onstack;
 	void __rcu **slot;
-	int ret;
+	int ret = 0;
 
 	if (unlikely(hdr->driver_id != uapi->driver_id))
 		return -EINVAL;
@@ -581,6 +591,19 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	pbundle->method_elm = method_elm;
 	pbundle->method_key = attrs_iter.index;
 	pbundle->bundle.ufile = ufile;
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ufile->device);
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ufile->device->ib_dev);
+	printk("WAH %s:%d %s", __FUNCTION__, __LINE__, ufile->device->ib_dev->name);
+	struct ib_ucontext *uctx;
+	uctx = ib_uverbs_get_ucontext_file(ufile);
+	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx);
+	if (!IS_ERR(uctx)) {
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
+		printk("WAH %s:%d %px", __FUNCTION__, __LINE__,
+		       uctx->device);
+		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
+		       uctx->device->name);
+	}
 	pbundle->bundle.context = NULL; /* only valid if bundle has uobject */
 	pbundle->radix = &uapi->radix;
 	pbundle->radix_slots = slot;
@@ -609,7 +632,7 @@ long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		(struct ib_uverbs_ioctl_hdr __user *)arg;
 	struct ib_uverbs_ioctl_hdr hdr;
 	int srcu_key;
-	int err;
+	int err = 0;
 
 	if (unlikely(cmd != RDMA_VERBS_IOCTL))
 		return -ENOIOCTLCMD;

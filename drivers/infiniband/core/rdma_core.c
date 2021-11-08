@@ -375,7 +375,7 @@ struct ib_uobject *rdma_lookup_get_uobject(const struct uverbs_api_object *obj,
 					   struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uobject *uobj;
-	int ret;
+	int ret = 0;
 
 	if (obj == ERR_PTR(-ENOMSG)) {
 		/* must be UVERBS_IDR_ANY_OBJECT, see uapi_get_object() */

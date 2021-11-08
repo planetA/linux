@@ -204,6 +204,8 @@ is_ndev_for_default_gid_filter(struct ib_device *ib_dev, u32 port,
 	struct net_device *cookie_ndev = cookie;
 	bool res;
 
+	printk("WAH %s %d device %s port %d rdma_ndev %px\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, port, rdma_ndev);
 	if (!rdma_ndev)
 		return false;
 
@@ -216,6 +218,17 @@ is_ndev_for_default_gid_filter(struct ib_device *ib_dev, u32 port,
 	 * Additionally when event(cookie) netdevice is bond master device,
 	 * make sure that it the upper netdevice of rdma netdevice.
 	 */
+	printk("WAH %s %d cookie %d bond_slave %d bond_master %d rcu %d\n",
+	       __FUNCTION__, __LINE__, cookie_ndev == rdma_ndev,
+	       !netif_is_bond_slave(rdma_ndev),
+	       netif_is_bond_master(cookie_ndev),
+	       rdma_is_upper_dev_rcu(rdma_ndev, cookie_ndev));
+	if (rdma_ndev)
+		printk("WAH rdma_ndev flags %x priv_flags %x \n",
+		       rdma_ndev->flags, rdma_ndev->priv_flags);
+	if (cookie_ndev)
+		printk("WAH rdma_ndev flags %x priv_flags %x \n",
+		       cookie_ndev->flags, cookie_ndev->priv_flags);
 	res = ((cookie_ndev == rdma_ndev && !netif_is_bond_slave(rdma_ndev)) ||
 	       (netif_is_bond_master(cookie_ndev) &&
 		rdma_is_upper_dev_rcu(rdma_ndev, cookie_ndev)));
@@ -478,13 +491,21 @@ static void enum_all_gids_of_dev_cb(struct ib_device *ib_dev,
 	struct net *net;
 	struct net_device *ndev;
 
+	printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, port);
 	/* Lock the rtnl to make sure the netdevs does not move under
 	 * our feet
 	 */
 	rtnl_lock();
 	down_read(&net_rwsem);
-	for_each_net(net)
-		for_each_netdev(net, ndev) {
+	printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, port);
+	for_each_net(net) {
+		printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+		       ib_dev->name, port);
+		for_each_netdev (net, ndev) {
+			printk("WAH %s %d device %s port %d\n", __FUNCTION__,
+			       __LINE__, ib_dev->name, port);
 			/*
 			 * Filter and add default GIDs of the primary netdevice
 			 * when not in bonding mode, or add default GIDs
@@ -498,6 +519,7 @@ static void enum_all_gids_of_dev_cb(struct ib_device *ib_dev,
 							 rdma_ndev, ndev))
 				_add_netdev_ips(ib_dev, port, ndev);
 		}
+	}
 	up_read(&net_rwsem);
 	rtnl_unlock();
 }
@@ -510,6 +532,8 @@ static void enum_all_gids_of_dev_cb(struct ib_device *ib_dev,
  */
 void rdma_roce_rescan_device(struct ib_device *ib_dev)
 {
+	printk("WAH %s %d device %s port %d\n", __FUNCTION__, __LINE__,
+	       ib_dev->name, 0);
 	ib_enum_roce_netdev(ib_dev, pass_all_filter, NULL,
 			    enum_all_gids_of_dev_cb, NULL);
 }

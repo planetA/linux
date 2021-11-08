@@ -486,7 +486,7 @@ enum rdma_nldev_attr {
 	RDMA_NLDEV_ATTR_RES_CM_IDN,            /* u32 */
 	RDMA_NLDEV_ATTR_RES_CTXN,	       /* u32 */
 	/*
-	 * Identifies the rdma driver. eg: "rxe" or "siw"
+	 * Identifies the rdma driver. eg: "rxe", "siw" or "ovey"
 	 */
 	RDMA_NLDEV_ATTR_LINK_TYPE,		/* string */
 
@@ -548,6 +548,14 @@ enum rdma_nldev_attr {
 	RDMA_NLDEV_ATTR_MAX_RANGE,		/* u32 */
 
 	RDMA_NLDEV_SYS_ATTR_COPY_ON_FORK,	/* u8 */
+
+	/*
+	 * Attributes relevant for virtual networking.
+	 * RDMADEV_NAME is the name of the parent RDMA device.
+	 * NET_UUID is the UUID of the network to attach to.
+	 */
+	RDMA_NLDEV_ATTR_RDMADEV_NAME,		/* string */
+	RDMA_NLDEV_ATTR_NET_UUID,		/* string */
 
 	/*
 	 * Always the end
