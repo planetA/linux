@@ -591,19 +591,8 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	pbundle->method_elm = method_elm;
 	pbundle->method_key = attrs_iter.index;
 	pbundle->bundle.ufile = ufile;
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ufile->device);
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, ufile->device->ib_dev);
-	printk("WAH %s:%d %s", __FUNCTION__, __LINE__, ufile->device->ib_dev->name);
 	struct ib_ucontext *uctx;
 	uctx = ib_uverbs_get_ucontext_file(ufile);
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx);
-	if (!IS_ERR(uctx)) {
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__, uctx->device);
-		printk("WAH %s:%d %px", __FUNCTION__, __LINE__,
-		       uctx->device);
-		printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
-		       uctx->device->name);
-	}
 	pbundle->bundle.context = NULL; /* only valid if bundle has uobject */
 	pbundle->radix = &uapi->radix;
 	pbundle->radix_slots = slot;
