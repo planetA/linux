@@ -1100,6 +1100,18 @@ static void ovey_dealloc_driver(struct ib_device *base_dev)
 	ib_device_put(ovey_dev->parent);
 }
 
+static int ovey_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
+{
+	opr_info("verb invoked\n");
+
+	switch (obj_type) {
+	default:
+		return -ENOTSUPP;
+	}
+	/* Not reached */
+}
+
+
 const struct ib_device_ops ovey_device_ops = {
 	.owner = THIS_MODULE,
 	.uverbs_abi_ver = OVEY_ABI_VERSION,
@@ -1138,6 +1150,7 @@ const struct ib_device_ops ovey_device_ops = {
 	.query_gid = ovey_query_gid,
 	.query_pkey = ovey_query_pkey,
 	.query_qp = ovey_query_qp,
+	.dump_object = ovey_dump_object,
 
 	// Mapping to application specific structs
 	// this way the kernel can alloc a proper amount of memory

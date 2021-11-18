@@ -640,7 +640,9 @@ struct ib_device *_ib_alloc_device(size_t size)
 		BIT_ULL(IB_USER_VERBS_CMD_QUERY_SRQ) |
 		BIT_ULL(IB_USER_VERBS_CMD_REG_MR) |
 		BIT_ULL(IB_USER_VERBS_CMD_REREG_MR) |
-		BIT_ULL(IB_USER_VERBS_CMD_RESIZE_CQ);
+		BIT_ULL(IB_USER_VERBS_CMD_RESIZE_CQ) |
+		BIT_ULL(IB_USER_VERBS_CMD_DUMP_CONTEXT);
+	printk("WAH %s %d mask=%llx\n", __FUNCTION__, __LINE__, device->uverbs_cmd_mask);
 	return device;
 }
 EXPORT_SYMBOL(_ib_alloc_device);

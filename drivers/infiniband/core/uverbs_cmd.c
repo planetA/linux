@@ -4437,15 +4437,6 @@ const struct uapi_definition uverbs_def_write_intf[] = {
 			UAPI_DEF_WRITE_IO(struct ib_uverbs_query_port,
 					  struct ib_uverbs_query_port_resp),
 			UAPI_DEF_METHOD_NEEDS_FN(query_port)),
-		DECLARE_UVERBS_WRITE(IB_USER_VERBS_CMD_DUMP_CONTEXT,
-				     ib_uverbs_dump_context,
-				     UAPI_DEF_WRITE_UDATA_IO(struct ib_uverbs_dump_context,
-							     struct ib_uverbs_dump_context_resp),
-			UAPI_DEF_METHOD_NEEDS_FN(dump_object)),
-		DECLARE_UVERBS_WRITE(IB_USER_VERBS_CMD_RESTORE_OBJECT,
-				     ib_uverbs_restore_object,
-				     UAPI_DEF_WRITE_UDATA_I(struct ib_uverbs_restore_object),
-				     UAPI_DEF_METHOD_NEEDS_FN(restore_object)),
 		DECLARE_UVERBS_WRITE_EX(
 			IB_USER_VERBS_EX_CMD_QUERY_DEVICE,
 			ib_uverbs_ex_query_device,
@@ -4455,6 +4446,17 @@ const struct uapi_definition uverbs_def_write_intf[] = {
 				struct ib_uverbs_ex_query_device_resp,
 				response_length),
 			UAPI_DEF_METHOD_NEEDS_FN(query_device)),
+		DECLARE_UVERBS_WRITE(
+			IB_USER_VERBS_CMD_DUMP_CONTEXT,
+			ib_uverbs_dump_context,
+			UAPI_DEF_WRITE_UDATA_IO(struct ib_uverbs_dump_context,
+						struct ib_uverbs_dump_context_resp),
+			UAPI_DEF_METHOD_NEEDS_FN(dump_object)),
+		DECLARE_UVERBS_WRITE(
+			IB_USER_VERBS_CMD_RESTORE_OBJECT,
+			ib_uverbs_restore_object,
+			UAPI_DEF_WRITE_UDATA_I(struct ib_uverbs_restore_object),
+			UAPI_DEF_METHOD_NEEDS_FN(restore_object)),
 		UAPI_DEF_OBJ_NEEDS_FN(alloc_ucontext),
 		UAPI_DEF_OBJ_NEEDS_FN(dealloc_ucontext)),
 
