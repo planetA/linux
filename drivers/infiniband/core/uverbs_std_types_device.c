@@ -25,10 +25,6 @@ static int UVERBS_HANDLER(UVERBS_METHOD_INVOKE_WRITE)(
 	u32 cmd;
 	int rc;
 
-	printk("WAH %s:%d ufile %px", __FUNCTION__, __LINE__, attrs->ufile);
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__, attrs->ufile->device);
-	printk("WAH %s:%d %px", __FUNCTION__, __LINE__,
-	       attrs->ufile->device->ib_dev);
 	printk("WAH %s:%d %s", __FUNCTION__, __LINE__,
 	       attrs->ufile->device->ib_dev->name);
 
