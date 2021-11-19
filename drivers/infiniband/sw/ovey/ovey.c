@@ -283,7 +283,8 @@ static int ovey_init_device(const char *ibdev_name, struct ovey_device *ovey_dev
 		 BIT_ULL(IB_USER_VERBS_CMD_DESTROY_AH));
 
 	ovey_dev->base.uverbs_cmd_mask |=
-		 BIT_ULL(IB_USER_VERBS_CMD_DUMP_CONTEXT);
+		 BIT_ULL(IB_USER_VERBS_CMD_DUMP_CONTEXT) |
+		 BIT_ULL(IB_USER_VERBS_CMD_RESTORE_OBJECT);
 	printk("WAH %s %d mask=%llx\n", __FUNCTION__, __LINE__, ovey_dev->base.uverbs_cmd_mask);
 	/* We may support some extended verbs in future */
 #if 0
