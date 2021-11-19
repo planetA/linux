@@ -1116,17 +1116,93 @@ static void ovey_dealloc_driver(struct ib_device *base_dev)
 	ib_device_put(ovey_dev->parent);
 }
 
+static int ovey_dump_pd(struct ib_pd *pd,
+			struct ib_uverbs_dump_object_pd *dump_pd, ssize_t size)
+{
+	if (size < sizeof(*dump_pd)) {
+		return -ENOMEM;
+	}
+
+	return sizeof(*dump_pd);
+}
+
+static int ovey_dump_cq(struct ib_cq *ib_cq,
+			struct ib_uverbs_dump_object_cq *dump_cq, ssize_t size)
+{
+	if (size < sizeof(*dump_cq)) {
+		return -ENOMEM;
+	}
+
+	/* Unimportant */
+	dump_cq->comp_vector = 0;
+
+	return sizeof(*dump_cq);
+}
+
 static int ovey_dump_object(u32 obj_type, void *req, void *dump, ssize_t size)
 {
 	opr_info("verb invoked\n");
 
 	switch (obj_type) {
+	case IB_UVERBS_OBJECT_PD:
+		return ovey_dump_pd(req, dump, size);
+	case IB_UVERBS_OBJECT_CQ:
+		return ovey_dump_cq(req, dump, size);
 	default:
 		return -ENOTSUPP;
 	}
 	/* Not reached */
 }
 
+static int
+ovey_restore_cq_refill(struct ovey_cq *cq,
+		       const struct ib_uverbs_restore_object_cq_refill *queue,
+		       ssize_t size)
+{
+	int ret = 0;
+
+	cq->base.uobject->comp_events_reported = queue->comp_events_reported;
+	cq->base.uobject->uevent.events_reported =
+		queue->async_events_reported;
+
+	return ret;
+}
+
+static int ovey_restore_cq(struct ib_cq *cq, u32 cmd, const void *args,
+			   ssize_t size)
+{
+	int ret;
+	struct ovey_cq *ovey_cq = to_ovey_cq(cq);
+
+	if (!ovey_cq)
+		return -EINVAL;
+
+	switch (cmd) {
+	case IB_RESTORE_CQ_REFILL:
+		ret = ovey_restore_cq_refill(ovey_cq, args, size);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
+static int ovey_restore_object(void *object, u32 obj_type, u32 cmd,
+			       const void *args, ssize_t size)
+{
+	if (!object) {
+		return -EINVAL;
+	}
+
+	switch (obj_type) {
+	case IB_UVERBS_OBJECT_CQ:
+		return ovey_restore_cq(object, cmd, args, size);
+	default:
+		return -EINVAL;
+	}
+}
 
 const struct ib_device_ops ovey_device_ops = {
 	.owner = THIS_MODULE,
@@ -1167,6 +1243,7 @@ const struct ib_device_ops ovey_device_ops = {
 	.query_pkey = ovey_query_pkey,
 	.query_qp = ovey_query_qp,
 	.dump_object = ovey_dump_object,
+	.restore_object = ovey_restore_object,
 
 	// Mapping to application specific structs
 	// this way the kernel can alloc a proper amount of memory
