@@ -30,7 +30,7 @@ static ssize_t parent_name_show(struct device *device,
 static DEVICE_ATTR_RO(parent_name);
 
 static ssize_t parent_driver_id_show(struct device *device,
-				struct device_attribute *attr, char *buf)
+				     struct device_attribute *attr, char *buf)
 {
 	struct ovey_device *ovey_dev =
 		rdma_device_to_drv_device(device, struct ovey_device, base);
@@ -96,7 +96,7 @@ static ssize_t real_gid_store(struct device *device,
 }
 
 static ssize_t real_gid_show(struct device *device,
-			      struct device_attribute *attr, char *buf)
+			     struct device_attribute *attr, char *buf)
 {
 	struct ovey_device *ovey_dev =
 		rdma_device_to_drv_device(device, struct ovey_device, base);
@@ -122,18 +122,19 @@ static ssize_t real_lid_store(struct device *device,
 }
 
 static ssize_t real_lid_show(struct device *device,
-			      struct device_attribute *attr, char *buf)
+			     struct device_attribute *attr, char *buf)
 {
 	struct ovey_device *ovey_dev =
 		rdma_device_to_drv_device(device, struct ovey_device, base);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&ovey_dev->real_lid));
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 atomic_read(&ovey_dev->real_lid));
 }
 static DEVICE_ATTR_RW(real_lid);
 
 static ssize_t real_qpn_store(struct device *device,
-			       struct device_attribute *attr, const char *buf,
-			       size_t size)
+			      struct device_attribute *attr, const char *buf,
+			      size_t size)
 {
 	struct ovey_device *ovey_dev =
 		rdma_device_to_drv_device(device, struct ovey_device, base);
@@ -147,7 +148,7 @@ static ssize_t real_qpn_store(struct device *device,
 }
 
 static ssize_t real_qpn_show(struct device *device,
-			      struct device_attribute *attr, char *buf)
+			     struct device_attribute *attr, char *buf)
 {
 	struct ovey_device *ovey_dev =
 		rdma_device_to_drv_device(device, struct ovey_device, base);
@@ -175,8 +176,9 @@ const struct attribute_group ovey_attr_group = {
  * Allocates a new ib device and initializes it.
  * This initializes the ib_core-related (basic) stuff as well as Ovey specific attributes.
  */
-static int ovey_init_device(const char *ibdev_name, struct ovey_device *ovey_dev,
-	struct net_device *parent_eth)
+static int ovey_init_device(const char *ibdev_name,
+			    struct ovey_device *ovey_dev,
+			    struct net_device *parent_eth)
 {
 	int ret;
 
@@ -213,7 +215,7 @@ static int ovey_init_device(const char *ibdev_name, struct ovey_device *ovey_dev
 	// this is the right way; returning -EOPNOTSUPP inside the verbs doesn't work nicely
 #define UNSET_OVEY_OP_IF_NOT_AVAILABLE(name)                                   \
 	do {                                                                   \
-		if (!ovey_dev->parent->ops.name)			\
+		if (!ovey_dev->parent->ops.name)                               \
 			ovey_dev->base.ops.name = NULL;                        \
 	} while (0)
 
@@ -283,9 +285,10 @@ static int ovey_init_device(const char *ibdev_name, struct ovey_device *ovey_dev
 		 BIT_ULL(IB_USER_VERBS_CMD_DESTROY_AH));
 
 	ovey_dev->base.uverbs_cmd_mask |=
-		 BIT_ULL(IB_USER_VERBS_CMD_DUMP_CONTEXT) |
-		 BIT_ULL(IB_USER_VERBS_CMD_RESTORE_OBJECT);
-	printk("WAH %s %d mask=%llx\n", __FUNCTION__, __LINE__, ovey_dev->base.uverbs_cmd_mask);
+		BIT_ULL(IB_USER_VERBS_CMD_DUMP_CONTEXT) |
+		BIT_ULL(IB_USER_VERBS_CMD_RESTORE_OBJECT);
+	printk("WAH %s %d mask=%llx\n", __FUNCTION__, __LINE__,
+	       ovey_dev->base.uverbs_cmd_mask);
 	/* We may support some extended verbs in future */
 #if 0
 	ovey_dev->base.uverbs_ex_cmd_mask =
@@ -299,13 +302,16 @@ static int ovey_init_device(const char *ibdev_name, struct ovey_device *ovey_dev
 	}
 
 	ovey_dev->base.ops.size_ib_ah = ovey_dev->parent->ops.size_ib_ah;
-	ovey_dev->base.ops.size_ib_counters = ovey_dev->parent->ops.size_ib_counters;
-	ovey_dev->base.ops.size_ib_ucontext = ovey_dev->parent->ops.size_ib_ucontext;
+	ovey_dev->base.ops.size_ib_counters =
+		ovey_dev->parent->ops.size_ib_counters;
+	ovey_dev->base.ops.size_ib_ucontext =
+		ovey_dev->parent->ops.size_ib_ucontext;
 	/* ovey_dev->base.driver_def = ovey_dev->parent->driver_def; */
 
-	opr_info("invoked dma_device %px dma_ops %px\n", ovey_dev->parent->dma_device,
-		ovey_dev->parent->dev.dma_ops);
-	ret = ib_register_device(&ovey_dev->base, ibdev_name, ovey_dev->parent->dma_device);
+	opr_info("invoked dma_device %px dma_ops %px\n",
+		 ovey_dev->parent->dma_device, ovey_dev->parent->dev.dma_ops);
+	ret = ib_register_device(&ovey_dev->base, ibdev_name,
+				 ovey_dev->parent->dma_device);
 	if (ret) {
 		opr_err("ovey: device registration error %d\n", ret);
 		goto error;
@@ -333,7 +339,8 @@ static int ovey_report_known_gid(struct ovey_device *ovey_dev)
 		opr_info("Report gid for port %d\n", rdma_port);
 		gid_cnt = ovey_dev->base.port_data[rdma_port]
 				  .immutable.gid_tbl_len;
-		opr_info("Report gid for port %d gid_cnt %d\n", rdma_port, gid_cnt);
+		opr_info("Report gid for port %d gid_cnt %d\n", rdma_port,
+			 gid_cnt);
 		for (idx = 0; idx < gid_cnt; idx++) {
 			int ret;
 			union ib_gid virt_gid, real_gid;
@@ -508,7 +515,7 @@ get_device_info_by_name(char const *const ovey_dev_name,
 }
 
 int ovey_newlink_virt(const char *ibdev_name, struct net_device *parent_eth,
-		const char *parent, const uuid_t *network)
+		      const char *parent, const uuid_t *network)
 {
 	int ret = 0;
 
