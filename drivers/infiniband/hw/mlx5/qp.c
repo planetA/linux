@@ -783,16 +783,10 @@ int bfregn_to_uar_index(struct mlx5_ib_dev *dev,
 static void destroy_user_rq(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 			    struct mlx5_ib_rwq *rwq, struct ib_udata *udata)
 {
-	struct mlx5_ib_ucontext *context =
-		rdma_udata_to_drv_context(
-			udata,
-			struct mlx5_ib_ucontext,
-			ibucontext);
-
 	if (rwq->create_flags & MLX5_IB_WQ_FLAGS_DELAY_DROP)
 		atomic_dec(&dev->delay_drop.rqs_cnt);
 
-	mlx5_ib_db_unmap_user(context, &rwq->db);
+	mlx5_db_free(dev->mdev, &rwq->db);
 	ib_umem_release(rwq->umem);
 }
 
@@ -904,10 +898,16 @@ static int _create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		return -EINVAL;
 	}
 
+	qp->bf.bfreg = &dev->bfreg;
+
 	mlx5_ib_dbg(dev, "bfregn 0x%x, uar_index 0x%x\n", bfregn, uar_index);
 	if (bfregn != MLX5_IB_INVALID_BFREG)
 		uar_index = bfregn_to_uar_index(dev, &context->bfregi, bfregn,
 						false);
+
+	err = calc_sq_size(dev, attr, qp);
+	if (err < 0)
+		return err;
 
 	qp->rq.offset = 0;
 	qp->sq.wqe_shift = ilog2(MLX5_SEND_WQE_BB);
@@ -917,13 +917,34 @@ static int _create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	if (err)
 		goto err_bfreg;
 
+	err = mlx5_frag_buf_alloc_node(dev->mdev, base->ubuffer.buf_size,
+				       &qp->buf, dev->mdev->priv.numa_node);
+	if (err)
+		goto err_bfreg;
+
+	if (qp->rq.wqe_cnt)
+		mlx5_init_fbc(qp->buf.frags, qp->rq.wqe_shift,
+			      ilog2(qp->rq.wqe_cnt), &qp->rq.fbc);
+
+	if (qp->sq.wqe_cnt) {
+		int sq_strides_offset = (qp->sq.offset  & (PAGE_SIZE - 1)) /
+					MLX5_SEND_WQE_BB;
+		mlx5_init_fbc_offset(qp->buf.frags +
+				     (qp->sq.offset / PAGE_SIZE),
+				     ilog2(MLX5_SEND_WQE_BB),
+				     ilog2(qp->sq.wqe_cnt),
+				     sq_strides_offset, &qp->sq.fbc);
+
+		qp->sq.cur_edge = get_sq_edge(&qp->sq, 0);
+	}
+
 	if (ucmd->buf_addr && ubuffer->buf_size) {
 		ubuffer->buf_addr = ucmd->buf_addr;
 		ubuffer->umem = ib_umem_get(&dev->ib_dev, ubuffer->buf_addr,
 					    ubuffer->buf_size, 0);
 		if (IS_ERR(ubuffer->umem)) {
 			err = PTR_ERR(ubuffer->umem);
-			goto err_bfreg;
+			goto err_buf;
 		}
 		page_size = mlx5_umem_find_best_quantized_pgoff(
 			ubuffer->umem, qpc, log_page_size,
@@ -963,13 +984,38 @@ static int _create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		resp->bfreg_index = MLX5_IB_INVALID_BFREG;
 	qp->bfregn = bfregn;
 
-	err = mlx5_ib_db_map_user(context, ucmd->db_addr, &qp->db);
+	err = mlx5_db_alloc(dev->mdev, &qp->db);
 	if (err) {
 		mlx5_ib_dbg(dev, "map failed\n");
 		goto err_free;
 	}
 
+	qp->sq.wrid = kvmalloc_array(qp->sq.wqe_cnt,
+				     sizeof(*qp->sq.wrid), GFP_KERNEL);
+	qp->sq.wr_data = kvmalloc_array(qp->sq.wqe_cnt,
+					sizeof(*qp->sq.wr_data), GFP_KERNEL);
+	qp->rq.wrid = kvmalloc_array(qp->rq.wqe_cnt,
+				     sizeof(*qp->rq.wrid), GFP_KERNEL);
+	qp->sq.w_list = kvmalloc_array(qp->sq.wqe_cnt,
+				       sizeof(*qp->sq.w_list), GFP_KERNEL);
+	qp->sq.wqe_head = kvmalloc_array(qp->sq.wqe_cnt,
+					 sizeof(*qp->sq.wqe_head), GFP_KERNEL);
+
+	if (!qp->sq.wrid || !qp->sq.wr_data || !qp->rq.wrid ||
+	    !qp->sq.w_list || !qp->sq.wqe_head) {
+		err = -ENOMEM;
+		goto err_wrid;
+	}
+
 	return 0;
+
+err_wrid:
+	kvfree(qp->sq.wqe_head);
+	kvfree(qp->sq.w_list);
+	kvfree(qp->sq.wrid);
+	kvfree(qp->sq.wr_data);
+	kvfree(qp->rq.wrid);
+	mlx5_db_free(dev->mdev, &qp->db);
 
 err_free:
 	kvfree(*in);
@@ -980,26 +1026,33 @@ err_umem:
 err_bfreg:
 	if (bfregn != MLX5_IB_INVALID_BFREG)
 		mlx5_ib_free_bfreg(dev, &context->bfregi, bfregn);
+
+err_buf:
+	mlx5_frag_buf_free(dev->mdev, &qp->buf);
 	return err;
 }
 
 static void destroy_qp(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 		       struct mlx5_ib_qp_base *base, struct ib_udata *udata)
 {
-	struct mlx5_ib_ucontext *context = rdma_udata_to_drv_context(
-		udata, struct mlx5_ib_ucontext, ibucontext);
-
 	if (udata) {
 		/* User QP */
-		mlx5_ib_db_unmap_user(context, &qp->db);
+		kvfree(qp->sq.wqe_head);
+		kvfree(qp->sq.w_list);
+		kvfree(qp->sq.wrid);
+		kvfree(qp->sq.wr_data);
+		kvfree(qp->rq.wrid);
+
+		if (qp->db.db)
+			mlx5_db_free(dev->mdev, &qp->db);
 		ib_umem_release(base->ubuffer.umem);
 
 		/*
 		 * Free only the BFREGs which are handled by the kernel.
 		 * BFREGs of UARs allocated dynamically are handled by user.
 		 */
-		if (qp->bfregn != MLX5_IB_INVALID_BFREG)
-			mlx5_ib_free_bfreg(dev, &context->bfregi, qp->bfregn);
+		if (qp->buf.frags)
+			mlx5_frag_buf_free(dev->mdev, &qp->buf);
 		return;
 	}
 
@@ -2142,7 +2195,7 @@ err_create:
 	return err;
 }
 
-static int create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
+int create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 			  struct mlx5_ib_qp *qp,
 			  struct mlx5_create_qp_params *params)
 {
@@ -3026,7 +3079,7 @@ static int create_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		fallthrough;
 	default:
 		if (params->udata)
-			err = create_user_qp(dev, pd, qp, params);
+			err = create_kernel_qp(dev, pd, qp, params);
 		else
 			err = create_kernel_qp(dev, pd, qp, params);
 	}

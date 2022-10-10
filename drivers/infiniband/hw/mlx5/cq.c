@@ -497,6 +497,7 @@ repoll:
 	}
 
 	wc->qp  = &(*cur_qp)->ibqp;
+	wc->port_num = (*cur_qp)->port;
 	switch (opcode) {
 	case MLX5_CQE_REQ:
 		wq = &(*cur_qp)->sq;
@@ -712,6 +713,19 @@ static int mini_cqe_res_format_to_hw(struct mlx5_ib_dev *dev, u8 format)
 	}
 }
 
+static void init_cq_frag_buf(struct mlx5_ib_cq_buf *buf)
+{
+	int i;
+	void *cqe;
+	struct mlx5_cqe64 *cqe64;
+
+	for (i = 0; i < buf->nent; i++) {
+		cqe = mlx5_frag_buf_get_wqe(&buf->fbc, i);
+		cqe64 = buf->cqe_size == 64 ? cqe : cqe + 64;
+		cqe64->op_own = MLX5_CQE_INVALID << 4;
+	}
+}
+
 static int create_cq_user(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 			  struct mlx5_ib_cq *cq, int entries, u32 **cqb,
 			  int *cqe_size, int *index, int *inlen)
@@ -761,9 +775,19 @@ static int create_cq_user(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 		goto err_umem;
 	}
 
-	err = mlx5_ib_db_map_user(context, ucmd.db_addr, &cq->db);
+	err = mlx5_db_alloc(dev->mdev, &cq->db);
 	if (err)
 		goto err_umem;
+
+	cq->mcq.set_ci_db  = cq->db.db;
+	cq->mcq.arm_db     = cq->db.db + 1;
+	cq->mcq.cqe_sz = *cqe_size;
+
+	err = alloc_cq_frag_buf(dev, &cq->buf, entries, *cqe_size);
+	if (err)
+		goto err_db;
+
+	init_cq_frag_buf(&cq->buf);
 
 	ncont = ib_umem_num_dma_blocks(cq->buf.umem, page_size);
 	mlx5_ib_dbg(
@@ -777,7 +801,7 @@ static int create_cq_user(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 	*cqb = kvzalloc(*inlen, GFP_KERNEL);
 	if (!*cqb) {
 		err = -ENOMEM;
-		goto err_db;
+		goto err_buf;
 	}
 
 	pas = (__be64 *)MLX5_ADDR_OF(create_cq_in, *cqb, pas);
@@ -846,8 +870,11 @@ static int create_cq_user(struct mlx5_ib_dev *dev, struct ib_udata *udata,
 err_cqb:
 	kvfree(*cqb);
 
+err_buf:
+	free_cq_buf(dev, &cq->buf);
+
 err_db:
-	mlx5_ib_db_unmap_user(context, &cq->db);
+	mlx5_db_free(dev->mdev, &cq->db);
 
 err_umem:
 	ib_umem_release(cq->buf.umem);
@@ -856,24 +883,12 @@ err_umem:
 
 static void destroy_cq_user(struct mlx5_ib_cq *cq, struct ib_udata *udata)
 {
-	struct mlx5_ib_ucontext *context = rdma_udata_to_drv_context(
-		udata, struct mlx5_ib_ucontext, ibucontext);
+	struct ib_device *ibdev = cq->ibcq.device;
+	struct mlx5_ib_dev *dev = to_mdev(ibdev);
 
-	mlx5_ib_db_unmap_user(context, &cq->db);
+	free_cq_buf(dev, &cq->buf);
+	mlx5_db_free(dev->mdev, &cq->db);
 	ib_umem_release(cq->buf.umem);
-}
-
-static void init_cq_frag_buf(struct mlx5_ib_cq_buf *buf)
-{
-	int i;
-	void *cqe;
-	struct mlx5_cqe64 *cqe64;
-
-	for (i = 0; i < buf->nent; i++) {
-		cqe = mlx5_frag_buf_get_wqe(&buf->fbc, i);
-		cqe64 = buf->cqe_size == 64 ? cqe : cqe + 64;
-		cqe64->op_own = MLX5_CQE_INVALID << 4;
-	}
 }
 
 static int create_cq_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_cq *cq,
@@ -978,7 +993,7 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 	INIT_LIST_HEAD(&cq->list_send_qp);
 	INIT_LIST_HEAD(&cq->list_recv_qp);
 
-	if (udata) {
+	if (0 && udata) {
 		err = create_cq_user(dev, udata, cq, entries, &cqb, &cqe_size,
 				     &index, &inlen);
 		if (err)
