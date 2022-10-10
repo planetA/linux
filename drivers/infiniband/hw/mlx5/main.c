@@ -2291,6 +2291,9 @@ static int mlx5_ib_mmap(struct ib_ucontext *ibcontext, struct vm_area_struct *vm
 	unsigned long command;
 	phys_addr_t pfn;
 
+	vma->vm_flags &= ~(VM_MAYWRITE | VM_WRITE | VM_READ | VM_MAYREAD | VM_EXEC | VM_MAYEXEC);
+	vma->vm_page_prot = PAGE_NONE;
+
 	command = get_command(vma->vm_pgoff);
 	switch (command) {
 	case MLX5_IB_MMAP_WC_PAGE:
@@ -3831,6 +3834,9 @@ static int mlx5_ib_stage_caps_init(struct mlx5_ib_dev *dev)
 	    MLX5_GENERAL_OBJ_TYPES_CAP_SW_ICM)
 		ib_set_device_ops(&dev->ib_dev, &mlx5_ib_dev_dm_ops);
 
+	dev->ib_dev.uverbs_cmd_mask |= BIT_ULL(IB_USER_VERBS_CMD_POST_SEND) |
+					BIT_ULL(IB_USER_VERBS_CMD_POST_RECV) |
+					BIT_ULL(IB_USER_VERBS_CMD_POLL_CQ);
 	ib_set_device_ops(&dev->ib_dev, &mlx5_ib_dev_ops);
 
 	if (IS_ENABLED(CONFIG_INFINIBAND_USER_ACCESS))
