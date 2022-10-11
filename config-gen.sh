@@ -30,6 +30,8 @@ scripts/config -e GDB_SCRIPTS \
     -e FUNCTION_TRACER \
     -e FUNCTION_GRAPH_TRACER \
     -e FUNCTION_PROFILER \
+    -e PREEMPT_NONE \
+    -e DEBUG_INFO_DWARF4 \
     \
     -m VIRTIO_PCI \
     -m VIRTIO_MMIO \
