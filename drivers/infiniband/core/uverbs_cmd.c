@@ -1162,7 +1162,7 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 	if (rdma_cap_opa_ah(ib_dev, wc->port_num))
 		tmp.slid	= OPA_TO_IB_UCAST_LID(wc->slid);
 	else
-		tmp.slid	= ib_lid_cpu16(wc->slid);
+		tmp.slid	= (u16)wc->slid;
 	tmp.sl			= wc->sl;
 	tmp.dlid_path_bits	= wc->dlid_path_bits;
 	tmp.port_num		= wc->port_num;
