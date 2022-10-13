@@ -4643,7 +4643,6 @@ static inline enum rdma_ah_attr_type rdma_ah_find_type(struct ib_device *dev,
  */
 static inline u16 ib_lid_cpu16(u32 lid)
 {
-	WARN_ON_ONCE(lid & 0xFFFF0000);
 	return (u16)lid;
 }
 
@@ -4654,7 +4653,6 @@ static inline u16 ib_lid_cpu16(u32 lid)
  */
 static inline __be16 ib_lid_be16(u32 lid)
 {
-	WARN_ON_ONCE(lid & 0xFFFF0000);
 	return cpu_to_be16((u16)lid);
 }
 
