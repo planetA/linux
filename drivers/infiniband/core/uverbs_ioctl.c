@@ -35,6 +35,8 @@
 #include "rdma_core.h"
 #include "uverbs.h"
 
+#include <trace/events/ib_uverbs.h>
+
 struct bundle_alloc_head {
 	struct bundle_alloc_head *next;
 	u8 data[];
@@ -559,6 +561,8 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	void __rcu **slot;
 	int ret;
 
+	trace_ib_uverbs_ioctl_start(1);
+
 	if (unlikely(hdr->driver_id != uapi->driver_id))
 		return -EINVAL;
 
@@ -605,8 +609,15 @@ static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 	memset(pbundle->uobj_hw_obj_valid, 0,
 	       sizeof(pbundle->uobj_hw_obj_valid));
 
+	trace_ib_uverbs_ioctl_end(1);
+
 	ret = ib_uverbs_run_method(pbundle, hdr->num_attrs);
+
+	trace_ib_uverbs_ioctl_start(2);
+
 	bundle_destroy(pbundle, ret == 0);
+
+	trace_ib_uverbs_ioctl_end(2);
 	return ret;
 }
 

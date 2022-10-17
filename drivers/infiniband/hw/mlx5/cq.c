@@ -38,6 +38,9 @@
 #include "srq.h"
 #include "qp.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/mlx5.h>
+
 static void mlx5_ib_cq_comp(struct mlx5_core_cq *cq, struct mlx5_eqe *eqe)
 {
 	struct ib_cq *ibcq = &to_mibcq(cq)->ibcq;
@@ -616,6 +619,8 @@ int mlx5_ib_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 	int npolled;
 
 	spin_lock_irqsave(&cq->lock, flags);
+
+	trace_mlx5_poll_cq_start(num_entries);
 	if (mdev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR) {
 		/* make sure no soft wqe's are waiting */
 		if (unlikely(!list_empty(&cq->wc_list)))
@@ -636,6 +641,9 @@ int mlx5_ib_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 
 	if (npolled)
 		mlx5_cq_set_ci(&cq->mcq);
+
+	trace_mlx5_poll_cq_end(soft_polled, npolled);
+
 out:
 	spin_unlock_irqrestore(&cq->lock, flags);
 

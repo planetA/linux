@@ -47,6 +47,9 @@
 #include "uverbs.h"
 #include "core_priv.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/ib_uverbs.h>
+
 /*
  * Copy a response to userspace. If the provided 'resp' is larger than the
  * user buffer it is silently truncated. If the user provided a larger buffer
@@ -1188,6 +1191,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	if (ret)
 		return ret;
 
+	trace_ib_uverbs_poll_cq_start(cmd.ne);
+
 	cq = uobj_get_obj_read(cq, UVERBS_OBJECT_CQ, cmd.cq_handle, attrs);
 	if (!cq)
 		return -EINVAL;
@@ -1224,6 +1229,9 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 out_put:
 	rdma_lookup_put_uobject(&cq->uobject->uevent.uobject,
 				UVERBS_LOOKUP_READ);
+
+	trace_ib_uverbs_poll_cq_end(resp.count);
+
 	return ret;
 }
 

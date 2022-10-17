@@ -11,6 +11,8 @@
 #include <rdma/opa_addr.h>
 #include <rdma/ib_cache.h>
 
+#include <trace/events/ib_uverbs.h>
+
 /*
  * This ioctl method allows calling any defined write or write_ex
  * handler. This essentially replaces the hdr/ex_hdr system with the ioctl
@@ -24,6 +26,8 @@ static int UVERBS_HANDLER(UVERBS_METHOD_INVOKE_WRITE)(
 	const struct uverbs_api_write_method *method_elm;
 	u32 cmd;
 	int rc;
+
+	trace_ib_uverbs_write_start(1);
 
 	rc = uverbs_get_const(&cmd, attrs, UVERBS_ATTR_WRITE_CMD);
 	if (rc)
@@ -45,6 +49,9 @@ static int UVERBS_HANDLER(UVERBS_METHOD_INVOKE_WRITE)(
 	if (attrs->uobject)
 		uverbs_finalize_object(attrs->uobject, UVERBS_ACCESS_NEW, true,
 				       !rc, attrs);
+
+	trace_ib_uverbs_write_end(rc);
+
 	return rc;
 }
 
