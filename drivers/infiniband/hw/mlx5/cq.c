@@ -496,6 +496,10 @@ repoll:
 		 * from the table.
 		 */
 		mqp = radix_tree_lookup(&dev->qp_table.tree, qpn);
+		if (!mqp) {
+			wc->status = IB_WC_GENERAL_ERR;
+			return -EAGAIN;
+		}
 		*cur_qp = to_mibqp(mqp);
 	}
 
