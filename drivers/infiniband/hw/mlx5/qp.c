@@ -2413,6 +2413,7 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	unsigned long flags;
 	struct mlx5_ib_qp_base *base;
 	int mlx5_st;
+	int ts_format;
 	void *qpc;
 	u32 *in;
 	int err;
@@ -2435,6 +2436,12 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		mlx5_ib_dbg(dev, "err %d\n", err);
 		return err;
 	}
+
+	ts_format = get_qp_ts_format(dev, to_mcq(attr->send_cq),
+				     to_mcq(attr->recv_cq));
+
+	if (ts_format < 0)
+		return ts_format;
 
 	err = _create_kernel_qp(dev, attr, qp, &in, &inlen, base);
 	if (err)
@@ -2462,6 +2469,7 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		MLX5_SET(qpc, qpc, log_rq_size, ilog2(qp->rq.wqe_cnt));
 	}
 
+	MLX5_SET(qpc, qpc, ts_format, ts_format);
 	MLX5_SET(qpc, qpc, rq_type, get_rx_type(qp, attr));
 
 	if (qp->sq.wqe_cnt)
@@ -2490,6 +2498,13 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	/* 0xffffff means we ask to work with cqe version 0 */
 	if (MLX5_CAP_GEN(mdev, cqe_version) == MLX5_CQE_VERSION_V1)
 		MLX5_SET(qpc, qpc, user_index, uidx);
+
+	if (qp->flags & IB_QP_CREATE_PCI_WRITE_END_PADDING) {
+		MLX5_SET(qpc, qpc, end_padding_mode,
+			 MLX5_WQ_END_PAD_MODE_ALIGN);
+		/* Special case to clean flag */
+		qp->flags &= ~IB_QP_CREATE_PCI_WRITE_END_PADDING;
+	}
 
 	/* we use IB_QP_CREATE_IPOIB_UD_LSO to indicates ipoib qp */
 	if (qp->flags & IB_QP_CREATE_IPOIB_UD_LSO)
