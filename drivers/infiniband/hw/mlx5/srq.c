@@ -45,10 +45,12 @@ static int create_srq_user(struct ib_pd *pd, struct mlx5_ib_srq *srq,
 			   struct ib_udata *udata, int buf_size)
 {
 	struct mlx5_ib_dev *dev = to_mdev(pd->device);
+	struct mlx5_wqe_srq_next_seg *next;
 	struct mlx5_ib_create_srq ucmd = {};
 	struct mlx5_ib_ucontext *ucontext = rdma_udata_to_drv_context(
 		udata, struct mlx5_ib_ucontext, ibucontext);
 	size_t ucmdlen;
+	int i;
 	int err;
 	u32 uidx = MLX5_IB_DEFAULT_UIDX;
 
@@ -73,32 +75,65 @@ static int create_srq_user(struct ib_pd *pd, struct mlx5_ib_srq *srq,
 			return err;
 	}
 
-	srq->wq_sig = !!(ucmd.flags & MLX5_SRQ_FLAG_SIGNATURE);
-
-	srq->umem = ib_umem_get(pd->device, ucmd.buf_addr, buf_size, 0);
-	if (IS_ERR(srq->umem)) {
-		mlx5_ib_dbg(dev, "failed umem get, size %d\n", buf_size);
-		err = PTR_ERR(srq->umem);
+	err = mlx5_db_alloc(dev->mdev, &srq->db);
+	if (err) {
+		mlx5_ib_warn(dev, "alloc dbell rec failed\n");
 		return err;
 	}
-	in->umem = srq->umem;
 
-	err = mlx5_ib_db_map_user(ucontext, ucmd.db_addr, &srq->db);
-	if (err) {
-		mlx5_ib_dbg(dev, "map doorbell failed\n");
-		goto err_umem;
+	if (mlx5_frag_buf_alloc_node(dev->mdev, buf_size, &srq->buf,
+				     dev->mdev->priv.numa_node)) {
+		mlx5_ib_dbg(dev, "buf alloc failed\n");
+		err = -ENOMEM;
+		goto err_db;
 	}
 
+	mlx5_init_fbc(srq->buf.frags, srq->msrq.wqe_shift, ilog2(srq->msrq.max),
+		      &srq->fbc);
+
+	srq->head    = 0;
+	srq->tail    = srq->msrq.max - 1;
+	srq->wqe_ctr = 0;
+
+	for (i = 0; i < srq->msrq.max; i++) {
+		next = get_wqe(srq, i);
+		next->next_wqe_index =
+			cpu_to_be16((i + 1) & (srq->msrq.max - 1));
+	}
+
+	mlx5_ib_dbg(dev, "srq->buf.page_shift = %d\n", srq->buf.page_shift);
+	in->pas = kvcalloc(srq->buf.npages, sizeof(*in->pas), GFP_KERNEL);
+	if (!in->pas) {
+		err = -ENOMEM;
+		goto err_buf;
+	}
+	mlx5_fill_page_frag_array(&srq->buf, in->pas);
+
+	srq->wrid = kvmalloc_array(srq->msrq.max, sizeof(u64), GFP_KERNEL);
+	if (!srq->wrid) {
+		err = -ENOMEM;
+		goto err_in;
+	}
+	srq->wq_sig = 0;
+	srq->wq_sig = !!(ucmd.flags & MLX5_SRQ_FLAG_SIGNATURE);
+
+	in->log_page_size = srq->buf.page_shift - MLX5_ADAPTER_PAGE_SHIFT;
 	in->uid = (in->type != IB_SRQT_XRC) ?  to_mpd(pd)->uid : 0;
 	if (MLX5_CAP_GEN(dev->mdev, cqe_version) == MLX5_CQE_VERSION_V1 &&
 	    in->type != IB_SRQT_BASIC)
 		in->user_index = uidx;
+	in->umem = NULL;
 
 	return 0;
 
-err_umem:
-	ib_umem_release(srq->umem);
+err_in:
+	kvfree(in->pas);
 
+err_buf:
+	mlx5_frag_buf_free(dev->mdev, &srq->buf);
+
+err_db:
+	mlx5_db_free(dev->mdev, &srq->db);
 	return err;
 }
 
@@ -168,7 +203,7 @@ err_db:
 	return err;
 }
 
-static void destroy_srq_user(struct ib_pd *pd, struct mlx5_ib_srq *srq,
+void destroy_srq_user(struct ib_pd *pd, struct mlx5_ib_srq *srq,
 			     struct ib_udata *udata)
 {
 	mlx5_ib_db_unmap_user(
@@ -311,7 +346,7 @@ err_core:
 
 err_usr_kern_srq:
 	if (udata)
-		destroy_srq_user(ib_srq->pd, srq, udata);
+		destroy_srq_kernel(dev, srq);
 	else
 		destroy_srq_kernel(dev, srq);
 
@@ -379,7 +414,7 @@ int mlx5_ib_destroy_srq(struct ib_srq *srq, struct ib_udata *udata)
 		return ret;
 
 	if (udata)
-		destroy_srq_user(srq->pd, msrq, udata);
+		destroy_srq_kernel(dev, msrq);
 	else
 		destroy_srq_kernel(dev, msrq);
 	return 0;
