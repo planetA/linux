@@ -529,6 +529,7 @@ static int calc_sq_size(struct mlx5_ib_dev *dev, struct ib_qp_init_attr *attr,
 
 	qp->max_inline_data = wqe_size - sq_overhead(attr) -
 			      sizeof(struct mlx5_wqe_inline_seg);
+	qp->max_inline_data = 0;
 	attr->cap.max_inline_data = qp->max_inline_data;
 
 	wq_size = roundup_pow_of_two(attr->cap.max_send_wr * wqe_size);
