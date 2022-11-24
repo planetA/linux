@@ -3835,6 +3835,7 @@ static int mlx5_ib_stage_caps_init(struct mlx5_ib_dev *dev)
 		ib_set_device_ops(&dev->ib_dev, &mlx5_ib_dev_dm_ops);
 
 	dev->ib_dev.uverbs_cmd_mask |= BIT_ULL(IB_USER_VERBS_CMD_POST_SEND) |
+					BIT_ULL(IB_USER_VERBS_CMD_REQ_NOTIFY_CQ) |
 					BIT_ULL(IB_USER_VERBS_CMD_POST_RECV) |
 					BIT_ULL(IB_USER_VERBS_CMD_POST_SRQ_RECV) |
 					BIT_ULL(IB_USER_VERBS_CMD_POLL_CQ);
