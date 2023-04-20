@@ -271,7 +271,7 @@ static int set_data_inl_seg(struct mlx5_ib_qp *qp, const struct ib_send_wr *wr,
 
 	for (i = 0; i < wr->num_sge; i++) {
 		size_t len  = wr->sg_list[i].length;
-		void *addr = (void *)(unsigned long)(wr->sg_list[i].addr);
+		void __user *addr = (void *)(unsigned long)(wr->sg_list[i].addr);
 
 		inl += len;
 
@@ -289,7 +289,8 @@ static int set_data_inl_seg(struct mlx5_ib_qp *qp, const struct ib_send_wr *wr,
 			leftlen = *cur_edge - *wqe;
 			copysz = min_t(size_t, leftlen, len);
 
-			memcpy(*wqe, addr, copysz);
+			if (unlikely(copy_from_user(*wqe, addr, copysz)))
+				return -EFAULT;
 			len -= copysz;
 			addr += copysz;
 			*wqe += copysz;
