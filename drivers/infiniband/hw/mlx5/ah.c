@@ -60,8 +60,8 @@ static void create_ib_ah(struct mlx5_ib_dev *dev, struct mlx5_ib_ah *ah,
 		const struct ib_global_route *grh = rdma_ah_read_grh(ah_attr);
 
 		memcpy(ah->av.rgid, &grh->dgid, 16);
-		ah->av.grh_gid_fl = cpu_to_be32(grh->flow_label |
-						(1 << 30) |
+		ah->av.grh_gid_fl = cpu_to_be32((grh->flow_label & 0xfffff) |
+						//(1 << 30) |
 						grh->sgid_index << 20);
 		ah->av.hop_limit = grh->hop_limit;
 		ah->av.tclass = grh->traffic_class;
