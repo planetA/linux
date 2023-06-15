@@ -1206,8 +1206,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		ret = ib_poll_cq(cq, 1, &wc);
 		if (ret < 0)
 			goto out_put;
-		if (!ret)
+		if (!ret){
+			schedule(); //version 1
 			break;
+		}
 
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
