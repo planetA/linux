@@ -46,6 +46,7 @@
 
 #include "uverbs.h"
 #include "core_priv.h"
+#include "../../../kernel/sched/sched.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ib_uverbs.h>
@@ -1186,6 +1187,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
+	struct cfs_rq                  cfs;
 
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1207,7 +1209,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		if (ret < 0)
 			goto out_put;
 		if (!ret){
-			schedule(); //version 1
+			//schedule(); //version 1
+			//do_sched_yield(); //version 2
+			cfs = (this_rq()->cfs);
+			sched_next_for_rdma(&cfs,cfs->curr);
 			break;
 		}
 

@@ -12492,3 +12492,7 @@ __init void init_sched_fair_class(void)
 #endif /* SMP */
 
 }
+
+void sched_next_for_rdma(struct cfs_rq *cfs_rq, struct sched_entity *curr){
+	pick_next_entity(cfs_rq, curr);
+}
