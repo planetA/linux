@@ -289,8 +289,23 @@ static int set_data_inl_seg(struct mlx5_ib_qp *qp, const struct ib_send_wr *wr,
 			leftlen = *cur_edge - *wqe;
 			copysz = min_t(size_t, leftlen, len);
 
-			if (unlikely(copy_from_user(*wqe, addr, copysz)))
-				return -EFAULT;
+			if (unlikely(copy_from_user(*wqe, addr, copysz))) {
+				struct page pages_array[1];
+				struct page *pages = pages_array;
+				int nr_pages = 1;
+				int pinned_pages;
+				int flags = 0;
+
+				pinned_pages = get_user_pages_fast((unsigned long) addr, nr_pages, flags, &pages);
+				if (pinned_pages <= 0) {
+					return -EFAULT;
+				}
+				put_page(&pages[0]);
+
+				if (unlikely(copy_from_user(*wqe, addr, copysz))) {
+					return -EFAULT;
+				}
+			}
 			len -= copysz;
 			addr += copysz;
 			*wqe += copysz;
