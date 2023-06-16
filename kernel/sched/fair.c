@@ -12493,6 +12493,8 @@ __init void init_sched_fair_class(void)
 
 }
 
-void sched_next_for_rdma(struct cfs_rq *cfs_rq, struct sched_entity *curr){
-	pick_next_entity(cfs_rq, curr);
+extern void sched_next_for_rdma(void){
+	struct cfs_rq cfs;
+	cfs = (this_rq()->cfs);
+	pick_next_entity(&cfs, cfs.curr);
 }

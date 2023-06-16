@@ -37,6 +37,9 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
+//#include <linux/sched/sched.h>
+//#include <linux/sched/cond_resched.h>
+#include <linux/sched/cputime.h>
 
 #include <linux/uaccess.h>
 
@@ -1187,7 +1190,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	struct cfs_rq                  cfs;
 
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1211,8 +1213,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		if (!ret){
 			//schedule(); //version 1
 			//do_sched_yield(); //version 2
-			cfs = (this_rq()->cfs);
-			sched_next_for_rdma(&cfs,cfs.curr);
+			
+			//sched_next_for_rdma();
 			break;
 		}
 
