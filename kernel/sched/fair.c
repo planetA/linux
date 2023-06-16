@@ -48,6 +48,8 @@
 #include <linux/ratelimit.h>
 #include <linux/task_work.h>
 
+#include <linux/module.h>
+
 #include <asm/switch_to.h>
 
 #include <linux/sched/cond_resched.h>
@@ -12498,3 +12500,4 @@ extern void sched_next_for_rdma(void){
 	cfs = (this_rq()->cfs);
 	pick_next_entity(&cfs, cfs.curr);
 }
+EXPORT_SYMBOL(sched_next_for_rdma);
