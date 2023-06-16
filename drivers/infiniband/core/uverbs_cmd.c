@@ -1212,7 +1212,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			//schedule(); //version 1
 			//do_sched_yield(); //version 2
 			cfs = (this_rq()->cfs);
-			sched_next_for_rdma(&cfs,cfs->curr);
+			sched_next_for_rdma(&cfs,cfs.curr);
 			break;
 		}
 
