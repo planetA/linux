@@ -1981,7 +1981,8 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 	struct ib_ud_wr onstack_ud_wr;
 	struct ib_rdma_wr onstack_rdma_wr;
 	struct ib_atomic_wr onstack_atomic_wr;
-	bool next_onstack_used=false, ud_onstack_used=false, rdma_onstack_used=false, atomic_onstack_used=false;
+	struct ib_sge onstack_sge;
+	bool next_onstack_used=false, ud_onstack_used=false, rdma_onstack_used=false, atomic_onstack_used=false, sge_onstack_used=false;
 
 	iter.cur = attrs->ucore.inbuf + sizeof(struct ib_uverbs_post_send);
 	iter.end = attrs->ucore.inbuf + attrs->ucore.inlen;
@@ -2129,15 +2130,15 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		next->send_flags = user_wr->send_flags;
 
 		if (next->num_sge) {
-			next->sg_list = (void *) next +
-				ALIGN(next_size, sizeof(struct ib_sge));
-			if (copy_from_user(next->sg_list, sgls + sg_ind,
-					   next->num_sge *
-						   sizeof(struct ib_sge))) {
-				ret = -EFAULT;
-				goto out_put;
+			if(!sge_onstack_used){
+				next->sg_list = &onstack_sge;
+				sge_onstack_used=true;
 			}
+			next->sg_list->addr = sgls->addr;
+			next->sg_list->length = sgls->length;
+			next->sg_list->lkey = sgls->lkey;
 			sg_ind += next->num_sge;
+
 		} else
 			next->sg_list = NULL;
 	}
@@ -2171,7 +2172,7 @@ out:
 
 static struct ib_recv_wr *
 ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
-			  u32 wqe_size, u32 sge_count, struct ib_recv_wr *onstack_recv_wr)
+			  u32 wqe_size, u32 sge_count, struct ib_recv_wr *onstack_recv_wr, struct ib_sge *onstack_sge)
 {
 	struct ib_uverbs_recv_wr *user_wr;
 	struct ib_recv_wr        *wr = NULL, *last, *next;
@@ -2180,7 +2181,7 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 	int                       ret;
 	const struct ib_sge __user *sgls;
 	const void __user *wqes;
-	bool onstack_recv_wr_used=false;
+	bool onstack_recv_wr_used=false, sge_onstack_used=false;
 
 	if (wqe_size < sizeof(struct ib_uverbs_recv_wr))
 		return ERR_PTR(-EINVAL);
@@ -2199,7 +2200,6 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 		user_wr = (struct ib_uverbs_recv_wr*)wqes + i*wqe_size;
 
 		if (user_wr->num_sge + sg_ind > sge_count) {
-			pr_info("err 1\n");
 			ret = -EINVAL;
 			goto err;
 		}
@@ -2207,7 +2207,6 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 		if (user_wr->num_sge >=
 		    (U32_MAX - ALIGN(sizeof(*next), sizeof(struct ib_sge))) /
 			    sizeof(struct ib_sge)) {
-			pr_info("err 2\n");
 			ret = -EINVAL;
 			goto err;
 		}
@@ -2220,7 +2219,6 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 			       GFP_KERNEL);
 			if (!next) {
 				ret = -ENOMEM;
-				pr_info("err 3\n");
 				goto err;
 			}
 		}
@@ -2236,15 +2234,13 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 		next->num_sge    = user_wr->num_sge;
 
 		if (next->num_sge) {
-			next->sg_list = (void *)next +
-				ALIGN(sizeof(*next), sizeof(struct ib_sge));
-			if (copy_from_user(next->sg_list, sgls + sg_ind,
-					   next->num_sge *
-						   sizeof(struct ib_sge))) {
-				ret = -EFAULT;
-				pr_info("err 4\n");
-				goto err;
+			if(!sge_onstack_used){
+				next->sg_list = onstack_sge;
+				sge_onstack_used=true;
 			}
+			next->sg_list->addr = sgls->addr;
+			next->sg_list->length = sgls->length;
+			next->sg_list->lkey = sgls->lkey;
 			sg_ind += next->num_sge;
 		} else
 			next->sg_list = NULL;
@@ -2273,13 +2269,14 @@ static int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 	struct ib_qp                   *qp;
 	int ret;
 	struct uverbs_req_iter iter;
-	struct ib_recv_wr onstack_recv_wr;	
+	struct ib_recv_wr onstack_recv_wr;
+	struct ib_sge onstack_sge;
 
 	iter.cur = attrs->ucore.inbuf + sizeof(struct ib_uverbs_post_recv);
 	iter.end = attrs->ucore.inbuf + attrs->ucore.inlen;
 
 	wr = ib_uverbs_unmarshall_recv_fastcall(&iter, req->wr_count, req->wqe_size,
-				       req->sge_count, &onstack_recv_wr);
+				       req->sge_count, &onstack_recv_wr, &onstack_sge);
 	if (IS_ERR(wr))
 		return PTR_ERR(wr);
 
