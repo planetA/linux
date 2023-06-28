@@ -12511,6 +12511,6 @@ extern void pick_next_task_for_rdma(struct sched_entity *next){
 EXPORT_SYMBOL(pick_next_task_for_rdma);
 
 extern struct sched_entity* get_cfs_current_task(void){
-	return (void*)(this_rq()->cfs).curr;
+	return (this_rq()->cfs).curr;
 }
 EXPORT_SYMBOL(get_cfs_current_task);
