@@ -1144,82 +1144,59 @@ out:
 	return ret;
 }
 
-static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
+static void put_wc_in_resp(struct ib_device *ib_dev, void *dest,
 			   struct ib_wc *wc)
 {
-	struct ib_uverbs_wc tmp;
+	struct ib_uverbs_wc *tmp=dest;
 
-	tmp.wr_id		= wc->wr_id;
-	tmp.status		= wc->status;
-	tmp.opcode		= wc->opcode;
-	tmp.vendor_err		= wc->vendor_err;
-	tmp.byte_len		= wc->byte_len;
-	tmp.ex.imm_data		= wc->ex.imm_data;
-	tmp.qp_num		= wc->qp->qp_num;
-	tmp.src_qp		= wc->src_qp;
-	tmp.wc_flags		= wc->wc_flags;
-	tmp.pkey_index		= wc->pkey_index;
+	tmp->wr_id		= wc->wr_id;
+	tmp->status		= wc->status;
+	tmp->opcode		= wc->opcode;
+	tmp->vendor_err		= wc->vendor_err;
+	tmp->byte_len		= wc->byte_len;
+	tmp->ex.imm_data		= wc->ex.imm_data;
+	tmp->qp_num		= wc->qp->qp_num;
+	tmp->src_qp		= wc->src_qp;
+	tmp->wc_flags		= wc->wc_flags;
+	tmp->pkey_index		= wc->pkey_index;
 	if (rdma_cap_opa_ah(ib_dev, wc->port_num))
-		tmp.slid	= OPA_TO_IB_UCAST_LID(wc->slid);
+		tmp->slid	= OPA_TO_IB_UCAST_LID(wc->slid);
 	else
-		tmp.slid	= (u16)wc->slid;
-	tmp.sl			= wc->sl;
-	tmp.dlid_path_bits	= wc->dlid_path_bits;
-	tmp.port_num		= wc->port_num;
-	tmp.reserved		= 0;
-
-	if (copy_to_user(dest, &tmp, sizeof tmp))
-		return -EFAULT;
-
-	return 0;
+		tmp->slid	= (u16)wc->slid;
+	tmp->sl			= wc->sl;
+	tmp->dlid_path_bits	= wc->dlid_path_bits;
+	tmp->port_num		= wc->port_num;
+	tmp->reserved		= 0;
 }
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
-	struct ib_uverbs_poll_cq       cmd;
-	struct ib_uverbs_poll_cq_resp  resp;
-	u8 __user                     *header_ptr;
-	u8 __user                     *data_ptr;
+	struct ib_uverbs_poll_cq       *req = (struct ib_uverbs_poll_cq*)attrs->ucore.inbuf;
+	struct ib_uverbs_poll_cq_resp  *resp = (struct ib_uverbs_poll_cq_resp*)attrs->ucore.outbuf;
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
 
-	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
-	if (ret)
-		return ret;
-
-	cq = uobj_get_obj_read(cq, UVERBS_OBJECT_CQ, cmd.cq_handle, attrs);
+	cq = uobj_get_obj_read(cq, UVERBS_OBJECT_CQ, req->cq_handle, attrs);
 	if (!cq)
 		return -EINVAL;
 
 	/* we copy a struct ib_uverbs_poll_cq_resp to user space */
-	header_ptr = attrs->ucore.outbuf;
-	data_ptr = header_ptr + sizeof resp;
+	memset(attrs->ucore.outbuf, 0, attrs->ucore.outlen);
+	data_ptr = resp + sizeof(struct ib_uverbs_poll_cq_resp);
 
-	memset(&resp, 0, sizeof resp);
-	while (resp.count < cmd.ne) {
+	while (resp->count < req->ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
 		if (ret < 0)
 			goto out_put;
 		if (!ret)
 			break;
 
-		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
-		if (ret)
-			goto out_put;
+		put_wc_in_resp(cq->device, data_ptr, &wc);
 
 		data_ptr += sizeof(struct ib_uverbs_wc);
-		++resp.count;
+		++(resp->count);
 	}
-
-	if (copy_to_user(header_ptr, &resp, sizeof resp)) {
-		ret = -EFAULT;
-		goto out_put;
-	}
-	ret = 0;
-
-	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_CORE_OUT))
-		ret = uverbs_output_written(attrs, UVERBS_ATTR_CORE_OUT);
 
 out_put:
 	rdma_lookup_put_uobject(&cq->uobject->uevent.uobject,
@@ -1987,39 +1964,36 @@ static void *alloc_wr(size_t wr_size, __u32 num_sge)
 
 static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 {
-	struct ib_uverbs_post_send      cmd;
-	struct ib_uverbs_post_send_resp resp;
+	struct ib_uverbs_post_send      *req = (struct ib_uverbs_post_send*)attrs->ucore.inbuf;
+	struct ib_uverbs_post_send_resp *resp = (struct ib_uverbs_post_send_resp*)attrs->ucore.outbuf;
 	struct ib_uverbs_send_wr       *user_wr;
-	struct ib_send_wr              *wr = NULL, *last, *next;
+	struct ib_send_wr              *wr = NULL, *last, *next, next_onstack;
 	const struct ib_send_wr	       *bad_wr;
 	struct ib_qp                   *qp;
 	int                             i, sg_ind;
 	int				is_ud;
-	int ret, ret2;
+	int ret;
 	size_t                          next_size;
 	const struct ib_sge __user *sgls;
 	const void __user *wqes;
 	struct uverbs_req_iter iter;
+	struct ib_ud_wr onstack_ud_wr;
+	struct ib_rdma_wr onstack_rdma_wr;
+	struct ib_atomic_wr onstack_atomic_wr;
+	bool next_onstack_used=false, ud_onstack_used=false, rdma_onstack_used=false, atomic_onstack_used=false;
 
-	ret = uverbs_request_start(attrs, &iter, &cmd, sizeof(cmd));
-	if (ret)
-		return ret;
-	wqes = uverbs_request_next_ptr(&iter, cmd.wqe_size * cmd.wr_count);
+	iter.cur = attrs->ucore.inbuf + sizeof(struct ib_uverbs_post_send);
+	iter.end = attrs->ucore.inbuf + attrs->ucore.inlen;
+
+	wqes = uverbs_request_next_ptr(&iter, req->wqe_size * req->wr_count);
 	if (IS_ERR(wqes))
 		return PTR_ERR(wqes);
 	sgls = uverbs_request_next_ptr(
-		&iter, cmd.sge_count * sizeof(struct ib_uverbs_sge));
+		&iter, req->sge_count * sizeof(struct ib_uverbs_sge));
 	if (IS_ERR(sgls))
 		return PTR_ERR(sgls);
-	ret = uverbs_request_finish(&iter);
-	if (ret)
-		return ret;
 
-	user_wr = kmalloc(cmd.wqe_size, GFP_KERNEL);
-	if (!user_wr)
-		return -ENOMEM;
-
-	qp = uobj_get_obj_read(qp, UVERBS_OBJECT_QP, cmd.qp_handle, attrs);
+	qp = uobj_get_obj_read(qp, UVERBS_OBJECT_QP, req->qp_handle, attrs);
 	if (!qp) {
 		ret = -EINVAL;
 		goto out;
@@ -2028,15 +2002,10 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 	is_ud = qp->qp_type == IB_QPT_UD;
 	sg_ind = 0;
 	last = NULL;
-	for (i = 0; i < cmd.wr_count; ++i) {
-		if (copy_from_user(user_wr, wqes + i * cmd.wqe_size,
-				   cmd.wqe_size)) {
+	for (i = 0; i < req->wr_count; ++i) {
+		user_wr = (struct ib_uverbs_send_wr*)wqes + i * req->wqe_size;
+		if (user_wr->num_sge + sg_ind > req->sge_count) {
 			ret = -EFAULT;
-			goto out_put;
-		}
-
-		if (user_wr->num_sge + sg_ind > cmd.sge_count) {
-			ret = -EINVAL;
 			goto out_put;
 		}
 
@@ -2050,16 +2019,21 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			}
 
 			next_size = sizeof(*ud);
-			ud = alloc_wr(next_size, user_wr->num_sge);
-			if (!ud) {
-				ret = -ENOMEM;
-				goto out_put;
+			if(!ud_onstack_used){
+				ud = &onstack_ud_wr;
+			}else{
+				ud = alloc_wr(next_size, user_wr->num_sge);
+				if (!ud) {
+					ret = -ENOMEM;
+					goto out_put;
+				}
 			}
 
 			ud->ah = uobj_get_obj_read(ah, UVERBS_OBJECT_AH,
 						   user_wr->wr.ud.ah, attrs);
 			if (!ud->ah) {
-				kfree(ud);
+				if(ud_onstack_used)
+					kfree(ud);
 				ret = -EINVAL;
 				goto out_put;
 			}
@@ -2067,31 +2041,43 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			ud->remote_qkey = user_wr->wr.ud.remote_qkey;
 
 			next = &ud->wr;
+			if(!ud_onstack_used)
+				ud_onstack_used=true;
 		} else if (user_wr->opcode == IB_WR_RDMA_WRITE_WITH_IMM ||
 			   user_wr->opcode == IB_WR_RDMA_WRITE ||
 			   user_wr->opcode == IB_WR_RDMA_READ) {
 			struct ib_rdma_wr *rdma;
 
 			next_size = sizeof(*rdma);
-			rdma = alloc_wr(next_size, user_wr->num_sge);
-			if (!rdma) {
-				ret = -ENOMEM;
-				goto out_put;
+			if(!rdma_onstack_used){
+				rdma = &onstack_rdma_wr;
+			}else{
+				rdma = alloc_wr(next_size, user_wr->num_sge);
+				if (!rdma) {
+					ret = -ENOMEM;
+					goto out_put;
+				}
 			}
 
 			rdma->remote_addr = user_wr->wr.rdma.remote_addr;
 			rdma->rkey = user_wr->wr.rdma.rkey;
 
 			next = &rdma->wr;
+			if(!rdma_onstack_used)
+				rdma_onstack_used=true;
 		} else if (user_wr->opcode == IB_WR_ATOMIC_CMP_AND_SWP ||
 			   user_wr->opcode == IB_WR_ATOMIC_FETCH_AND_ADD) {
 			struct ib_atomic_wr *atomic;
 
 			next_size = sizeof(*atomic);
-			atomic = alloc_wr(next_size, user_wr->num_sge);
-			if (!atomic) {
-				ret = -ENOMEM;
-				goto out_put;
+			if(!atomic_onstack_used){
+				atomic = &onstack_atomic_wr;
+			}else{
+				atomic = alloc_wr(next_size, user_wr->num_sge);
+				if (!atomic) {
+					ret = -ENOMEM;
+					goto out_put;
+				}
 			}
 
 			atomic->remote_addr = user_wr->wr.atomic.remote_addr;
@@ -2100,14 +2086,21 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			atomic->rkey = user_wr->wr.atomic.rkey;
 
 			next = &atomic->wr;
+			if(!atomic_onstack_used){
+				atomic_onstack_used=true;
+			}
 		} else if (user_wr->opcode == IB_WR_SEND ||
 			   user_wr->opcode == IB_WR_SEND_WITH_IMM ||
 			   user_wr->opcode == IB_WR_SEND_WITH_INV) {
 			next_size = sizeof(*next);
-			next = alloc_wr(next_size, user_wr->num_sge);
-			if (!next) {
-				ret = -ENOMEM;
-				goto out_put;
+			if(!next_onstack_used){
+				next = &next_onstack;
+			}else{
+				next = alloc_wr(next_size, user_wr->num_sge);
+				if (!next) {
+					ret = -ENOMEM;
+					goto out_put;
+				}
 			}
 		} else {
 			ret = -EINVAL;
@@ -2148,18 +2141,14 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			next->sg_list = NULL;
 	}
 
-	resp.bad_wr = 0;
+	resp->bad_wr = 0;
 	ret = qp->device->ops.post_send(qp->real_qp, wr, &bad_wr);
 	if (ret)
 		for (next = wr; next; next = next->next) {
-			++resp.bad_wr;
+			++resp->bad_wr;
 			if (next == bad_wr)
 				break;
 		}
-
-	ret2 = uverbs_response(attrs, &resp, sizeof(resp));
-	if (ret2)
-		ret = ret2;
 
 out_put:
 	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
@@ -2169,19 +2158,19 @@ out_put:
 		if (is_ud && ud_wr(wr)->ah)
 			uobj_put_obj_read(ud_wr(wr)->ah);
 		next = wr->next;
-		kfree(wr);
+		if(wr != &next_onstack && wr != &onstack_rdma_wr && wr != &onstack_ud_wr && wr != &onstack_atomic_wr){
+			kfree(wr);
+		}
 		wr = next;
 	}
 
 out:
-	kfree(user_wr);
-
 	return ret;
 }
 
 static struct ib_recv_wr *
 ib_uverbs_unmarshall_recv(struct uverbs_req_iter *iter, u32 wr_count,
-			  u32 wqe_size, u32 sge_count)
+			  u32 wqe_size, u32 sge_count, struct ib_recv_wr *onstack_recv_wr)
 {
 	struct ib_uverbs_recv_wr *user_wr;
 	struct ib_recv_wr        *wr = NULL, *last, *next;
@@ -2190,6 +2179,7 @@ ib_uverbs_unmarshall_recv(struct uverbs_req_iter *iter, u32 wr_count,
 	int                       ret;
 	const struct ib_sge __user *sgls;
 	const void __user *wqes;
+	bool onstack_recv_wr_used=false;
 
 	if (wqe_size < sizeof(struct ib_uverbs_recv_wr))
 		return ERR_PTR(-EINVAL);
@@ -2201,22 +2191,11 @@ ib_uverbs_unmarshall_recv(struct uverbs_req_iter *iter, u32 wr_count,
 		iter, sge_count * sizeof(struct ib_uverbs_sge));
 	if (IS_ERR(sgls))
 		return ERR_CAST(sgls);
-	ret = uverbs_request_finish(iter);
-	if (ret)
-		return ERR_PTR(ret);
-
-	user_wr = kmalloc(wqe_size, GFP_KERNEL);
-	if (!user_wr)
-		return ERR_PTR(-ENOMEM);
 
 	sg_ind = 0;
 	last = NULL;
 	for (i = 0; i < wr_count; ++i) {
-		if (copy_from_user(user_wr, wqes + i * wqe_size,
-				   wqe_size)) {
-			ret = -EFAULT;
-			goto err;
-		}
+		user_wr = (struct ib_uverbs_recv_wr*)wqes + i*wqe_size;
 
 		if (user_wr->num_sge + sg_ind > sge_count) {
 			ret = -EINVAL;
@@ -2230,12 +2209,16 @@ ib_uverbs_unmarshall_recv(struct uverbs_req_iter *iter, u32 wr_count,
 			goto err;
 		}
 
-		next = kmalloc(ALIGN(sizeof(*next), sizeof(struct ib_sge)) +
+		if(!onstack_recv_wr_used){
+			next = onstack_recv_wr;
+		}else{
+			next = kmalloc(ALIGN(sizeof(*next), sizeof(struct ib_sge)) +
 				       user_wr->num_sge * sizeof(struct ib_sge),
 			       GFP_KERNEL);
-		if (!next) {
-			ret = -ENOMEM;
-			goto err;
+			if (!next) {
+				ret = -ENOMEM;
+				goto err;
+			}
 		}
 
 		if (!last)
@@ -2262,15 +2245,14 @@ ib_uverbs_unmarshall_recv(struct uverbs_req_iter *iter, u32 wr_count,
 			next->sg_list = NULL;
 	}
 
-	kfree(user_wr);
 	return wr;
 
 err:
-	kfree(user_wr);
 
 	while (wr) {
 		next = wr->next;
-		kfree(wr);
+		if(wr != onstack_recv_wr)
+			kfree(wr);
 		wr = next;
 	}
 
@@ -2279,49 +2261,47 @@ err:
 
 static int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 {
-	struct ib_uverbs_post_recv      cmd;
-	struct ib_uverbs_post_recv_resp resp;
+	struct ib_uverbs_post_recv      *req = (struct ib_uverbs_post_recv*)attrs->ucore.inbuf;
+	struct ib_uverbs_post_recv_resp *resp = (struct ib_uverbs_post_recv_resp*)attrs->ucore.outbuf;
 	struct ib_recv_wr              *wr, *next;
 	const struct ib_recv_wr	       *bad_wr;
 	struct ib_qp                   *qp;
-	int ret, ret2;
+	int ret;
 	struct uverbs_req_iter iter;
+	struct ib_recv_wr onstack recv_wr;	
 
-	ret = uverbs_request_start(attrs, &iter, &cmd, sizeof(cmd));
-	if (ret)
-		return ret;
+	iter.cur = attrs->ucore.inbuf + sizeof(struct ib_uverbs_post_recv);
+	iter.end = attrs->ucore.inbuf + attrs->ucore.inlen;
 
-	wr = ib_uverbs_unmarshall_recv(&iter, cmd.wr_count, cmd.wqe_size,
-				       cmd.sge_count);
+	wr = ib_uverbs_unmarshall_recv(&iter, req->wr_count, req->wqe_size,
+				       req->sge_count, &onstack_recv_wr);
 	if (IS_ERR(wr))
 		return PTR_ERR(wr);
 
-	qp = uobj_get_obj_read(qp, UVERBS_OBJECT_QP, cmd.qp_handle, attrs);
+	qp = uobj_get_obj_read(qp, UVERBS_OBJECT_QP, req->qp_handle, attrs);
 	if (!qp) {
 		ret = -EINVAL;
 		goto out;
 	}
 
-	resp.bad_wr = 0;
+	resp->bad_wr = 0;
 	ret = qp->device->ops.post_recv(qp->real_qp, wr, &bad_wr);
 
 	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
 				UVERBS_LOOKUP_READ);
 	if (ret) {
 		for (next = wr; next; next = next->next) {
-			++resp.bad_wr;
+			++resp->bad_wr;
 			if (next == bad_wr)
 				break;
 		}
 	}
 
-	ret2 = uverbs_response(attrs, &resp, sizeof(resp));
-	if (ret2)
-		ret = ret2;
 out:
 	while (wr) {
 		next = wr->next;
-		kfree(wr);
+		if(wr != &onstack_recv_wr)
+			kfree(wr);
 		wr = next;
 	}
 

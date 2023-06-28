@@ -418,6 +418,85 @@ static int uverbs_set_attr(struct bundle_priv *pbundle,
 	return 0;
 }
 
+static int ib_uverbs_run_method_fastcall(struct bundle_priv *pbundle,
+				unsigned int num_attrs)
+{
+	int (*handler)(struct uverbs_attr_bundle *attrs);
+	size_t uattrs_size = array_size(sizeof(*pbundle->uattrs), num_attrs);
+	unsigned int destroy_bkey = pbundle->method_elm->destroy_bkey;
+	unsigned int i;
+	int ret;
+
+	/* See uverbs_disassociate_api() */
+	handler = srcu_dereference(
+		pbundle->method_elm->handler,
+		&pbundle->bundle.ufile->device->disassociate_srcu);
+	if (!handler)
+		return -EIO;
+
+	pbundle->uattrs = uverbs_alloc(&pbundle->bundle, uattrs_size);
+	if (IS_ERR(pbundle->uattrs))
+		return PTR_ERR(pbundle->uattrs);
+	pbundle->uattrs=pbundle->user_attrs;
+
+	for (i = 0; i != num_attrs; i++) {
+		ret = uverbs_set_attr(pbundle, &pbundle->user_attrs[i]);
+		if (unlikely(ret))
+			return ret;
+	}
+
+	/* User space did not provide all the mandatory attributes */
+	if (unlikely(!bitmap_subset(pbundle->method_elm->attr_mandatory,
+				    pbundle->bundle.attr_present,
+				    pbundle->method_elm->key_bitmap_len)))
+		return -EINVAL;
+
+	if (pbundle->method_elm->has_udata)
+		uverbs_fill_udata(&pbundle->bundle,
+				  &pbundle->bundle.driver_udata,
+				  UVERBS_ATTR_UHW_IN, UVERBS_ATTR_UHW_OUT);
+	else
+		pbundle->bundle.driver_udata = (struct ib_udata){};
+
+	if (destroy_bkey != UVERBS_API_ATTR_BKEY_LEN) {
+		struct uverbs_obj_attr *destroy_attr =
+			&pbundle->bundle.attrs[destroy_bkey].obj_attr;
+
+		ret = uobj_destroy(destroy_attr->uobject, &pbundle->bundle);
+		if (ret)
+			return ret;
+		__clear_bit(destroy_bkey, pbundle->uobj_finalize);
+
+		ret = handler(&pbundle->bundle);
+		uobj_put_destroy(destroy_attr->uobject);
+	} else {
+		ret = handler(&pbundle->bundle);
+	}
+
+	/*
+	 * Until the drivers are revised to use the bundle directly we have to
+	 * assume that the driver wrote to its UHW_OUT and flag userspace
+	 * appropriately.
+	 */
+	if (!ret && pbundle->method_elm->has_udata) {
+		const struct uverbs_attr *attr =
+			uverbs_attr_get(&pbundle->bundle, UVERBS_ATTR_UHW_OUT);
+
+		if (!IS_ERR(attr))
+			ret = uverbs_set_output(&pbundle->bundle, attr);
+	}
+
+	/*
+	 * EPROTONOSUPPORT is ONLY to be returned if the ioctl framework can
+	 * not invoke the method because the request is not supported.  No
+	 * other cases should return this code.
+	 */
+	if (WARN_ON_ONCE(ret == -EPROTONOSUPPORT))
+		return -EINVAL;
+
+	return ret;
+}
+
 static int ib_uverbs_run_method(struct bundle_priv *pbundle,
 				unsigned int num_attrs)
 {
@@ -547,6 +626,77 @@ static void bundle_destroy(struct bundle_priv *pbundle, bool commit)
 	}
 }
 
+static int ib_uverbs_cmd_verbs_fastcall(struct ib_uverbs_file *ufile,
+			       struct ib_uverbs_ioctl_hdr __user *hdr)
+{
+	const struct uverbs_api_ioctl_method *method_elm;
+	struct uverbs_api *uapi = ufile->device->uapi;
+	struct radix_tree_iter attrs_iter;
+	struct bundle_priv *pbundle;
+	struct bundle_priv onstack;
+	void __rcu **slot;
+	int ret;
+
+	trace_ib_uverbs_ioctl_start(1);
+
+	if (unlikely(hdr->driver_id != uapi->driver_id))
+		return -EINVAL;
+
+	slot = radix_tree_iter_lookup(
+		&uapi->radix, &attrs_iter,
+		uapi_key_obj(hdr->object_id) |
+			uapi_key_ioctl_method(hdr->method_id));
+	if (unlikely(!slot))
+		return -EPROTONOSUPPORT;
+	method_elm = rcu_dereference_protected(*slot, true);
+
+	if (!method_elm->use_stack) {
+		pbundle = kmalloc(method_elm->bundle_size, GFP_KERNEL);
+		if (!pbundle)
+			return -ENOMEM;
+		pbundle->internal_avail =
+			method_elm->bundle_size -
+			offsetof(struct bundle_priv, internal_buffer);
+		pbundle->alloc_head.next = NULL;
+		pbundle->allocated_mem = &pbundle->alloc_head;
+	} else {
+		pbundle = &onstack;
+		pbundle->internal_avail = sizeof(pbundle->internal_buffer);
+		pbundle->allocated_mem = NULL;
+	}
+
+	/* Space for the pbundle->bundle.attrs flex array */
+	pbundle->method_elm = method_elm;
+	pbundle->method_key = attrs_iter.index;
+	pbundle->bundle.ufile = ufile;
+	pbundle->bundle.context = NULL; /* only valid if bundle has uobject */
+	pbundle->radix = &uapi->radix;
+	pbundle->radix_slots = slot;
+	pbundle->radix_slots_len = radix_tree_chunk_size(&attrs_iter);
+	pbundle->user_attrs = hdr->attrs;
+
+	pbundle->internal_used = ALIGN(pbundle->method_elm->key_bitmap_len *
+					       sizeof(*pbundle->bundle.attrs),
+				       sizeof(*pbundle->internal_buffer));
+	memset(pbundle->bundle.attr_present, 0,
+	       sizeof(pbundle->bundle.attr_present));
+	memset(pbundle->uobj_finalize, 0, sizeof(pbundle->uobj_finalize));
+	memset(pbundle->spec_finalize, 0, sizeof(pbundle->spec_finalize));
+	memset(pbundle->uobj_hw_obj_valid, 0,
+	       sizeof(pbundle->uobj_hw_obj_valid));
+
+	trace_ib_uverbs_ioctl_end(1);
+
+	ret = ib_uverbs_run_method_fastcall(pbundle, hdr->num_attrs);
+
+	trace_ib_uverbs_ioctl_start(2);
+
+	bundle_destroy(pbundle, ret == 0);
+
+	trace_ib_uverbs_ioctl_end(2);
+	return ret;
+}
+
 static int ib_uverbs_cmd_verbs(struct ib_uverbs_file *ufile,
 			       struct ib_uverbs_ioctl_hdr *hdr,
 			       struct ib_uverbs_attr __user *user_attrs)
@@ -621,21 +771,27 @@ long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	if (unlikely(cmd != RDMA_VERBS_IOCTL))
 		return -ENOIOCTLCMD;
+	
+	if(user_hdr->use_fastcall==1){
+		srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
+		err = ib_uverbs_cmd_verbs_fastcall(file, user_hdr);
+		srcu_read_unlock(&file->device->disassociate_srcu, srcu_key);	
+	}else{
+		err = copy_from_user(&hdr, user_hdr, sizeof(hdr));
+		if (err)
+			return -EFAULT;
 
-	err = copy_from_user(&hdr, user_hdr, sizeof(hdr));
-	if (err)
-		return -EFAULT;
+		if (hdr.length > PAGE_SIZE ||
+	    	hdr.length != struct_size(&hdr, attrs, hdr.num_attrs))
+			return -EINVAL;
 
-	if (hdr.length > PAGE_SIZE ||
-	    hdr.length != struct_size(&hdr, attrs, hdr.num_attrs))
-		return -EINVAL;
+		if (hdr.reserved1 || hdr.reserved2)
+			return -EPROTONOSUPPORT;
 
-	if (hdr.reserved1 || hdr.reserved2)
-		return -EPROTONOSUPPORT;
-
-	srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
-	err = ib_uverbs_cmd_verbs(file, &hdr, user_hdr->attrs);
-	srcu_read_unlock(&file->device->disassociate_srcu, srcu_key);
+		srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
+		err = ib_uverbs_cmd_verbs(file, &hdr, user_hdr->attrs);
+		srcu_read_unlock(&file->device->disassociate_srcu, srcu_key);
+	}
 	return err;
 }
 

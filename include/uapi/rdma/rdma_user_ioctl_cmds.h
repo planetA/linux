@@ -81,6 +81,7 @@ struct ib_uverbs_ioctl_hdr {
 	__aligned_u64 reserved1;
 	__u32 driver_id;
 	__u32 reserved2;
+	__u8 use_fastcall;
 	struct ib_uverbs_attr  attrs[];
 };
 
