@@ -1173,6 +1173,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_poll_cq       *req = (struct ib_uverbs_poll_cq*)attrs->ucore.inbuf;
 	struct ib_uverbs_poll_cq_resp  *resp = (struct ib_uverbs_poll_cq_resp*)attrs->ucore.outbuf;
+	void *data_ptr;
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
@@ -2268,7 +2269,7 @@ static int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 	struct ib_qp                   *qp;
 	int ret;
 	struct uverbs_req_iter iter;
-	struct ib_recv_wr onstack recv_wr;	
+	struct ib_recv_wr onstack_recv_wr;	
 
 	iter.cur = attrs->ucore.inbuf + sizeof(struct ib_uverbs_post_recv);
 	iter.end = attrs->ucore.inbuf + attrs->ucore.inlen;
