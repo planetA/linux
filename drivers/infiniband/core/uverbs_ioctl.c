@@ -691,7 +691,7 @@ static int ib_uverbs_cmd_verbs_fastcall(struct ib_uverbs_file *ufile,
 
 	trace_ib_uverbs_ioctl_start(2);
 
-	bundle_destroy(pbundle, ret == 0);
+	//bundle_destroy(pbundle, ret == 0);
 
 	trace_ib_uverbs_ioctl_end(2);
 	return ret;
