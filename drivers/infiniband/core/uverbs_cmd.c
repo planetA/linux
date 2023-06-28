@@ -2159,7 +2159,7 @@ out_put:
 		if (is_ud && ud_wr(wr)->ah)
 			uobj_put_obj_read(ud_wr(wr)->ah);
 		next = wr->next;
-		if(wr != &next_onstack && wr != &onstack_rdma_wr && wr != &onstack_ud_wr && wr != &onstack_atomic_wr){
+		if(wr != &next_onstack && wr != &onstack_rdma_wr->wr && wr != &onstack_ud_wr->wr && wr != &onstack_atomic_wr->wr){
 			kfree(wr);
 		}
 		wr = next;
@@ -2170,7 +2170,7 @@ out:
 }
 
 static struct ib_recv_wr *
-ib_uverbs_unmarshall_recv(struct uverbs_req_iter *iter, u32 wr_count,
+ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 			  u32 wqe_size, u32 sge_count, struct ib_recv_wr *onstack_recv_wr)
 {
 	struct ib_uverbs_recv_wr *user_wr;
@@ -2274,7 +2274,7 @@ static int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 	iter.cur = attrs->ucore.inbuf + sizeof(struct ib_uverbs_post_recv);
 	iter.end = attrs->ucore.inbuf + attrs->ucore.inlen;
 
-	wr = ib_uverbs_unmarshall_recv(&iter, req->wr_count, req->wqe_size,
+	wr = ib_uverbs_unmarshall_recv_fastcall(&iter, req->wr_count, req->wqe_size,
 				       req->sge_count, &onstack_recv_wr);
 	if (IS_ERR(wr))
 		return PTR_ERR(wr);
@@ -2307,6 +2307,104 @@ out:
 	}
 
 	return ret;
+}
+
+static struct ib_recv_wr *
+ib_uverbs_unmarshall_recv(struct uverbs_req_iter *iter, u32 wr_count,
+			  u32 wqe_size, u32 sge_count)
+{
+	struct ib_uverbs_recv_wr *user_wr;
+	struct ib_recv_wr        *wr = NULL, *last, *next;
+	int                       sg_ind;
+	int                       i;
+	int                       ret;
+	const struct ib_sge __user *sgls;
+	const void __user *wqes;
+
+	if (wqe_size < sizeof(struct ib_uverbs_recv_wr))
+		return ERR_PTR(-EINVAL);
+
+	wqes = uverbs_request_next_ptr(iter, wqe_size * wr_count);
+	if (IS_ERR(wqes))
+		return ERR_CAST(wqes);
+	sgls = uverbs_request_next_ptr(
+		iter, sge_count * sizeof(struct ib_uverbs_sge));
+	if (IS_ERR(sgls))
+		return ERR_CAST(sgls);
+	ret = uverbs_request_finish(iter);
+	if (ret)
+		return ERR_PTR(ret);
+
+	user_wr = kmalloc(wqe_size, GFP_KERNEL);
+	if (!user_wr)
+		return ERR_PTR(-ENOMEM);
+
+	sg_ind = 0;
+	last = NULL;
+	for (i = 0; i < wr_count; ++i) {
+		if (copy_from_user(user_wr, wqes + i * wqe_size,
+				   wqe_size)) {
+			ret = -EFAULT;
+			goto err;
+		}
+
+		if (user_wr->num_sge + sg_ind > sge_count) {
+			ret = -EINVAL;
+			goto err;
+		}
+
+		if (user_wr->num_sge >=
+		    (U32_MAX - ALIGN(sizeof(*next), sizeof(struct ib_sge))) /
+			    sizeof(struct ib_sge)) {
+			ret = -EINVAL;
+			goto err;
+		}
+
+		next = kmalloc(ALIGN(sizeof(*next), sizeof(struct ib_sge)) +
+				       user_wr->num_sge * sizeof(struct ib_sge),
+			       GFP_KERNEL);
+		if (!next) {
+			ret = -ENOMEM;
+			goto err;
+		}
+
+		if (!last)
+			wr = next;
+		else
+			last->next = next;
+		last = next;
+
+		next->next       = NULL;
+		next->wr_id      = user_wr->wr_id;
+		next->num_sge    = user_wr->num_sge;
+
+		if (next->num_sge) {
+			next->sg_list = (void *)next +
+				ALIGN(sizeof(*next), sizeof(struct ib_sge));
+			if (copy_from_user(next->sg_list, sgls + sg_ind,
+					   next->num_sge *
+						   sizeof(struct ib_sge))) {
+				ret = -EFAULT;
+				goto err;
+			}
+			sg_ind += next->num_sge;
+		} else
+			next->sg_list = NULL;
+	}
+
+	kfree(user_wr);
+	return wr;
+
+err:
+	kfree(user_wr);
+
+	while (wr) {
+		next = wr->next;
+		kfree(wr);
+		wr = next;
+	}
+
+	return ERR_PTR(ret);
 }
 
 static int ib_uverbs_post_srq_recv(struct uverbs_attr_bundle *attrs)
