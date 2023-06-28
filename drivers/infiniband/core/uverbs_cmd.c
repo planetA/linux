@@ -2161,7 +2161,6 @@ out_put:
 			uobj_put_obj_read(ud_wr(wr)->ah);
 		next = wr->next;
 		if(wr != &next_onstack && wr != &(onstack_rdma_wr.wr) && wr != &(onstack_ud_wr.wr) && wr != &(onstack_atomic_wr.wr)){
-			pr_info("freeing some memory");
 			kfree(wr);
 		}
 		wr = next;
