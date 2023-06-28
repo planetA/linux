@@ -2352,6 +2352,7 @@ struct ib_device_ops {
 	void (*drain_rq)(struct ib_qp *qp);
 	void (*drain_sq)(struct ib_qp *qp);
 	int (*poll_cq)(struct ib_cq *cq, int num_entries, struct ib_wc *wc);
+	int (*probe_one)(struct ib_cq *cq);
 	int (*peek_cq)(struct ib_cq *cq, int wc_cnt);
 	int (*req_notify_cq)(struct ib_cq *cq, enum ib_cq_notify_flags flags);
 	int (*post_srq_recv)(struct ib_srq *srq,
@@ -3974,6 +3975,27 @@ static inline int ib_poll_cq(struct ib_cq *cq, int num_entries,
 {
 	return cq->device->ops.poll_cq(cq, num_entries, wc);
 }
+
+
+
+
+/**
+ * ib_poll_cq - poll a CQ for completion(s)
+ * @cq:the CQ being polled
+ *
+ * Poll a CQ for (possibly multiple) completions.  If the return value
+ * is < 0, an error occurred.  If the return value is >= 0, it is the
+ * number of completions returned.  If the return value is
+ * non-negative and < num_entries, then the CQ was emptied.
+ */
+static inline int ib_probe_cq(struct ib_cq *cq)
+{
+        return cq->device->ops.probe_one(cq);
+}
+
+
+
+
 
 /**
  * ib_req_notify_cq - Request completion notification on a CQ.
