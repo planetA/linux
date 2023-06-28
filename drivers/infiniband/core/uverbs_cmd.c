@@ -1188,6 +1188,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 
 	while (resp->count < req->ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
+		pr_info("ret : %i\n", ret);
 		if (ret < 0)
 			goto out_put;
 		if (!ret)
