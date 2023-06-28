@@ -1199,7 +1199,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		data_ptr += sizeof(struct ib_uverbs_wc);
 		++(resp->count);
 	}
-
+	ret = 0;
 out_put:
 	rdma_lookup_put_uobject(&cq->uobject->uevent.uobject,
 				UVERBS_LOOKUP_READ);
