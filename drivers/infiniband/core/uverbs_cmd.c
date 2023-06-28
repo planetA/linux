@@ -2199,6 +2199,7 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 		user_wr = (struct ib_uverbs_recv_wr*)wqes + i*wqe_size;
 
 		if (user_wr->num_sge + sg_ind > sge_count) {
+			pr_info("err 1\n");
 			ret = -EINVAL;
 			goto err;
 		}
@@ -2206,6 +2207,7 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 		if (user_wr->num_sge >=
 		    (U32_MAX - ALIGN(sizeof(*next), sizeof(struct ib_sge))) /
 			    sizeof(struct ib_sge)) {
+			pr_info("err 2\n");
 			ret = -EINVAL;
 			goto err;
 		}
@@ -2218,6 +2220,7 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 			       GFP_KERNEL);
 			if (!next) {
 				ret = -ENOMEM;
+				pr_info("err 3\n");
 				goto err;
 			}
 		}
@@ -2239,6 +2242,7 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 					   next->num_sge *
 						   sizeof(struct ib_sge))) {
 				ret = -EFAULT;
+				pr_info("err 4\n");
 				goto err;
 			}
 			sg_ind += next->num_sge;
