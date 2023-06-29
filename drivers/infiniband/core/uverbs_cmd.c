@@ -1179,19 +1179,20 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 	return 0;
 }
 
-static DEFINE_PER_CPU(struct cq_queue, open_cq_polls); //see DEFINE_PER_CPU arc_timer.c -> arc_clockevent_device
-
 void dequeue_cq_poll(void){
 	struct cq_queue               *poll_cq;
 	struct cq_queue_element       *next_poll; //poll to probe next
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 
+	printk("test1 dequeue");
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 
 // TODO fix dequeue task if this task is sceduled normally and now has a message // version 4
 	if (poll_cq->count == 0)
 		return;
+	printk("test2 dequeue");
 	if (poll_cq->count == 1) { // is there only head in queue
+		printk("test3 dequeue");
 		next_poll = poll_cq->head;
 		if (next_poll->se == get_cfs_current_task()) {
 			poll_cq->head = NULL;
@@ -1199,12 +1200,14 @@ void dequeue_cq_poll(void){
 			kfree(next_poll);
 		}
 	} else { // there is more than just head in queue
+		printk("test4 dequeue");
 		next_poll = poll_cq->head;
 		if (next_poll->se == get_cfs_current_task()) { // check if head is the current task
 			poll_cq->head = next_poll->next; // yes -> dequeue task and make next task to head
 			poll_cq->count--; // decrement count
 			kfree(next_poll);
 		} else {
+			printk("test5 dequeue");
 			while (next_poll->next != NULL) { // head is not current task
 				sched_next_poll = next_poll; // iterate through list
 				next_poll = next_poll->next;
@@ -1265,18 +1268,23 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			sched_next_poll = NULL;
 
 			// setup current poll struct
-			this_poll = kzalloc(sizeof(struct cq_queue_element),
-					    GFP_KERNEL);
+			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
+			if (!this_poll){
+				printk("test1 poll_cq");
+			}
+			printk("test2 poll_cq");
 			this_poll->next = NULL;
 			this_poll->cq = cq; //This is a pointer - problem?
 			this_poll->se = get_cfs_current_task(); // store the sched_entity to schedule it later
-
+			printk("test3 poll_cq");
 			//if there is no poll yet this_poll will be head
 			if (poll_cq->count == 0) {
+				printk("test4 poll_cq");
 				poll_cq->head = this_poll;
 				poll_cq->count++;
 				goto sched_without_info;
 			} else {
+				printk("test5 poll_cq");
 				next_poll = poll_cq->head;
 				while (ib_probe_cq(next_poll->cq) == -EAGAIN) {
 					if (next_poll->next == NULL)
@@ -1289,7 +1297,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 				if (sched_next_poll != NULL)
 					sched_next_poll->next = next_poll->next; //take next_poll out of the queue and link prev->next to next->next
 				sched_next_poll = next_poll;
-
+				printk("test6 poll_cq");
 enqueue_new_elem:
 				dequeue_cq_poll(); // dequeue if already enqueued
 				while (next_poll->next != NULL) { //we found a probe otherwise we would already satisfy
@@ -1298,20 +1306,24 @@ enqueue_new_elem:
 				next_poll->next = this_poll; // enqueue task at the end
 				poll_cq->count++;
 			}
+			printk("test7 poll_cq");
 
 			//schedule sched_next_poll;
 			if (sched_next_poll != NULL){
 				pick_next_task_for_rdma(sched_next_poll->se);
 				break;
 			}
+			printk("test7 poll_cq");
 
 sched_without_info:
 			//nothing to schedule with intend
 			sched_next_for_rdma();
 			break;
 		}
+		printk("test8 poll_cq");
 		// there was a poll - is this task in the queue?
 		dequeue_cq_poll();
+		printk("test9 poll_cq");
 
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
