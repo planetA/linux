@@ -2024,7 +2024,6 @@ int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if(!ud_onstack_used){
 				ud = &onstack_ud_wr;
 			}else{
-				pr_info("Allocating");
 				ud = alloc_wr(next_size, user_wr->num_sge);
 				if (!ud) {
 					ret = -ENOMEM;
@@ -2055,7 +2054,6 @@ int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if(!rdma_onstack_used){
 				rdma = &onstack_rdma_wr;
 			}else{
-				pr_info("Allocating");
 				rdma = alloc_wr(next_size, user_wr->num_sge);
 				if (!rdma) {
 					ret = -ENOMEM;
@@ -2077,7 +2075,6 @@ int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if(!atomic_onstack_used){
 				atomic = &onstack_atomic_wr;
 			}else{
-				pr_info("Allocating");
 				atomic = alloc_wr(next_size, user_wr->num_sge);
 				if (!atomic) {
 					ret = -ENOMEM;
@@ -2101,7 +2098,6 @@ int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if(!next_onstack_used){
 				next = &next_onstack;
 			}else{
-				pr_info("Allocating");
 				next = alloc_wr(next_size, user_wr->num_sge);
 				if (!next) {
 					ret = -ENOMEM;
@@ -2135,7 +2131,6 @@ int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 
 		if (next->num_sge) {
 			if(!sge_onstack_used){
-				pr_info("Using onstack_sge");
 				next->sg_list = &onstack_sge;
 				sge_onstack_used=true;
 			}
@@ -2166,7 +2161,6 @@ out_put:
 			uobj_put_obj_read(ud_wr(wr)->ah);
 		next = wr->next;
 		if(wr != &next_onstack && wr != &(onstack_rdma_wr.wr) && wr != &(onstack_ud_wr.wr) && wr != &(onstack_atomic_wr.wr)){
-			pr_info("freeing some memory");
 			kfree(wr);
 		}
 		wr = next;
@@ -2220,7 +2214,6 @@ ib_uverbs_unmarshall_recv_fastcall(struct uverbs_req_iter *iter, u32 wr_count,
 		if(!onstack_recv_wr_used){
 			next = onstack_recv_wr;
 		}else{
-			pr_info("Allocating");
 			next = kmalloc(ALIGN(sizeof(*next), sizeof(struct ib_sge)) +
 				       user_wr->num_sge * sizeof(struct ib_sge),
 			       GFP_KERNEL);
