@@ -1169,7 +1169,7 @@ static void put_wc_in_resp(struct ib_device *ib_dev, void *dest,
 	tmp->reserved		= 0;
 }
 
-static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
+int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_poll_cq       *req = (struct ib_uverbs_poll_cq*)attrs->ucore.inbuf;
 	struct ib_uverbs_poll_cq_resp  *resp = (struct ib_uverbs_poll_cq_resp*)attrs->ucore.outbuf;
@@ -1963,7 +1963,7 @@ static void *alloc_wr(size_t wr_size, __u32 num_sge)
 		       GFP_KERNEL);
 }
 
-static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
+int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_post_send      *req = (struct ib_uverbs_post_send*)attrs->ucore.inbuf;
 	struct ib_uverbs_post_send_resp *resp = (struct ib_uverbs_post_send_resp*)attrs->ucore.outbuf;
@@ -2267,7 +2267,7 @@ err:
 	return ERR_PTR(ret);
 }
 
-static int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
+int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_post_recv      *req = (struct ib_uverbs_post_recv*)attrs->ucore.inbuf;
 	struct ib_uverbs_post_recv_resp *resp = (struct ib_uverbs_post_recv_resp*)attrs->ucore.outbuf;

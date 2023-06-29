@@ -247,6 +247,9 @@ void ib_uverbs_detach_umcast(struct ib_qp *qp,
 			     struct ib_uqp_object *uobj);
 
 long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs);
+int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs);
+int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs);
 
 struct ib_uverbs_flow_spec {
 	union {
