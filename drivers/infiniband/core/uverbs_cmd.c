@@ -2157,8 +2157,6 @@ out_put:
 		}
 		wr = next;
 	}
-
-out:
 	return ret;
 }
 
@@ -2285,7 +2283,6 @@ int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 		}
 	}
 
-out:
 	while (wr) {
 		next = wr->next;
 		if(wr != &onstack_recv_wr)
