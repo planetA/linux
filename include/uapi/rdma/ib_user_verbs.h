@@ -441,6 +441,7 @@ struct ib_uverbs_ex_create_cq {
 struct ib_uverbs_create_cq_resp {
 	__u32 cq_handle;
 	__u32 cqe;
+	__aligned_u64 k_cq;
 	__aligned_u64 driver_data[0];
 };
 
@@ -465,6 +466,7 @@ struct ib_uverbs_resize_cq_resp {
 
 struct ib_uverbs_poll_cq {
 	__aligned_u64 response;
+	__aligned_u64 k_cq;
 	__u32 cq_handle;
 	__u32 ne;
 };
@@ -645,6 +647,7 @@ struct ib_uverbs_open_qp {
 struct ib_uverbs_create_qp_resp {
 	__u32 qp_handle;
 	__u32 qpn;
+	__aligned_u64 k_qp;
 	__u32 max_send_wr;
 	__u32 max_recv_wr;
 	__u32 max_send_sge;
@@ -836,6 +839,7 @@ struct ib_uverbs_send_wr {
 
 struct ib_uverbs_post_send {
 	__aligned_u64 response;
+	__aligned_u64 k_qp;
 	__u32 qp_handle;
 	__u32 wr_count;
 	__u32 sge_count;
@@ -855,6 +859,7 @@ struct ib_uverbs_recv_wr {
 
 struct ib_uverbs_post_recv {
 	__aligned_u64 response;
+	__aligned_u64 k_qp;
 	__u32 qp_handle;
 	__u32 wr_count;
 	__u32 sge_count;

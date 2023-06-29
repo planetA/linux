@@ -275,6 +275,10 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 	ret = uverbs_copy_to(attrs, UVERBS_ATTR_CREATE_QP_RESP_QP_NUM,
 			     &qp->qp_num,
 			     sizeof(qp->qp_num));
+	if(ret)
+		return ret;
+
+	ret = uverbs_copy_to(attrs, UVERBS_ATTR_CREATE_QP_RESP_KQP, &qp, sizeof(qp));
 
 	return ret;
 err_put:

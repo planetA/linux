@@ -104,6 +104,7 @@ enum uverbs_attrs_create_cq_cmd_attr_ids {
 	UVERBS_ATTR_CREATE_CQ_COMP_VECTOR,
 	UVERBS_ATTR_CREATE_CQ_FLAGS,
 	UVERBS_ATTR_CREATE_CQ_RESP_CQE,
+	UVERBS_ATTR_CREATE_CQ_RESP_KCQ,
 	UVERBS_ATTR_CREATE_CQ_EVENT_FD,
 };
 
@@ -146,6 +147,7 @@ enum uverbs_attrs_create_qp_cmd_attr_ids {
 	UVERBS_ATTR_CREATE_QP_EVENT_FD,
 	UVERBS_ATTR_CREATE_QP_RESP_CAP,
 	UVERBS_ATTR_CREATE_QP_RESP_QP_NUM,
+	UVERBS_ATTR_CREATE_QP_RESP_KQP,
 };
 
 enum uverbs_attrs_destroy_qp_cmd_attr_ids {
