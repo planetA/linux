@@ -384,6 +384,18 @@ static void __rcu **uapi_get_attr_for_method(struct bundle_priv *pbundle,
 				      pbundle->method_key | attr_key);
 }
 
+static __always_inline int uverbs_process_attr_fastcall(struct bundle_priv *pbundle,
+			       struct ib_uverbs_attr *uattr, u32 attr_bkey)
+{
+	struct uverbs_attr *e = &pbundle->bundle.attrs[attr_bkey];
+
+	e->ptr_attr.uattr_idx = uattr - pbundle->uattrs;
+	e->ptr_attr.len = uattr->len;
+	e->ptr_attr.data = uattr->data;
+
+	return 0;
+}
+
 int __always_inline uverbs_set_attr_fastcall(struct bundle_priv *pbundle,
 			   struct ib_uverbs_attr *uattr)
 {
