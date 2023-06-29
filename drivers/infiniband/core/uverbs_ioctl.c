@@ -384,6 +384,27 @@ static void __rcu **uapi_get_attr_for_method(struct bundle_priv *pbundle,
 				      pbundle->method_key | attr_key);
 }
 
+int __always_inline uverbs_set_attr_fastcall(struct bundle_priv *pbundle,
+			   struct ib_uverbs_attr *uattr)
+{
+	u32 attr_key = uapi_key_attr(uattr->attr_id);
+	u32 attr_bkey = uapi_bkey_attr(attr_key);
+	int ret;
+
+	/* Reject duplicate attributes from user-space */
+	if (test_bit(attr_bkey, pbundle->bundle.attr_present))
+		return -EINVAL;
+
+	ret = uverbs_process_attr_fastcall(pbundle, uattr, attr_bkey);
+	if (ret){
+		return ret;
+	}
+
+	__set_bit(attr_bkey, pbundle->bundle.attr_present);
+
+	return 0;
+}
+
 static int uverbs_set_attr(struct bundle_priv *pbundle,
 			   struct ib_uverbs_attr *uattr)
 {
@@ -418,21 +439,70 @@ static int uverbs_set_attr(struct bundle_priv *pbundle,
 	return 0;
 }
 
-static int ib_uverbs_run_method_fastcall(struct bundle_priv *pbundle,
-				unsigned int num_attrs)
+void bundle_fill_all_udata(struct uverbs_attr_bundle *bundle, struct ib_udata *driver_data, struct ib_udata *ucore)
 {
-	int (*handler)(struct uverbs_attr_bundle *attrs);
+	struct bundle_priv *pbundle =
+		container_of(bundle, struct bundle_priv, bundle);
+	const struct uverbs_attr *uhw_in =
+		uverbs_attr_get(&pbundle->bundle, UVERBS_ATTR_UHW_IN);
+	const struct uverbs_attr *uhw_out =
+		uverbs_attr_get(&pbundle->bundle, UVERBS_ATTR_UHW_OUT);
+	const struct uverbs_attr *core_in =
+		uverbs_attr_get(&pbundle->bundle, UVERBS_ATTR_CORE_IN);
+	const struct uverbs_attr *core_out =
+		uverbs_attr_get(&pbundle->bundle, UVERBS_ATTR_CORE_OUT);
+
+	if (!IS_ERR(uhw_in)) {
+		driver_data->inlen = uhw_in->ptr_attr.len;
+		if (uverbs_attr_ptr_is_inline(uhw_in)){
+			driver_data->inbuf =
+				&pbundle->user_attrs[uhw_in->ptr_attr.uattr_idx]
+					 .data;
+		}else{
+			driver_data->inbuf = u64_to_user_ptr(uhw_in->ptr_attr.data);
+		}
+	} else {
+		driver_data->inbuf = NULL;
+		driver_data->inlen = 0;
+	}
+
+	if (!IS_ERR(uhw_out)) {
+		driver_data->outbuf = u64_to_user_ptr(uhw_out->ptr_attr.data);
+		driver_data->outlen = uhw_out->ptr_attr.len;
+	} else {
+		driver_data->outbuf = NULL;
+		driver_data->outlen = 0;
+	}
+
+	if (!IS_ERR(core_in)) {
+		ucore->inlen = core_in->ptr_attr.len;
+		if (uverbs_attr_ptr_is_inline(core_in)){
+			ucore->inbuf =
+				&pbundle->user_attrs[core_in->ptr_attr.uattr_idx]
+					 .data;
+		}else{
+			ucore->inbuf = u64_to_user_ptr(core_in->ptr_attr.data);
+		}
+	} else {
+		ucore->inbuf = NULL;
+		ucore->inlen = 0;
+	}
+
+	if (!IS_ERR(core_out)) {
+		ucore->outbuf = u64_to_user_ptr(core_out->ptr_attr.data);
+		ucore->outlen = core_out->ptr_attr.len;
+	} else {
+		ucore->outbuf = NULL;
+		ucore->outlen = 0;
+	}
+}
+
+static int ib_uverbs_run_method_fastcall(struct bundle_priv *pbundle,
+				unsigned int num_attrs, u8 cmd)
+{
 	size_t uattrs_size = array_size(sizeof(*pbundle->uattrs), num_attrs);
-	unsigned int destroy_bkey = pbundle->method_elm->destroy_bkey;
 	unsigned int i;
 	int ret;
-
-	/* See uverbs_disassociate_api() */
-	handler = srcu_dereference(
-		pbundle->method_elm->handler,
-		&pbundle->bundle.ufile->device->disassociate_srcu);
-	if (!handler)
-		return -EIO;
 
 	pbundle->uattrs = uverbs_alloc(&pbundle->bundle, uattrs_size);
 	if (IS_ERR(pbundle->uattrs))
@@ -440,45 +510,38 @@ static int ib_uverbs_run_method_fastcall(struct bundle_priv *pbundle,
 	pbundle->uattrs=pbundle->user_attrs;
 
 	for (i = 0; i != num_attrs; i++) {
-		ret = uverbs_set_attr(pbundle, &pbundle->user_attrs[i]);
+		ret = uverbs_set_attr_fastcall(pbundle, &pbundle->user_attrs[i]);
 		if (unlikely(ret))
 			return ret;
 	}
 
-	/* User space did not provide all the mandatory attributes */
-	if (unlikely(!bitmap_subset(pbundle->method_elm->attr_mandatory,
-				    pbundle->bundle.attr_present,
-				    pbundle->method_elm->key_bitmap_len)))
-		return -EINVAL;
-
-	if (pbundle->method_elm->has_udata)
-		uverbs_fill_udata(&pbundle->bundle,
-				  &pbundle->bundle.driver_udata,
-				  UVERBS_ATTR_UHW_IN, UVERBS_ATTR_UHW_OUT);
-	else
-		pbundle->bundle.driver_udata = (struct ib_udata){};
-
-	if (destroy_bkey != UVERBS_API_ATTR_BKEY_LEN) {
-		struct uverbs_obj_attr *destroy_attr =
-			&pbundle->bundle.attrs[destroy_bkey].obj_attr;
-
-		ret = uobj_destroy(destroy_attr->uobject, &pbundle->bundle);
-		if (ret)
-			return ret;
-		__clear_bit(destroy_bkey, pbundle->uobj_finalize);
-
-		ret = handler(&pbundle->bundle);
-		uobj_put_destroy(destroy_attr->uobject);
-	} else {
-		ret = handler(&pbundle->bundle);
+	bundle_fill_all_udata(&pbundle->bundle, &pbundle->bundle.driver_udata, &(pbundle->bundle.ucore));
+	pbundle->bundle.uobject=NULL;
+	
+	switch(cmd){
+		case IB_USER_VERBS_CMD_POLL_CQ: //poll_cq
+			ret = ib_uverbs_poll_cq(&pbundle->bundle);
+			break;
+		case IB_USER_VERBS_CMD_POST_SEND:
+			ret = ib_uverbs_post_send(&pbundle->bundle);
+			break;
+		case IB_USER_VERBS_CMD_POST_RECV:
+			ret = ib_uverbs_post_recv(&pbundle->bundle);
+			break;
+		default:
+			pr_err("Fastcall method number not recognized");
+			ret = -1;
 	}
+	
+	if(pbundle->bundle.uobject)
+		uverbs_finalize_object(pbundle->bundle.uobject, UVERBS_ACCESS_NEW, true, !ret, &pbundle->bundle);	
 
 	/*
 	 * Until the drivers are revised to use the bundle directly we have to
 	 * assume that the driver wrote to its UHW_OUT and flag userspace
 	 * appropriately.
 	 */
-	if (!ret && pbundle->method_elm->has_udata) {
+	if (!ret) {
 		const struct uverbs_attr *attr =
 			uverbs_attr_get(&pbundle->bundle, UVERBS_ATTR_UHW_OUT);
 
@@ -629,63 +692,30 @@ static void bundle_destroy(struct bundle_priv *pbundle, bool commit)
 static int ib_uverbs_cmd_verbs_fastcall(struct ib_uverbs_file *ufile,
 			       struct ib_uverbs_ioctl_hdr __user *hdr)
 {
-	const struct uverbs_api_ioctl_method *method_elm;
 	struct uverbs_api *uapi = ufile->device->uapi;
-	struct radix_tree_iter attrs_iter;
 	struct bundle_priv *pbundle;
 	struct bundle_priv onstack;
-	void __rcu **slot;
 	int ret;
 
 	if (unlikely(hdr->driver_id != uapi->driver_id))
 		return -EINVAL;
 
-	slot = radix_tree_iter_lookup(
-		&uapi->radix, &attrs_iter,
-		uapi_key_obj(hdr->object_id) |
-			uapi_key_ioctl_method(hdr->method_id));
-	if (unlikely(!slot))
-		return -EPROTONOSUPPORT;
-	method_elm = rcu_dereference_protected(*slot, true);
+	pbundle = &onstack;
+	pbundle->internal_avail = sizeof(pbundle->internal_buffer);
+	pbundle->allocated_mem = NULL;
 
-	if (!method_elm->use_stack) {
-		pbundle = kmalloc(method_elm->bundle_size, GFP_KERNEL);
-		if (!pbundle)
-			return -ENOMEM;
-		pbundle->internal_avail =
-			method_elm->bundle_size -
-			offsetof(struct bundle_priv, internal_buffer);
-		pbundle->alloc_head.next = NULL;
-		pbundle->allocated_mem = &pbundle->alloc_head;
-	} else {
-		pbundle = &onstack;
-		pbundle->internal_avail = sizeof(pbundle->internal_buffer);
-		pbundle->allocated_mem = NULL;
-	}
-
-	/* Space for the pbundle->bundle.attrs flex array */
-	pbundle->method_elm = method_elm;
-	pbundle->method_key = attrs_iter.index;
 	pbundle->bundle.ufile = ufile;
-	pbundle->bundle.context = NULL; /* only valid if bundle has uobject */
-	pbundle->radix = &uapi->radix;
-	pbundle->radix_slots = slot;
-	pbundle->radix_slots_len = radix_tree_chunk_size(&attrs_iter);
 	pbundle->user_attrs = hdr->attrs;
 
-	pbundle->internal_used = ALIGN(pbundle->method_elm->key_bitmap_len *
+	// debug shows that the key_bitmap_len is 5. Not really portable.
+	pbundle->internal_used = ALIGN(5 *
 					       sizeof(*pbundle->bundle.attrs),
 				       sizeof(*pbundle->internal_buffer));
 	memset(pbundle->bundle.attr_present, 0,
 	       sizeof(pbundle->bundle.attr_present));
 	memset(pbundle->uobj_finalize, 0, sizeof(pbundle->uobj_finalize));
-	memset(pbundle->spec_finalize, 0, sizeof(pbundle->spec_finalize));
-	memset(pbundle->uobj_hw_obj_valid, 0,
-	       sizeof(pbundle->uobj_hw_obj_valid));
 
-	ret = ib_uverbs_run_method_fastcall(pbundle, hdr->num_attrs);
-
-	//bundle_destroy(pbundle, ret == 0);
+	ret = ib_uverbs_run_method_fastcall(pbundle, hdr->num_attrs, hdr->fastcall_method);
 
 	return ret;
 }

@@ -2135,6 +2135,7 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 
 		if (next->num_sge) {
 			if(!sge_onstack_used){
+				pr_info("Using onstack_sge");
 				next->sg_list = &onstack_sge;
 				sge_onstack_used=true;
 			}
