@@ -335,5 +335,4 @@ struct cq_queue {
 };
 
 void dequeue_cq_poll(void);
-DEFINE_PER_CPU(struct cq_queue, open_cq_polls); //see DEFINE_PER_CPU arc_timer.c -> arc_clockevent_device
 #endif /* UVERBS_H */
