@@ -1063,6 +1063,7 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	uobj_finalize_uobj_create(&obj->uevent.uobject, attrs);
 
 	resp.base.cq_handle = obj->uevent.uobject.id;
+	resp.base.k_cq = (u64)cq;
 	resp.base.cqe = cq->cqe;
 	resp.response_length = uverbs_response_length(attrs, sizeof(resp));
 	return uverbs_response(attrs, &resp, sizeof(resp));
@@ -1178,9 +1179,7 @@ int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_wc                   wc;
 	int                            ret;
 
-	cq = uobj_get_obj_read(cq, UVERBS_OBJECT_CQ, req->cq_handle, attrs);
-	if (!cq)
-		return -EINVAL;
+	cq = (struct ib_cq *)req->k_cq;
 
 	/* we copy a struct ib_uverbs_poll_cq_resp to user space */
 	memset(attrs->ucore.outbuf, 0, attrs->ucore.outlen);
@@ -1200,8 +1199,7 @@ int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	}
 	ret = 0;
 out_put:
-	rdma_lookup_put_uobject(&cq->uobject->uevent.uobject,
-				UVERBS_LOOKUP_READ);
+
 	return ret;
 }
 
@@ -1449,6 +1447,7 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 
 	resp.base.qpn             = qp->qp_num;
 	resp.base.qp_handle       = obj->uevent.uobject.id;
+	resp.base.k_qp 			  = (u64)qp;
 	resp.base.max_recv_sge    = attr.cap.max_recv_sge;
 	resp.base.max_send_sge    = attr.cap.max_send_sge;
 	resp.base.max_recv_wr     = attr.cap.max_recv_wr;
@@ -1995,11 +1994,7 @@ int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 	if (IS_ERR(sgls))
 		return PTR_ERR(sgls);
 
-	qp = uobj_get_obj_read(qp, UVERBS_OBJECT_QP, req->qp_handle, attrs);
-	if (!qp) {
-		ret = -EINVAL;
-		goto out;
-	}
+	qp = (struct ib_qp*)req->k_qp;
 
 	is_ud = qp->qp_type == IB_QPT_UD;
 	sg_ind = 0;
@@ -2153,9 +2148,6 @@ int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		}
 
 out_put:
-	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
-				UVERBS_LOOKUP_READ);
-
 	while (wr) {
 		if (is_ud && ud_wr(wr)->ah)
 			uobj_put_obj_read(ud_wr(wr)->ah);
@@ -2280,17 +2272,11 @@ int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 	if (IS_ERR(wr))
 		return PTR_ERR(wr);
 
-	qp = uobj_get_obj_read(qp, UVERBS_OBJECT_QP, req->qp_handle, attrs);
-	if (!qp) {
-		ret = -EINVAL;
-		goto out;
-	}
+	qp = (struct ib_qp*)req->k_qp;
 
 	resp->bad_wr = 0;
 	ret = qp->device->ops.post_recv(qp->real_qp, wr, &bad_wr);
 
-	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
-				UVERBS_LOOKUP_READ);
 	if (ret) {
 		for (next = wr; next; next = next->next) {
 			++resp->bad_wr;
