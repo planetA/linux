@@ -39,6 +39,7 @@
 #include <linux/sched.h>
 #include <linux/sched/cputime.h>
 #include <linux/percpu-defs.h>
+#include <linux/preempt.h>
 
 #include <linux/uaccess.h>
 
@@ -1252,6 +1253,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	memset(&resp, 0, sizeof resp);
 	while (resp.count < cmd.ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
+		preempt_disable();
+		//TODO disable interrupts and reenable them - disable once/enable once
 		poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 		if (ret < 0)
 			goto out_put;
@@ -1265,8 +1268,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			sched_next_poll = NULL;
 
 			// setup current poll struct
-			this_poll = kzalloc(sizeof(struct cq_queue_element),
-					    GFP_KERNEL);
+			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
 			this_poll->next = NULL;
 			this_poll->cq = cq; //This is a pointer - problem?
 			this_poll->se = get_cfs_current_task(); // store the sched_entity to schedule it later
@@ -1277,7 +1279,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 				poll_cq->count++;
 				goto sched_without_info;
 			} else {
-				next_poll = poll_cq->head;
+				next_poll = poll_cq->head; //this is NULL? 
+				if (next_poll == NULL){
+					printk("\n\nSANITY CHECK\n\n")
+				}
 				while (ib_probe_cq(next_poll->cq) == -EAGAIN) {
 					if (next_poll->next == NULL)
 						goto enqueue_new_elem; // no probe said that there is a message
@@ -1301,18 +1306,20 @@ enqueue_new_elem:
 
 			//schedule sched_next_poll;
 			if (sched_next_poll != NULL){
+				preempt_enable(); // can you remove these?
 				pick_next_task_for_rdma(sched_next_poll->se);
 				break;
 			}
 
 sched_without_info:
 			//nothing to schedule with intend
+			preempt_enable(); // same here remove if possible
 			sched_next_for_rdma();
 			break;
 		}
 		// there was a poll - is this task in the queue?
 		dequeue_cq_poll();
-
+		preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
