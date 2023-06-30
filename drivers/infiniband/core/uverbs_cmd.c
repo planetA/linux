@@ -1281,7 +1281,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			} else {
 				next_poll = poll_cq->head; //this is NULL? 
 				if (next_poll == NULL){
-					printk("\n\nSANITY CHECK\n\n")
+					printk("\n\nSANITY CHECK\n\n");
 				}
 				while (ib_probe_cq(next_poll->cq) == -EAGAIN) {
 					if (next_poll->next == NULL)
