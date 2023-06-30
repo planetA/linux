@@ -2271,6 +2271,8 @@ int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 	if (IS_ERR(wr))
 		return PTR_ERR(wr);
 
+	pr_info("k_qp : %p\n", req->k_qp);
+
 	qp = (struct ib_qp*)req->k_qp;
 
 	resp->bad_wr = 0;
