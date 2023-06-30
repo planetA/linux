@@ -1445,6 +1445,7 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 		uobj_put_obj_read(ind_tbl);
 	uobj_finalize_uobj_create(&obj->uevent.uobject, attrs);
 
+	pr_info("Create qp : %p", qp);
 	resp.base.qpn             = qp->qp_num;
 	resp.base.qp_handle       = obj->uevent.uobject.id;
 	resp.base.k_qp 			  = (u64)qp;
