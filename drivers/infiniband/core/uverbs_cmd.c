@@ -1445,7 +1445,6 @@ static int create_qp(struct uverbs_attr_bundle *attrs,
 		uobj_put_obj_read(ind_tbl);
 	uobj_finalize_uobj_create(&obj->uevent.uobject, attrs);
 
-	pr_info("Create qp : %p", qp);
 	resp.base.qpn             = qp->qp_num;
 	resp.base.qp_handle       = obj->uevent.uobject.id;
 	resp.base.k_qp 			  = (u64)qp;
@@ -2270,8 +2269,6 @@ int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 				       req->sge_count, &onstack_recv_wr, &onstack_sge);
 	if (IS_ERR(wr))
 		return PTR_ERR(wr);
-
-	pr_info("k_qp : %p\n", req->k_qp);
 
 	qp = (struct ib_qp*)req->k_qp;
 
