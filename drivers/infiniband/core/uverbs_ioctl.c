@@ -771,7 +771,8 @@ long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	if (unlikely(cmd != RDMA_VERBS_IOCTL))
 		return -ENOIOCTLCMD;
-	
+
+	stac();
 	if(user_hdr->use_fastcall==1){
 		srcu_key = srcu_read_lock(&file->device->disassociate_srcu);
 		err = ib_uverbs_cmd_verbs_fastcall(file, user_hdr);
@@ -792,6 +793,7 @@ long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		err = ib_uverbs_cmd_verbs(file, &hdr, user_hdr->attrs);
 		srcu_read_unlock(&file->device->disassociate_srcu, srcu_key);
 	}
+	clac();
 	return err;
 }
 
