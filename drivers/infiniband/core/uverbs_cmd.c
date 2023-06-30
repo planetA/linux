@@ -1181,7 +1181,6 @@ int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 
 	cq = (struct ib_cq *)req->k_cq;
 
-	stac();
 	/* we copy a struct ib_uverbs_poll_cq_resp to user space */
 	memset(attrs->ucore.outbuf, 0, attrs->ucore.outlen);
 	data_ptr = resp + sizeof(struct ib_uverbs_poll_cq_resp);
@@ -1200,7 +1199,6 @@ int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	}
 	ret = 0;
 out_put:
-	clac();
 	return ret;
 }
 
