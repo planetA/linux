@@ -1175,7 +1175,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 		default:
 			break;
 		}
-
+		pr_info("wr->send_flags : %i, IB_SEND_INLINE : %i, num_sge : %i\n", wr->send_flags, IB_SEND_INLINE, num_sge);
 		if (wr->send_flags & IB_SEND_INLINE && num_sge) {
 			pr_info("Sending inline\n");
 			err = set_data_inl_seg(qp, wr, &seg, &size, &cur_edge);
