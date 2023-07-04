@@ -1306,15 +1306,15 @@ enqueue_new_elem:
 
 			//schedule sched_next_poll;
 			if (sched_next_poll != NULL){
-				preempt_enable(); // can you remove these?
 				pick_next_task_for_rdma(sched_next_poll->se);
+				
 				break;
 			}
 
 sched_without_info:
 			//nothing to schedule with intend
-			preempt_enable(); // same here remove if possible
 			sched_next_for_rdma();
+			//preempt_enable(); // same here remove if possible
 			break;
 		}
 		// there was a poll - is this task in the queue?
@@ -1327,6 +1327,8 @@ sched_without_info:
 		data_ptr += sizeof(struct ib_uverbs_wc);
 		++resp.count;
 	}
+
+	preempt_enable(); // can you remove these?
 
 	if (copy_to_user(header_ptr, &resp, sizeof resp)) {
 		ret = -EFAULT;
