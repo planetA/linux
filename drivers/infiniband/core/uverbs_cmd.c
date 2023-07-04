@@ -1283,7 +1283,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 				if (next_poll == NULL){
 					printk("\n\nSANITY CHECK\n\n");
 				}
-				printk(KERN_ALERT "here %i", next_poll);
+				printk(KERN_ALERT "here");
 				while (ib_probe_cq(next_poll->cq) == -EAGAIN) {
 					if (next_poll->next == NULL)
 						goto enqueue_new_elem; // no probe said that there is a message
