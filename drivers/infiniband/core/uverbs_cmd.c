@@ -1229,10 +1229,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	struct cq_queue               *poll_cq;
-	struct cq_queue_element       *this_poll; //initial poll
-	struct cq_queue_element       *next_poll; //poll to probe next
-	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	//struct cq_queue               *poll_cq;
+	//struct cq_queue_element       *this_poll; //initial poll
+	//struct cq_queue_element       *next_poll; //poll to probe next
+	//struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 	
 
 
@@ -1253,18 +1253,19 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	memset(&resp, 0, sizeof resp);
 	while (resp.count < cmd.ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
-		preempt_disable();
+		//preempt_disable();
 		//TODO disable interrupts and reenable them - disable once/enable once
-		poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
+		//poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 		if (ret < 0)
 			goto out_put;
 		if (!ret) {
 			//schedule(); //version 1
 			//do_sched_yield(); //version 2
+			preempt_disable();
+			sched_next_for_rdma(); //version 3
+			preempt_enable();
 
-			//sched_next_for_rdma(); //version 3
-
-			//version 4
+			/*//version 4
 			sched_next_poll = NULL;
 
 			// setup current poll struct
@@ -1315,12 +1316,12 @@ enqueue_new_elem:
 sched_without_info:
 			//nothing to schedule with intend
 			sched_next_for_rdma();
-			//preempt_enable(); // same here remove if possible
+			preempt_enable(); // same here remove if possible*/
 			break;
 		}
 		// there was a poll - is this task in the queue?
-		dequeue_cq_poll();
-		preempt_enable();
+		//dequeue_cq_poll();
+		//preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
