@@ -1278,7 +1278,9 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			printk(KERN_ALERT "dev pointer: %p", this_poll->cq->device);
 			printk(KERN_ALERT "ops pointer: %p", &this_poll->cq->device->ops);
 			printk(KERN_ALERT "ib_probe_pointer: %p", ib_probe_cq);
-			ret = ib_probe_cq(this_poll->cq);
+			ret = ib_probe_cq(cq);
+
+
 			printk(KERN_ALERT "probe ret\n");
 			printk(KERN_ALERT "poll_cq: %p\n", poll_cq);
 			printk(KERN_ALERT "poll_head: %p\n", poll_cq->head);
