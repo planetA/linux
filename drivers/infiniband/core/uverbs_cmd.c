@@ -1273,8 +1273,12 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			this_poll->next = NULL;
 			this_poll->cq = cq; //This is a pointer - problem?
 			this_poll->se = get_cfs_current_task();
+			printk(KERN_ALERT "probe before\n");
 			ret = ib_probe_cq(this_poll->cq);
-			printk(KERN_ALERT "probe ret=%i", ret);
+			printk(KERN_ALERT "probe ret\n");
+			printk(KERN_ALERT "poll_cq: %p\n", poll_cq);
+			printk(KERN_ALERT "poll_head: %p\n", poll_cq->head);
+
 			if (poll_cq->count == 0) {
 				poll_cq->head = this_poll;
 				poll_cq->count++;
