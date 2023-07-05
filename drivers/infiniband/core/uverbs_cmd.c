@@ -1229,8 +1229,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	//struct cq_queue               *poll_cq;
-	//struct cq_queue_element       *this_poll; //initial poll
+	struct cq_queue               *poll_cq;
+	struct cq_queue_element       *this_poll; //initial poll
 	//struct cq_queue_element       *next_poll; //poll to probe next
 	//struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 	
@@ -1261,8 +1261,19 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		if (!ret) {
 			//schedule(); //version 1
 			//do_sched_yield(); //version 2
+			
+			// preempt_disable();
+			// sched_next_for_rdma(); //version 3
+			// preempt_enable();
+
+
 			preempt_disable();
-			sched_next_for_rdma(); //version 3
+			poll_cq = this_cpu_ptr(&open_cq_polls);
+			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
+			this_poll->next = NULL;
+			this_poll->cq = cq; //This is a pointer - problem?
+			this_poll->se = get_cfs_current_task();
+			sched_next_for_rdma();
 			preempt_enable();
 
 			/*//version 4
