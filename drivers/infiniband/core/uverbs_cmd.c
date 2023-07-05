@@ -1273,7 +1273,17 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			this_poll->next = NULL;
 			this_poll->cq = cq; //This is a pointer - problem?
 			this_poll->se = get_cfs_current_task();
+			ret = ib_probe_cq(this_poll->cq);
+			printk(KERN_ALERT "probe ret=%i", ret);
+			if (poll_cq->count == 0) {
+				poll_cq->head = this_poll;
+				poll_cq->count++;
+			} else {
+				kfree(poll_cq->head);
+				poll_cq->head = this_poll;
+			}
 			sched_next_for_rdma();
+			
 			preempt_enable();
 
 			/*//version 4
