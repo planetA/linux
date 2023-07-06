@@ -3999,7 +3999,12 @@ static inline int ib_probe_cq(struct ib_cq *cq)
     printk(KERN_ALERT "ops pointer: %p", &cq->device->ops);
     printk(KERN_ALERT "probe one f pointer: %p", cq->device->ops.probe_one);
     printk(KERN_ALERT "after f pointer");
-    //printk(KERN_ALERT "device: %c%c%c%c", cq->device->dma_device->init_name[0],cq->device->dma_device->init_name[1],cq->device->dma_device->init_name[2],cq->device->dma_device->init_name[3]);
+    printk(KERN_ALERT "dev_name: %p", &cq->device->name);
+    printk(KERN_ALERT "device: %c", cq->device->name[0]);
+    printk(KERN_ALERT "device: %c", cq->device->name[1]);
+    printk(KERN_ALERT "device: %c", cq->device->name[2]);
+    printk(KERN_ALERT "device: %c", cq->device->name[3]);
+    
     dev = cq->device;
     printk(KERN_ALERT "after dev");
     dev_ops = dev->ops;
