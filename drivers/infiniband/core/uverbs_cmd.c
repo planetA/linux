@@ -1231,8 +1231,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	int                            ret;
 	struct cq_queue               *poll_cq;
 	struct cq_queue_element       *this_poll; //initial poll
-	//struct cq_queue_element       *next_poll; //poll to probe next
-	//struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	struct cq_queue_element       *next_poll; //poll to probe next
+	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 	
 
 
