@@ -3990,14 +3990,14 @@ static inline int ib_poll_cq(struct ib_cq *cq, int num_entries,
  */
 static inline int ib_probe_cq(struct ib_cq *cq)
 {
-	printk(KERN_ALERT "inside ib_probe_cq");
-	printk(KERN_ALERT "probe before\n");
-	printk(KERN_ALERT "cq pointer: %p", cq);
-	printk(KERN_ALERT "dev pointer: %p", cq->device);
-	printk(KERN_ALERT "ops pointer: %p", &cq->device->ops);
-	printk(KERN_ALERT "probe one f pointer: %p", cq->device->ops.probe_one);
-	printk(KERN_ALERT "after f pointer");
-	printk(KERN_ALERT "device: %c%c%c%c", cq->device->dma_device->init_name[0],cq->device->dma_device->init_name[1],cq->device->dma_device->init_name[2],cq->device->dma_device->init_name[3]);
+    printk(KERN_ALERT "inside ib_probe_cq");
+    printk(KERN_ALERT "probe before\n");
+    printk(KERN_ALERT "cq pointer: %p", cq);
+    printk(KERN_ALERT "dev pointer: %p", cq->device);
+    printk(KERN_ALERT "ops pointer: %p", &cq->device->ops);
+    printk(KERN_ALERT "probe one f pointer: %p", cq->device->ops.probe_one);
+    printk(KERN_ALERT "after f pointer");
+    //printk(KERN_ALERT "device: %c%c%c%c", cq->device->dma_device->init_name[0],cq->device->dma_device->init_name[1],cq->device->dma_device->init_name[2],cq->device->dma_device->init_name[3]);
     //return cq->device->ops.probe_one(cq);
 	return 0;
 }
