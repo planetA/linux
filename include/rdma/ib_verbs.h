@@ -3995,6 +3995,8 @@ static inline int ib_probe_cq(struct ib_cq *cq)
 	printk(KERN_ALERT "cq pointer: %p", cq);
 	printk(KERN_ALERT "dev pointer: %p", cq->device);
 	printk(KERN_ALERT "ops pointer: %p", &cq->device->ops);
+	prinkt(KERN_ALERT "probe one f pointer: %p", cq->device->ops.probe_one);
+	printk(KERN_ALERT "after f pointer");
     return cq->device->ops.probe_one(cq);
 }
 

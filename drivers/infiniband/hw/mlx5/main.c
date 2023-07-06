@@ -3726,6 +3726,7 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.modify_qp = mlx5_ib_modify_qp,
 	.modify_srq = mlx5_ib_modify_srq,
 	.poll_cq = mlx5_ib_poll_cq,
+	.probe_one = mlx5_probe_one,
 	.post_recv = mlx5_ib_post_recv_nodrain,
 	.post_send = mlx5_ib_post_send_nodrain,
 	.post_srq_recv = mlx5_ib_post_srq_recv,
@@ -3742,7 +3743,6 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.req_notify_cq = mlx5_ib_arm_cq,
 	.rereg_user_mr = mlx5_ib_rereg_user_mr,
 	.resize_cq = mlx5_ib_resize_cq,
-	.probe_one = mlx5_probe_one,
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, mlx5_ib_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_counters, mlx5_ib_mcounters, ibcntrs),
