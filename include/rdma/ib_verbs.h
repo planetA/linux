@@ -3990,26 +3990,7 @@ static inline int ib_poll_cq(struct ib_cq *cq, int num_entries,
  */
 static inline int ib_probe_cq(struct ib_cq *cq)
 {
-    struct ib_device *dev;
-    struct ib_device_ops dev_ops;
-    printk(KERN_ALERT "inside ib_probe_cq");
-    printk(KERN_ALERT "probe before\n");
-    printk(KERN_ALERT "cq pointer: %p", cq);
-    printk(KERN_ALERT "dev pointer: %p", cq->device);
-    printk(KERN_ALERT "ops pointer: %p", &cq->device->ops);
-    printk(KERN_ALERT "probe one f pointer: %p", cq->device->ops.probe_one);
-    printk(KERN_ALERT "after f pointer");
-    printk(KERN_ALERT "dev_name: %p", &cq->device->name);
-    printk(KERN_ALERT "device: %c", cq->device->name[0]);
-    printk(KERN_ALERT "device: %c", cq->device->name[1]);
-    printk(KERN_ALERT "device: %c", cq->device->name[2]);
-    printk(KERN_ALERT "device: %c", cq->device->name[3]);
-    
-    dev = cq->device;
-    printk(KERN_ALERT "after dev");
-    dev_ops = dev->ops;
-    printk(KERN_ALERT "after dev_ops");
-    return dev_ops.probe_one(cq);
+    return cq->device->ops.probe_one(cq);
 }
 
 
