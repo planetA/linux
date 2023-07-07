@@ -454,6 +454,7 @@ int mlx5_probe_one(struct ib_cq *ibcq)
 	struct mlx5_ib_cq *cq;
 	void *cqe;
 	unsigned long flags;
+	printk(KERN_ALERT "in mlx5 probe");
 
 	cq = to_mcq(ibcq);
 	spin_lock_irqsave(&cq->lock, flags);
