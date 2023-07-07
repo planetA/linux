@@ -1279,6 +1279,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 				printk(KERN_ALERT "in count 0");
 			} else {
 				next_poll = poll_cq->head;
+				kfree(this_poll);
 				while(ib_probe_cq(next_poll->cq) == -EAGAIN){
 					printk(KERN_ALERT "in while");
 					if (next_poll->next == NULL){
