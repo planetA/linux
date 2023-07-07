@@ -1370,7 +1370,7 @@ sched_without_info:
 		}
 		// there was a poll - is this task in the queue?
 		preempt_disable();
-		dequeue_cq_poll();
+		// dequeue_cq_poll();
 		preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
