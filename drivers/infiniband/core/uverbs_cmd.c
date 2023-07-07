@@ -1276,13 +1276,15 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			if (poll_cq->count == 0) {
 				poll_cq->head = this_poll;
 				poll_cq->count++;
+				printk(KERN_ALERT "in count 0");
 			} else {
 				next_poll = poll_cq->head;
 				while(ib_probe_cq(next_poll->cq) == -EAGAIN){
-					if (next_poll->next == NULL)
+					printk(KERN_ALERT "in while");
+					if (next_poll->next == NULL){
+						printk(KERN_ALERT "in if");
 						break; // no probe said that there is a message
-					sched_next_poll = next_poll; //store prev to link queue correct again
-					next_poll = next_poll->next;
+					}
 				}
 			}
 			sched_next_for_rdma();
