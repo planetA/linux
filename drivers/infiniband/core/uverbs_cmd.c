@@ -1308,7 +1308,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					sched_next_poll = next_poll; //store prev to link queue correct again
 					next_poll = next_poll->next;
 				}
-				kfree(this_poll);
+				//kfree(this_poll);
 			}
 			sched_next_for_rdma();
 			
@@ -1370,7 +1370,7 @@ sched_without_info:
 		}
 		// there was a poll - is this task in the queue?
 		preempt_disable();
-		// dequeue_cq_poll();
+		dequeue_cq_poll();
 		preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
