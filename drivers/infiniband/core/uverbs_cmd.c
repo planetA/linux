@@ -1253,9 +1253,9 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	memset(&resp, 0, sizeof resp);
 	while (resp.count < cmd.ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
-		preempt_disable();
+		//preempt_disable();
 		//TODO disable interrupts and reenable them - disable once/enable once
-		poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
+		//poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 		if (ret < 0)
 			goto out_put;
 		if (!ret) {
@@ -1267,27 +1267,29 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 
-			// preempt_disable();
-			// poll_cq = this_cpu_ptr(&open_cq_polls);
-			// this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
-			// this_poll->next = NULL;
-			// this_poll->cq = cq; //This is a pointer - problem?
-			// this_poll->se = get_cfs_current_task();
-			// ret = ib_probe_cq(cq);
-			// if (poll_cq->count == 0) {
-			// 	poll_cq->head = this_poll;
-			// 	poll_cq->count++;
-			// } else {
-			// 	kfree(poll_cq->head);
-			// 	poll_cq->head = this_poll;
-			// }
-			// sched_next_for_rdma();
+			preempt_disable();
+			poll_cq = this_cpu_ptr(&open_cq_polls);
+			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
+			this_poll->next = NULL;
+			this_poll->cq = cq; //This is a pointer - problem?
+			this_poll->se = get_cfs_current_task();
+			if (poll_cq->count == 0) {
+				poll_cq->head = this_poll;
+				poll_cq->count++;
+			} else {
+				next_poll = poll_cq->head;
+				while(ib_probe_cq(next_poll->cq) == -EAGAIN){
+					if (next_poll->next == NULL)
+						break; // no probe said that there is a message
+					sched_next_poll = next_poll; //store prev to link queue correct again
+					next_poll = next_poll->next;
+				}
+			}
+			sched_next_for_rdma();
 			
-			// preempt_enable();
+			preempt_enable();
 
-
-
-			//version 4
+			/*//version 4
 			sched_next_poll = NULL;
 
 			// setup current poll struct
@@ -1338,12 +1340,12 @@ enqueue_new_elem:
 sched_without_info:
 			//nothing to schedule with intend
 			sched_next_for_rdma();
-			preempt_enable(); // same here remove if possible
+			preempt_enable(); // same here remove if possible*/
 			break;
 		}
 		// there was a poll - is this task in the queue?
-		dequeue_cq_poll();
-		preempt_enable();
+		//dequeue_cq_poll();
+		//preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
@@ -1352,7 +1354,7 @@ sched_without_info:
 		++resp.count;
 	}
 
-	preempt_enable(); // can you remove these?
+	//preempt_enable(); // can you remove these?
 
 	if (copy_to_user(header_ptr, &resp, sizeof resp)) {
 		ret = -EFAULT;
