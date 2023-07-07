@@ -1232,7 +1232,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct cq_queue               *poll_cq;
 	struct cq_queue_element       *this_poll; //initial poll
 	struct cq_queue_element       *next_poll; //poll to probe next
-	//struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 	
 	printk(KERN_ALERT "uverbs_poll_cq");
 
@@ -1279,14 +1279,16 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 				printk(KERN_ALERT "in count 0");
 			} else {
 				next_poll = poll_cq->head;
-				kfree(this_poll);
 				while(ib_probe_cq(next_poll->cq) == -EAGAIN){
 					printk(KERN_ALERT "in while");
 					if (next_poll->next == NULL){
 						printk(KERN_ALERT "in if");
 						break; // no probe said that there is a message
 					}
+					sched_next_poll = next_poll; //store prev to link queue correct again
+					next_poll = next_poll->next;
 				}
+				kfree(this_poll);
 			}
 			sched_next_for_rdma();
 			
