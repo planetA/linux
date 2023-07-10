@@ -12506,7 +12506,6 @@ extern void pick_next_task_for_rdma(struct sched_entity *next){
 	struct cfs_rq cfs;
 	cfs = (this_rq()->cfs);
 	set_next_entity(&cfs, next);
-	pick_next_entity(&cfs, cfs.curr);
 }
 EXPORT_SYMBOL(pick_next_task_for_rdma);
 

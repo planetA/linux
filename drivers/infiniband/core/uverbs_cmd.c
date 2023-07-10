@@ -1302,14 +1302,16 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					printk(KERN_ALERT "in while");
 					if (next_poll->next == NULL){
 						printk(KERN_ALERT "in if");
-						enqueue_new_cq(this_poll);
-						break; // no probe said that there is a message
+						goto sched_no_info; // no probe said that there is a message
 					}
 					sched_next_poll = next_poll; //store prev to link queue correct again
 					next_poll = next_poll->next;
 				}
-				
+				pick_next_task_for_rdma(next_poll->se);
 			}
+
+sched_no_info:
+			enqueue_new_cq(this_poll);
 			sched_next_for_rdma();
 
 			preempt_enable();
