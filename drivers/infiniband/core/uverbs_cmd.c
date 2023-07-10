@@ -1226,9 +1226,14 @@ void enqueue_new_cq(struct cq_queue_element *poll)
 	struct cq_queue_element *next_poll; //poll to probe next
 
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
-	next_poll = poll_cq->head;
-
 	dequeue_cq_poll(); // dequeue if already enqueued
+	
+	next_poll = poll_cq->head;
+	if (!next_poll){
+		poll_cq->head = poll; // enqueue task at the beginning
+		poll_cq->count++;
+		return;
+	}
 	while (next_poll->next != NULL) { //we found a probe otherwise we would already satisfy
 		next_poll = next_poll->next;
 	}
