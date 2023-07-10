@@ -3990,7 +3990,6 @@ static inline int ib_poll_cq(struct ib_cq *cq, int num_entries,
  */
 static inline int ib_probe_cq(struct ib_cq *cq)
 {
-	printk(KERN_ALERT "in ibverbs probe");
     return cq->device->ops.probe_one(cq);
 }
 

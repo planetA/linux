@@ -1256,8 +1256,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct cq_queue_element       *next_poll; //poll to probe next
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 	
-	//printk(KERN_ALERT "uverbs_poll_cq");
-
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
 		return ret;
@@ -1300,15 +1298,11 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			if (poll_cq->count == 0) {
 				poll_cq->head = this_poll;
 				poll_cq->count++;
-				printk(KERN_ALERT "in count 0");
 			} else {
 				next_poll = poll_cq->head;
 				ret = ib_probe_cq(next_poll->cq);
-				printk(KERN_ALERT "return is: %i", ret);
-				while(ret != 0){
-					printk(KERN_ALERT "in while");
-					if (next_poll->next == NULL){
-						printk(KERN_ALERT "in if");
+				while(ret != 0){					
+					if (next_poll->next == NULL){						
 						goto sched_no_info; // no probe said that there is a message
 					}
 					sched_next_poll = next_poll; //store prev to link queue correct again
