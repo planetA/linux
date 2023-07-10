@@ -1298,7 +1298,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 				next_poll = poll_cq->head;
 				ret = ib_probe_cq(next_poll->cq);
 				printk(KERN_ALERT "return is: %i", ret);
-				while(ret == -EAGAIN){
+				while(ret != 0){
 					printk(KERN_ALERT "in while");
 					if (next_poll->next == NULL){
 						printk(KERN_ALERT "in if");
@@ -1308,10 +1308,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					sched_next_poll = next_poll; //store prev to link queue correct again
 					next_poll = next_poll->next;
 				}
-				//kfree(this_poll);
+				
 			}
 			sched_next_for_rdma();
-			
+
 			preempt_enable();
 
 			/*//version 4
