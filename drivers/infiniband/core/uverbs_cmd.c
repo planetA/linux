@@ -1306,6 +1306,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					}
 					sched_next_poll = next_poll; //store prev to link queue correct again
 					next_poll = next_poll->next;
+					ret = ib_probe_cq(next_poll->cq);
 				}
 				pick_next_task_for_rdma(next_poll->se);
 			}
