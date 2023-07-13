@@ -1307,7 +1307,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					next_poll = next_poll->next;
 					ret = ib_probe_cq(next_poll->cq);
 				}
-				sched_next_poll->next = next_poll->next;
+				//sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
 				pick_next_task_for_rdma(next_poll->se);
 			}
 
