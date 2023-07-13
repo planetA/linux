@@ -1308,7 +1308,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					ret = ib_probe_cq(next_poll->cq);
 				}
 				sched_next_poll->next = next_poll->next;
-				//pick_next_task_for_rdma(next_poll->se);
+				pick_next_task_for_rdma(next_poll->se);
 			}
 
 sched_no_info:
