@@ -1254,7 +1254,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct cq_queue               *poll_cq;
 	struct cq_queue_element       *this_poll; //initial poll
 	struct cq_queue_element       *next_poll; //poll to probe next
-	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	//struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1293,23 +1293,21 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			this_poll->next = NULL;
 			this_poll->cq = cq; //This is a pointer - problem?
 			this_poll->se = get_cfs_current_task();
-			// pick_next_task_for_rdma(this_poll->se);
-			// sched_next_for_rdma();
 			if (poll_cq->count == 0) {
 				poll_cq->head = this_poll;
 				poll_cq->count++;
 			} else {
 				next_poll = poll_cq->head;
 				ret = ib_probe_cq(next_poll->cq);
-				while(ret != 0){					
+				while(ret != 0){			
 					if (next_poll->next == NULL){						
 						goto sched_no_info; // no probe said that there is a message
 					}
-					sched_next_poll = next_poll; //store prev to link queue correct again
+					//sched_next_poll = next_poll; //store prev to link queue correct again
 					next_poll = next_poll->next;
 					ret = ib_probe_cq(next_poll->cq);
 				}
-				// pick_next_task_for_rdma(next_poll->se);
+				pick_next_task_for_rdma(next_poll->se);
 			}
 
 sched_no_info:
