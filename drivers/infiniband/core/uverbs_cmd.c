@@ -1269,7 +1269,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	/* we copy a struct ib_uverbs_poll_cq_resp to user space */
 	header_ptr = attrs->ucore.outbuf;
 	data_ptr = header_ptr + sizeof resp;
-
+	preempt_disable();
 	memset(&resp, 0, sizeof resp);
 	while (resp.count < cmd.ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
@@ -1287,7 +1287,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 
-			preempt_disable();
+			//preempt_disable();
 			poll_cq = this_cpu_ptr(&open_cq_polls);
 			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
 			this_poll->next = NULL;
@@ -1305,14 +1305,14 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					ret = ib_probe_cq(next_poll->cq);
 				}
 				//sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
-				//pick_next_task_for_rdma(next_poll->se);
+				pick_next_task_for_rdma(next_poll->se);
 			}
 
 sched_no_info:
 			enqueue_new_cq(this_poll);
 			sched_next_for_rdma();
 
-			preempt_enable();
+			//preempt_enable();
 
 			/*//version 4
 			sched_next_poll = NULL;
@@ -1369,9 +1369,9 @@ sched_without_info:
 			break;
 		}
 		// there was a poll - is this task in the queue?
-		preempt_disable();
+		//preempt_disable();
 		dequeue_cq_poll();
-		preempt_enable();
+		//preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
@@ -1396,7 +1396,7 @@ out_put:
 				UVERBS_LOOKUP_READ);
 
 	trace_ib_uverbs_poll_cq_end(resp.count);
-
+	preempt_enable();
 	return ret;
 }
 
