@@ -1255,7 +1255,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct cq_queue_element       *this_poll; //initial poll
 	struct cq_queue_element       *next_poll; //poll to probe next
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
-	struct ib_cq				  *cq_cp;
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1292,9 +1291,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			poll_cq = this_cpu_ptr(&open_cq_polls);
 			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
 			this_poll->next = NULL;
-			cq_cp = kzalloc(sizeof(struct ib_cq), GFP_KERNEL);
-			*cq_cp = *cq;
-			this_poll->cq = cq_cp; //This is a pointer - problem?
+			this_poll->cq = cq; //This is a pointer - problem?
 			this_poll->se = get_cfs_current_task();
 			if (poll_cq->count > 0){
 				next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
