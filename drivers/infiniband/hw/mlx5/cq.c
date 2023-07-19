@@ -456,7 +456,8 @@ int mlx5_probe_one(struct ib_cq *ibcq)
 	unsigned long flags;
 	cq = to_mcq(ibcq);
 	spin_lock_irqsave(&cq->lock, flags);
-	cqe = next_cqe_sw(cq);
+	cqe = NULL;
+	//cqe = next_cqe_sw(cq);
 	spin_unlock_irqrestore(&cq->lock, flags);
 	if (!cqe)
 		return -EAGAIN;
