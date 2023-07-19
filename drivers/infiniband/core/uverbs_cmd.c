@@ -1295,14 +1295,15 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			this_poll->se = get_cfs_current_task();
 			if (poll_cq->count > 0){
 				next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
-				ret = ib_probe_cq(next_poll->cq);
+				//ret = ib_probe_cq(next_poll->cq);
+				ret = 1;
 				while(ret != 0){			
 					if (next_poll->next == NULL){						
 						goto sched_no_info; // no probe said that there is a message
 					}
 					sched_next_poll = next_poll; //store prev to link queue correct again
 					next_poll = next_poll->next;
-					ret = ib_probe_cq(next_poll->cq);
+					//ret = ib_probe_cq(next_poll->cq);
 				}
 				sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
 				//pick_next_task_for_rdma(next_poll->se);
