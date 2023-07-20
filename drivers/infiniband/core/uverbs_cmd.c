@@ -1186,38 +1186,30 @@ void dequeue_cq_poll(void){
 	struct cq_queue               *poll_cq;
 	struct cq_queue_element       *next_poll; //poll to probe next
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	struct sched_entity			  *se;
 
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
+	preempt_disable();
+	se = get_cfs_current_task();
+	preempt_enable();
 
-// TODO fix dequeue task if this task is sceduled normally and now has a message // version 4
 	if (poll_cq->count == 0)
 		return;
-	if (poll_cq->count == 1) { // is there only head in queue
-		next_poll = poll_cq->head;
-		if (next_poll->se == get_cfs_current_task()) {
-			poll_cq->head = NULL;
-			poll_cq->count--;
-			kfree(next_poll);
-		}
-	} else { // there is more than just head in queue
-		next_poll = poll_cq->head;
-		if (next_poll->se == get_cfs_current_task()) { // check if head is the current task
-			poll_cq->head = next_poll->next; // yes -> dequeue task and make next task to head
-			poll_cq->count--; // decrement count
-			kfree(next_poll);
-		} else {
-			while (next_poll->next != NULL) { // head is not current task
-				sched_next_poll = next_poll; // iterate through list
-				next_poll = next_poll->next;
-				if (next_poll->se == get_cfs_current_task()) { // is this task the current task?
-					sched_next_poll->next = next_poll->next; // yes -> dequeue task
-					poll_cq->count--; // decrement count
-					kfree(next_poll);
-					break; // if we found the task we can break (it can only be once in the queue)
-				}
+	next_poll = poll_cq->head;
+	if (next_poll != NULL && next_poll->se == se) { // is there only head in queue
+		poll_cq->head = next_poll->next;
+	} else {
+		while (next_poll->next != NULL) { // head is not current task
+			sched_next_poll = next_poll;
+			next_poll = next_poll->next;
+			if (next_poll->se == se) {
+				sched_next_poll->next = next_poll->next;
+				break;
 			}
 		}
 	}
+	poll_cq->count--;
+	kfree(next_poll);
 }
 
 void enqueue_new_cq(struct cq_queue_element *poll)
@@ -1241,6 +1233,51 @@ void enqueue_new_cq(struct cq_queue_element *poll)
 	poll_cq->count++;
 }
 
+static void ib_uverbs_no_poll(struct ib_cq* cq)
+{
+	struct cq_queue               *poll_cq;
+	struct cq_queue_element       *this_poll; //initial poll
+	struct cq_queue_element       *next_poll; //poll to probe next
+	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	int							   ret;
+
+	preempt_disable();
+	poll_cq = this_cpu_ptr(&open_cq_polls);
+	this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
+	if (!this_poll)
+		goto error_handling;
+	this_poll->next = NULL;
+	this_poll->cq = cq;
+	this_poll->se = get_cfs_current_task();
+	if (!this_poll->se)
+		goto error_handling;
+	if (poll_cq->count > 0){
+		next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
+		ret = ib_probe_cq(next_poll->cq);
+		while(ret != 0){			
+			if (next_poll->next == NULL){						
+				goto sched_no_info; // no probe said that there is a message
+			}
+			sched_next_poll = next_poll; //store prev to link queue correct again
+			next_poll = next_poll->next;
+			ret = ib_probe_cq(next_poll->cq);
+		}
+		sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
+		pick_next_task_for_rdma(next_poll->se);
+	}
+
+sched_no_info:
+	enqueue_new_cq(this_poll);
+	sched_next_for_rdma();
+	preempt_enable();
+	return;
+
+// TODO Error handling
+error_handling:
+	kfree(this_poll);
+	preempt_enable();
+}
+
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
@@ -1251,10 +1288,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	struct cq_queue               *poll_cq;
-	struct cq_queue_element       *this_poll; //initial poll
-	struct cq_queue_element       *next_poll; //poll to probe next
-	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1273,9 +1307,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	memset(&resp, 0, sizeof resp);
 	while (resp.count < cmd.ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
-		//preempt_disable();
-		//TODO disable interrupts and reenable them - disable once/enable once
-		//poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 		if (ret < 0)
 			goto out_put;
 		if (!ret) {
@@ -1286,87 +1317,12 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// sched_next_for_rdma(); //version 3
 			// preempt_enable();
 
-			preempt_disable();
-			poll_cq = this_cpu_ptr(&open_cq_polls);
-			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
-			this_poll->next = NULL;
-			this_poll->cq = cq;
-			this_poll->se = get_cfs_current_task();
-			if (poll_cq->count > 0){
-				next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
-				ret = ib_probe_cq(next_poll->cq);
-				while(ret != 0){			
-					if (next_poll->next == NULL){						
-						goto sched_no_info; // no probe said that there is a message
-					}
-					sched_next_poll = next_poll; //store prev to link queue correct again
-					next_poll = next_poll->next;
-					ret = ib_probe_cq(next_poll->cq);
-				}
-				sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
-				pick_next_task_for_rdma(next_poll->se);
-			}
-
-sched_no_info:
-			enqueue_new_cq(this_poll);
-			sched_next_for_rdma();
-
-			preempt_enable();
-
-			/*//version 4
-			sched_next_poll = NULL;
-
-			// setup current poll struct
-			this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
-			this_poll->next = NULL;
-			this_poll->cq = cq; //This is a pointer - problem?
-			this_poll->se = get_cfs_current_task(); // store the sched_entity to schedule it later
-
-			//if there is no poll yet this_poll will be head
-			if (poll_cq->count == 0) {
-				poll_cq->head = this_poll;
-				poll_cq->count++;
-				goto sched_without_info;
-			} else {
-				next_poll = poll_cq->head; //this is NULL? 
-				if (next_poll == NULL){
-					printk("\n\nSANITY CHECK\n\n");
-				}
-				printk(KERN_ALERT "here");
-				while (ib_probe_cq(next_poll->cq) == -EAGAIN) {
-					if (next_poll->next == NULL)
-						goto enqueue_new_elem; // no probe said that there is a message
-					sched_next_poll = next_poll; //store prev to link queue correct again
-					next_poll = next_poll->next;
-				}
-
-				//here you need to fix the queue. this is queue breaking if you only takeout a element in the middle
-				if (sched_next_poll != NULL)
-					sched_next_poll->next = next_poll->next; //take next_poll out of the queue and link prev->next to next->next
-				sched_next_poll = next_poll;
-
-enqueue_new_elem:
-				dequeue_cq_poll(); // dequeue if already enqueued
-				while (next_poll->next != NULL) { //we found a probe otherwise we would already satisfy
-					next_poll = next_poll->next;
-				}
-				next_poll->next = this_poll; // enqueue task at the end
-				poll_cq->count++;
-			}
-
-			//schedule sched_next_poll;
-			if (sched_next_poll != NULL){
-				pick_next_task_for_rdma(sched_next_poll->se);
-				
-				break;
-			}
-
-sched_without_info:
-			//nothing to schedule with intend
-			sched_next_for_rdma();
-			preempt_enable(); // same here remove if possible*/
+			ib_uverbs_no_poll(cq); //version 4
 			break;
 		}
+
+		// there was a poll - is this task in the queue?
+		dequeue_cq_poll();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
@@ -1374,12 +1330,6 @@ sched_without_info:
 		data_ptr += sizeof(struct ib_uverbs_wc);
 		++resp.count;
 	}
-
-	//preempt_enable(); // can you remove these?
-	// there was a poll - is this task in the queue?
-	preempt_disable();
-	dequeue_cq_poll();
-	preempt_enable();
 	if (copy_to_user(header_ptr, &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto out_put;
