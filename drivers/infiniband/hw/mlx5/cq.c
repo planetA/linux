@@ -451,14 +451,13 @@ static void mlx5_ib_poll_sw_comp(struct mlx5_ib_cq *cq, int num_entries,
 
 int mlx5_probe_one(struct ib_cq *ibcq)
 {
-	//struct mlx5_ib_cq *cq;
+	struct mlx5_ib_cq *cq;
 	void *cqe;
-	//unsigned long flags;
-	//cq = to_mcq(ibcq);
-	//spin_lock_irqsave(&cq->lock, flags);
-	cqe = NULL;
-	//cqe = next_cqe_sw(cq);
-	//spin_unlock_irqrestore(&cq->lock, flags);
+	unsigned long flags;
+	cq = to_mcq(ibcq);
+	spin_lock_irqsave(&cq->lock, flags);
+	cqe = next_cqe_sw(cq);
+	spin_unlock_irqrestore(&cq->lock, flags);
 	if (!cqe)
 		return -EAGAIN;
 	return 0;
