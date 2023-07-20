@@ -3993,7 +3993,8 @@ static inline int ib_probe_cq(struct ib_cq *cq)
 	printk(KERN_ALERT "cq = %p", cq);
 	printk("cq->device = %p", cq->device);
 	printk("cq->device->ops = %p", &(cq->device->ops));
-	printk("ops name = %c%c%c%c%c%c", cq->device->name[0],cq->device->name[1],cq->device->name[2], cq->device->name[3], cq->device->name[4], cq->device->name[5]);
+	printk("device name = %p", &(cq->device->name));
+	printk("device name chars = %c%c%c%c%c%c", cq->device->name[0],cq->device->name[1],cq->device->name[2], cq->device->name[3], cq->device->name[4], cq->device->name[5]);
 	printk("probe_one = %p", cq->device->ops.probe_one);
     return cq->device->ops.probe_one(cq);
 }
