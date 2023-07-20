@@ -1265,7 +1265,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	cq = uobj_get_obj_read(cq, UVERBS_OBJECT_CQ, cmd.cq_handle, attrs);
 	if (!cq)
 		return -EINVAL;
-
+	// there was a poll - is this task in the queue?
+	preempt_disable();
+	dequeue_cq_poll();
+	preempt_enable();
 	/* we copy a struct ib_uverbs_poll_cq_resp to user space */
 	header_ptr = attrs->ucore.outbuf;
 	data_ptr = header_ptr + sizeof resp;
@@ -1294,9 +1297,11 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			this_poll->cq = cq;
 			printk(KERN_ALERT "this poll->cq= %p", cq);
 			this_poll->se = get_cfs_current_task();
+			printk(KERN_ALERT "this poll->se= %p", this_poll->se);
 			if (poll_cq->count > 0){
 				next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
 				printk(KERN_ALERT "head poll->cq= %p", next_poll->cq);
+				printk(KERN_ALERT "head poll->se= %p", next_poll->se);
 				ret = ib_probe_cq(next_poll->cq);
 				while(ret != 0){			
 					if (next_poll->next == NULL){						
@@ -1305,7 +1310,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 					sched_next_poll = next_poll; //store prev to link queue correct again
 					next_poll = next_poll->next;
 					printk(KERN_ALERT "next poll->cq= %p", next_poll->cq);
-
+					printk(KERN_ALERT "next poll->se= %p", next_poll->se);
 					ret = ib_probe_cq(next_poll->cq);
 				}
 				sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
@@ -1372,10 +1377,6 @@ sched_without_info:
 			preempt_enable(); // same here remove if possible*/
 			break;
 		}
-		// there was a poll - is this task in the queue?
-		preempt_disable();
-		dequeue_cq_poll();
-		preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
