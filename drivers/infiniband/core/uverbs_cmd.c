@@ -1182,16 +1182,15 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 
 static DEFINE_PER_CPU(struct cq_queue, open_cq_polls); //see DEFINE_PER_CPU arc_timer.c -> arc_clockevent_device
 
-void dequeue_cq_poll(void){
+void dequeue_cq_poll(struct sched_entity *se){
 	struct cq_queue               *poll_cq;
 	struct cq_queue_element       *next_poll; //poll to probe next
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
-	struct sched_entity			  *se;
+
+	if (!se)
+		return; // TODO bug? this should not be possible. -> reset queue?
 
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
-	preempt_disable();
-	se = get_cfs_current_task();
-	preempt_enable();
 
 	if (poll_cq->count == 0)
 		return;
@@ -1218,7 +1217,7 @@ void enqueue_new_cq(struct cq_queue_element *poll)
 	struct cq_queue_element *next_poll; //poll to probe next
 
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
-	dequeue_cq_poll(); // dequeue if already enqueued
+	dequeue_cq_poll(poll->se); // dequeue if already enqueued
 	
 	next_poll = poll_cq->head;
 	if (!next_poll){
@@ -1263,7 +1262,8 @@ static void ib_uverbs_no_poll(struct ib_cq* cq)
 			ret = ib_probe_cq(next_poll->cq);
 		}
 		sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
-		pick_next_task_for_rdma(next_poll->se);
+		pick_next_task_for_rdma(next_poll->se); 			//TODO check set_next_entity again. Does preemption need to be disabled until end of poll cq;
+															//TODO test if sched next is necessary after pick_next_task_for_rdma
 	}
 
 sched_no_info:
@@ -1272,7 +1272,6 @@ sched_no_info:
 	preempt_enable();
 	return;
 
-// TODO Error handling
 error_handling:
 	kfree(this_poll);
 	preempt_enable();
@@ -1288,6 +1287,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
+	struct sched_entity			  *se;
 
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
@@ -1322,7 +1322,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		}
 
 		// there was a poll - is this task in the queue?
-		dequeue_cq_poll();
+		preempt_disable();
+		se = get_cfs_current_task();
+		preempt_enable();
+		dequeue_cq_poll(se);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;

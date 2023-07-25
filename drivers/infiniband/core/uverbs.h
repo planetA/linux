@@ -334,5 +334,5 @@ struct cq_queue {
 	int                           count;
 };
 
-void dequeue_cq_poll(void);
+void dequeue_cq_poll(struct sched_entity *se);
 #endif /* UVERBS_H */
