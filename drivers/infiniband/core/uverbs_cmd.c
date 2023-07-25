@@ -1248,6 +1248,7 @@ static void ib_uverbs_no_poll(struct ib_cq* cq)
 	int							   ret;
 
 	preempt_disable();
+	printk("preempt_enable");
 	poll_cq = this_cpu_ptr(&open_cq_polls);
 	this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
 	if (!this_poll)
@@ -1263,14 +1264,15 @@ static void ib_uverbs_no_poll(struct ib_cq* cq)
 		ret = ib_probe_cq(next_poll->cq);
 		printk("after probe");
 		while(ret != 0){			
-			if (next_poll->next == NULL){						
+			if (next_poll->next == NULL){	
+				printk("before goto");					
 				goto sched_no_info; // no probe said that there is a message
 			}
 			sched_next_poll = next_poll; //store prev to link queue correct again
 			next_poll = next_poll->next;
-			printk("before probe");
+			printk("before probe2");
 			ret = ib_probe_cq(next_poll->cq);
-			printk("after probe");
+			printk("after probe2");
 		}
 		sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
 		pick_next_task_for_rdma(next_poll->se); 			//TODO check set_next_entity again. Does preemption need to be disabled until end of poll cq;
@@ -1278,9 +1280,11 @@ static void ib_uverbs_no_poll(struct ib_cq* cq)
 	}
 
 sched_no_info:
+	printk("sched_no_info");
 	enqueue_new_cq(this_poll);
 	sched_next_for_rdma();
 	preempt_enable();
+	printk("preempt enable");
 	return;
 
 error_handling:
