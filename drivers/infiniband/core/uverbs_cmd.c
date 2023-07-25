@@ -1190,7 +1190,13 @@ void dequeue_cq_poll(struct sched_entity *se){
 	if (!se)
 		return; // TODO bug? this should not be possible. -> reset queue?
 
-	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
+	if (preemptible()){
+		preempt_disable();
+		poll_cq = this_cpu_ptr(&open_cq_polls);
+		preempt_enable();
+	} else {
+		poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
+	}
 
 	if (poll_cq->count == 0)
 		return;
@@ -1206,6 +1212,7 @@ void dequeue_cq_poll(struct sched_entity *se){
 				break;
 			}
 		}
+		next_poll = NULL;
 	}
 	poll_cq->count--;
 	kfree(next_poll);
