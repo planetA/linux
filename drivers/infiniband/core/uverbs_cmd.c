@@ -1187,6 +1187,8 @@ void dequeue_cq_poll(struct sched_entity *se){
 	struct cq_queue_element       *next_poll; //poll to probe next
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 
+	printk(KERN_ALERT "dequeue start");
+
 	if (!se)
 		return; // TODO bug? this should not be possible. -> reset queue?
 
@@ -1216,12 +1218,15 @@ void dequeue_cq_poll(struct sched_entity *se){
 	}
 	poll_cq->count--;
 	kfree(next_poll);
+	printk(KERN_ALERT "dequeue end");
 }
 
 void enqueue_new_cq(struct cq_queue_element *poll)
 {
 	struct cq_queue         *poll_cq;
 	struct cq_queue_element *next_poll; //poll to probe next
+
+	printk(KERN_ALERT "enqueue start");
 
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 	dequeue_cq_poll(poll->se); // dequeue if already enqueued
@@ -1237,6 +1242,8 @@ void enqueue_new_cq(struct cq_queue_element *poll)
 	}
 	next_poll->next = poll; // enqueue task at the end
 	poll_cq->count++;
+
+	printk(KERN_ALERT "enqueue end");
 }
 
 static void ib_uverbs_no_poll(struct ib_cq* cq)
@@ -1259,18 +1266,14 @@ static void ib_uverbs_no_poll(struct ib_cq* cq)
 		goto error_handling;
 	if (poll_cq->count > 0){
 		next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
-		printk("before probe");
 		ret = ib_probe_cq(next_poll->cq);
-		printk("after probe");
 		while(ret != 0){			
 			if (next_poll->next == NULL){					
 				goto sched_no_info; // no probe said that there is a message
 			}
 			sched_next_poll = next_poll; //store prev to link queue correct again
 			next_poll = next_poll->next;
-			printk("before probe2");
 			ret = ib_probe_cq(next_poll->cq);
-			printk("after probe2");
 		}
 		//sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
 		pick_next_task_for_rdma(next_poll->se); 			//TODO check set_next_entity again. Does preemption need to be disabled until end of poll cq;
