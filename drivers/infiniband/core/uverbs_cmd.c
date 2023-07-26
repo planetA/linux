@@ -1189,8 +1189,10 @@ void dequeue_cq_poll(struct sched_entity *se){
 
 	printk(KERN_ALERT "dequeue start");
 
-	if (!se)
+	if (!se){
+		printk(KERN_ALERT "dequeue without se");
 		return; // TODO bug? this should not be possible. -> reset queue?
+	}
 
 	if (preemptible()){
 		preempt_disable();
@@ -1200,8 +1202,10 @@ void dequeue_cq_poll(struct sched_entity *se){
 		poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 	}
 
-	if (poll_cq->count == 0)
+	if (poll_cq->count == 0){
+		printk(KERN_ALERT "dequeue end");
 		return;
+	}
 	next_poll = poll_cq->head;
 	if (next_poll != NULL && next_poll->se == se) { // is there only head in queue
 		poll_cq->head = next_poll->next;
