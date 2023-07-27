@@ -1186,6 +1186,7 @@ void dequeue_cq_poll(struct sched_entity *se){
 	struct cq_queue               *poll_cq;
 	struct cq_queue_element       *next_poll; //poll to probe next
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	int i = 0;
 
 	printk(KERN_ALERT "dequeue start");
 
@@ -1211,6 +1212,11 @@ void dequeue_cq_poll(struct sched_entity *se){
 		poll_cq->head = next_poll->next;
 	} else {
 		while (next_poll->next != NULL) { // head is not current task
+			i++;
+			if (i > 1000){
+				printk(KERN_ALERT "this is a problem");
+				break;
+			}
 			sched_next_poll = next_poll;
 			next_poll = next_poll->next;
 			if (next_poll->se == se) {
@@ -1233,14 +1239,15 @@ void enqueue_new_cq(struct cq_queue_element *poll)
 	printk(KERN_ALERT "enqueue start");
 
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
-	dequeue_cq_poll(poll->se); // dequeue if already enqueued
 	
 	next_poll = poll_cq->head;
 	if (!next_poll){
 		poll_cq->head = poll; // enqueue task at the beginning
 		poll_cq->count++;
+		printk("enqueue end");
 		return;
 	}
+	dequeue_cq_poll(poll->se); // dequeue if already enqueued
 	while (next_poll->next != NULL) { //we found a probe otherwise we would already satisfy
 		next_poll = next_poll->next;
 	}
