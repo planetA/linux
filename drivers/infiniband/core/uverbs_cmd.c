@@ -1188,25 +1188,13 @@ void dequeue_cq_poll(struct sched_entity *se){
 	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
 	int i = 0;
 
-	printk(KERN_ALERT "dequeue start");
-
-	if (!se){
-		printk(KERN_ALERT "dequeue without se");
+	if (!se)
 		return; // TODO bug? this should not be possible. -> reset queue?
-	}
 
-	if (preemptible()){
-		preempt_disable();
-		poll_cq = this_cpu_ptr(&open_cq_polls);
-		preempt_enable();
-	} else {
-		poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
-	}
+	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 
-	if (poll_cq->count == 0){
-		printk(KERN_ALERT "dequeue end");
+	if (poll_cq->count == 0)
 		return;
-	}
 	next_poll = poll_cq->head;
 	if (next_poll != NULL && next_poll->se == se) { // is there only head in queue
 		poll_cq->head = next_poll->next;
@@ -1228,7 +1216,6 @@ void dequeue_cq_poll(struct sched_entity *se){
 	}
 	poll_cq->count--;
 	kfree(next_poll);
-	printk(KERN_ALERT "dequeue end");
 }
 
 void enqueue_new_cq(struct cq_queue_element *poll)
@@ -1236,15 +1223,12 @@ void enqueue_new_cq(struct cq_queue_element *poll)
 	struct cq_queue         *poll_cq;
 	struct cq_queue_element *next_poll; //poll to probe next
 
-	printk(KERN_ALERT "enqueue start");
-
 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 	
 	next_poll = poll_cq->head;
 	if (!next_poll){
 		poll_cq->head = poll; // enqueue task at the beginning
 		poll_cq->count++;
-		printk("enqueue end");
 		return;
 	}
 	dequeue_cq_poll(poll->se); // dequeue if already enqueued
@@ -1253,8 +1237,6 @@ void enqueue_new_cq(struct cq_queue_element *poll)
 	}
 	next_poll->next = poll; // enqueue task at the end
 	poll_cq->count++;
-
-	printk(KERN_ALERT "enqueue end");
 }
 
 static void ib_uverbs_no_poll(struct ib_cq* cq)
@@ -1349,8 +1331,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		// there was a poll - is this task in the queue?
 		preempt_disable();
 		se = get_cfs_current_task();
-		preempt_enable();
 		dequeue_cq_poll(se);
+		preempt_enable();
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
