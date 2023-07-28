@@ -1254,18 +1254,26 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	if (!cur_poll->se)
 		goto err;
 	
+	if (poll_cq->count == 0){
+		poll_cq->count++;
+		list_add(cur_poll->poll_queue_head, poll_cq->head->poll_queue_head);
+		return;
+	}
+	
 	list_for_each_safe(next_item, loop_queue_buf, poll_cq->head->poll_queue_head){
 		sched_next_cq = container_of((container_of(&next_item, struct cq_poll_queue_item, poll_queue_head)), struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
-		if (ret == 0)
+		if (ret == 0){
+			__list_del_entry(next_item);
+			pick_next_task_for_rdma(sched_next_cq->poll_item.se);
 			break;
+		}
 	}
 
 	if (!next_item)
 		goto err;
 
-	list_replace(next_item, cur_poll->poll_queue_head);
-	pick_next_task_for_rdma(sched_next_cq->poll_item.se);
+	list_add(cur_poll->poll_queue_head, poll_cq->head->poll_queue_head);
 	sched_next_for_rdma();
 err:
 	spin_unlock_irqrestore(&poll_list_lock, flags);
@@ -1351,6 +1359,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		// preempt_enable();
 		spin_lock_irqsave(&poll_list_lock, flags);
 		__list_del_entry(cq->poll_item.poll_queue_head);
+		this_cpu_ptr(&open_cq_polls)->count--;
 		spin_unlock_irqrestore(&poll_list_lock, flags);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
