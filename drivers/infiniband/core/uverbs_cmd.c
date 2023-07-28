@@ -1180,109 +1180,124 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 	return 0;
 }
 
-static DEFINE_PER_CPU(struct cq_queue, open_cq_polls); //see DEFINE_PER_CPU arc_timer.c -> arc_clockevent_device
+static DEFINE_PER_CPU(struct cq_poll_queue, open_cq_polls); //see DEFINE_PER_CPU arc_timer.c -> arc_clockevent_device
 
-void dequeue_cq_poll(struct sched_entity *se){
-	struct cq_queue               *poll_cq;
-	struct cq_queue_element       *next_poll; //poll to probe next
-	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
-	int i = 0;
+// void dequeue_cq_poll(struct sched_entity *se){
+// 	struct cq_poll_queue            *poll_cq;
+// 	struct cq_poll_queue_item       *next_poll; //poll to probe next
+// 	struct cq_poll_queue_item       *sched_next_cq; //poll thats probe finished with having a message
 
-	if (!se)
-		return; // TODO bug? this should not be possible. -> reset queue?
+// 	if (!se)
+// 		return; // TODO bug? this should not be possible. -> reset queue?
 
-	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
+// 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 
-	if (poll_cq->count == 0)
-		return;
-	next_poll = poll_cq->head;
-	if (next_poll != NULL && next_poll->se == se) { // is there only head in queue
-		poll_cq->head = next_poll->next;
-	} else {
-		while (next_poll->next != NULL) { // head is not current task
-			i++;
-			if (i > 1000){
-				printk(KERN_ALERT "this is a problem");
-				break;
-			}
-			sched_next_poll = next_poll;
-			next_poll = next_poll->next;
-			if (next_poll->se == se) {
-				sched_next_poll->next = next_poll->next;
-				break;
-			}
-		}
-		next_poll = NULL;
-	}
-	poll_cq->count--;
-	kfree(next_poll);
-}
+// 	if (poll_cq->count == 0)
+// 		return;
+// 	next_poll = poll_cq->head;
+// 	if (next_poll != NULL && next_poll->se == se) { // is there only head in queue
+// 		poll_cq->head = next_poll->next;
+// 	} else {
+// 		while (next_poll->next != NULL) { // head is not current task
+// 			sched_next_cq = next_poll;
+// 			next_poll = next_poll->next;
+// 			if (next_poll->se == se) {
+// 				sched_next_cq->next = next_poll->next;
+// 				break;
+// 			}
+// 		}
+// 		next_poll = NULL;
+// 	}
+// 	poll_cq->count--;
+// 	kfree(next_poll);
+// }
 
-void enqueue_new_cq(struct cq_queue_element *poll)
-{
-	struct cq_queue         *poll_cq;
-	struct cq_queue_element *next_poll; //poll to probe next
+// void enqueue_new_cq(struct cq_poll_queue_item *poll)
+// {
+// 	struct cq_poll_queue      *poll_cq;
+// 	struct cq_poll_queue_item *next_poll; //poll to probe next
 
-	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
+// 	poll_cq = this_cpu_ptr(&open_cq_polls); //version 4
 	
-	dequeue_cq_poll(poll->se); // dequeue if already enqueued
-	next_poll = poll_cq->head;
-	if (!next_poll){
-		poll_cq->head = poll; // enqueue task at the beginning
-		poll_cq->count++;
-		return;
-	}
-	while (next_poll->next != NULL) { //we found a probe otherwise we would already satisfy
-		next_poll = next_poll->next;
-	}
-	next_poll->next = poll; // enqueue task at the end
-	poll_cq->count++;
-}
+// 	dequeue_cq_poll(poll->se); // dequeue if already enqueued
+// 	next_poll = poll_cq->head;
+// 	if (!next_poll){
+// 		poll_cq->head = poll; // enqueue task at the beginning
+// 		poll_cq->count++;
+// 		return;
+// 	}
+// 	while (next_poll->next != NULL) { //we found a probe otherwise we would already satisfy
+// 		next_poll = next_poll->next;
+// 	}
+// 	next_poll->next = poll; // enqueue task at the end
+// 	poll_cq->count++;
+// }
 
-static void ib_uverbs_no_poll(struct ib_cq* cq)
+DEFINE_SPINLOCK(poll_list_lock);
+
+static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
-	struct cq_queue               *poll_cq;
-	struct cq_queue_element       *this_poll; //initial poll
-	struct cq_queue_element       *next_poll; //poll to probe next
-	struct cq_queue_element       *sched_next_poll; //poll thats probe finished with having a message
+	struct cq_poll_queue          *poll_cq;
+	struct cq_poll_queue_item     *cur_poll;
+	struct list_head              *next_item; //poll to probe next
+	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
+	struct list_head              *loop_queue_buf;
 	int							   ret;
+	unsigned long                  flags;
 
-	preempt_disable();
+	//preempt_disable();
+	spin_lock_irqsave(&poll_list_lock, flags);
 	poll_cq = this_cpu_ptr(&open_cq_polls);
-	this_poll = kzalloc(sizeof(struct cq_queue_element), GFP_KERNEL);
-	if (!this_poll)
-		goto error_handling;
-	this_poll->next = NULL;
-	this_poll->cq = cq;
-	this_poll->se = get_cfs_current_task();
-	if (!this_poll->se)
-		goto error_handling;
-	if (poll_cq->count > 0){
-		next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
-		ret = ib_probe_cq(next_poll->cq);
-		while(ret != 0){			
-			if (next_poll->next == NULL){					
-				goto sched_no_info; // no probe said that there is a message
-			}
-			sched_next_poll = next_poll; //store prev to link queue correct again
-			next_poll = next_poll->next;
-			ret = ib_probe_cq(next_poll->cq);
-		}
-		//sched_next_poll->next = next_poll->next; //technically this should already happen after it is scheduled. When it is scheduled it should dequeue itself
-		pick_next_task_for_rdma(next_poll->se); 			//TODO check set_next_entity again. Does preemption need to be disabled until end of poll cq;
-															//TODO test if sched next is necessary after pick_next_task_for_rdma
+	cur_poll = &(cq->poll_item);
+	cur_poll->se = get_cfs_current_task();
+	
+	if (!cur_poll->se)
+		goto err;
+	
+	list_for_each_safe(next_item, loop_queue_buf, poll_cq->head->poll_queue_head){
+		sched_next_cq = container_of((container_of(&next_item, struct cq_poll_queue_item, poll_queue_head)), struct ib_cq, poll_item);
+		ret = ib_probe_cq(sched_next_cq);
+		if (ret == 0)
+			break;
 	}
 
-sched_no_info:
-	enqueue_new_cq(this_poll);
-	sched_next_for_rdma();
-	preempt_enable();
-	return;
+	if (!next_item)
+		goto err;
 
-error_handling:
-	kfree(this_poll);
-	preempt_enable();
+	list_replace(next_item, cur_poll->poll_queue_head);
+	pick_next_task_for_rdma(sched_next_cq->poll_item.se);
+	sched_next_for_rdma();
+err:
+	spin_unlock_irqrestore(&poll_list_lock, flags);
 }
+	
+
+// 	if (poll_cq->count > 0){
+// 		next_poll = poll_cq->head; 						//TODO can you check whether the current poll is the one that should be probed? doesn't need to be done
+// 		ret = ib_probe_cq(next_poll->cq);
+// 		while(ret != 0){
+// 			if (next_poll->next == NULL){
+// 				goto sched_no_info; // no probe said that there is a message
+// 			}
+// 			sched_next_cq = next_poll; //store prev to link queue correct again
+// 			next_poll = next_poll->next;
+// 			ret = ib_probe_cq(next_poll->cq);
+// 		}
+// 		pick_next_task_for_rdma(next_poll->se);
+// 	}
+
+// sched_no_info:
+// 	enqueue_new_cq(cur_poll);
+// 	sched_next_for_rdma();
+// 	//TODO do yield?
+// 	preempt_enable();
+// 	return;
+
+// err_get_cfs:
+// 	kfree(cur_poll);
+// err_alloc:	
+// 	preempt_enable();
+// }
 
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
@@ -1294,7 +1309,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	struct sched_entity			  *se;
+	unsigned long                  flags;
+	//struct sched_entity			  *se;
 
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
@@ -1324,15 +1340,18 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// sched_next_for_rdma(); //version 3
 			// preempt_enable();
 
-			ib_uverbs_no_poll(cq); //version 4
+			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
 
 		// there was a poll - is this task in the queue?
-		preempt_disable();
-		se = get_cfs_current_task();
-		dequeue_cq_poll(se);
-		preempt_enable();
+		// preempt_disable();
+		// se = get_cfs_current_task();
+		// dequeue_cq_poll(se);
+		// preempt_enable();
+		spin_lock_irqsave(&poll_list_lock, flags);
+		__list_del_entry(cq->poll_item.poll_queue_head);
+		spin_unlock_irqrestore(&poll_list_lock, flags);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
