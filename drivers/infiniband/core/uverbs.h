@@ -323,10 +323,5 @@ void copy_port_attr_to_resp(struct ib_port_attr *attr,
 			    struct ib_uverbs_query_port_resp *resp,
 			    struct ib_device *ib_dev, u8 port_num);
 
-struct cq_poll_queue {
-	struct cq_poll_queue_item     *head; //TODO init list?
-	int                            count;
-};
-
 void dequeue_cq_poll(struct sched_entity *se);
 #endif /* UVERBS_H */
