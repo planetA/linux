@@ -1181,7 +1181,7 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 }
 
 struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
-//static DEFINE_SPINLOCK(poll_list_lock);
+static DEFINE_SPINLOCK(poll_list_lock);
 
 static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
