@@ -1198,11 +1198,11 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	cur_poll->se = get_cfs_current_task();
 	
 	if (!cur_poll->se)
-		goto err;
+		goto unlock;
 
 	if (list_empty(&cq_poll_queue)){
 		list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
-		return;
+		goto unlock;
 	}
 	
 	list_for_each_safe(next_item, loop_queue_buf, &cq_poll_queue){
@@ -1216,11 +1216,11 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	}
 
 	if (!next_item)
-		goto err;
+		goto unlock;
 
 	list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
 	sched_next_for_rdma();
-err:
+unlock:
 	spin_unlock_irqrestore(&poll_list_lock, flags);
 }
 
