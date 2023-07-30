@@ -1185,43 +1185,46 @@ static DEFINE_SPINLOCK(poll_list_lock);
 
 static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
-	struct cq_poll_queue_item     *cur_poll;
-	struct list_head              *next_item; //poll to probe next
-	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
-	struct list_head              *loop_queue_buf;
-	int							   ret;
-	unsigned long                  flags;
+	printk(KERN_ALERT "cq poll_item address: %p", &cq->poll_item);
+	printk(KERN_ALERT "cq poll_queue_head address: %p", &cq->poll_item.poll_queue_head);
 
-	//preempt_disable();
-	spin_lock_irqsave(&poll_list_lock, flags);
-	cur_poll = &(cq->poll_item);
-	cur_poll->se = get_cfs_current_task();
+// 	struct cq_poll_queue_item     *cur_poll;
+// 	struct list_head              *next_item; //poll to probe next
+// 	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
+// 	struct list_head              *loop_queue_buf;
+// 	int							   ret;
+// 	unsigned long                  flags;
+
+// 	//preempt_disable();
+// 	spin_lock_irqsave(&poll_list_lock, flags);
+// 	cur_poll = &(cq->poll_item);
+// 	cur_poll->se = get_cfs_current_task();
 	
-	if (!cur_poll->se)
-		goto unlock;
+// 	if (!cur_poll->se)
+// 		goto unlock;
 
-	if (list_empty(&cq_poll_queue)){
-		list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
-		goto unlock;
-	}
+// 	if (list_empty(&cq_poll_queue)){
+// 		list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
+// 		goto unlock;
+// 	}
 	
-	list_for_each_safe(next_item, loop_queue_buf, &cq_poll_queue){
-		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
-		ret = ib_probe_cq(sched_next_cq);
-		if (ret == 0){
-			__list_del_entry(next_item);
-			pick_next_task_for_rdma(sched_next_cq->poll_item.se);
-			break;
-		}
-	}
+// 	list_for_each_safe(next_item, loop_queue_buf, &cq_poll_queue){
+// 		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
+// 		ret = ib_probe_cq(sched_next_cq);
+// 		if (ret == 0){
+// 			__list_del_entry(next_item);
+// 			pick_next_task_for_rdma(sched_next_cq->poll_item.se);
+// 			break;
+// 		}
+// 	}
 
-	if (!next_item)
-		goto unlock;
+// 	if (!next_item)
+// 		goto unlock;
 
-	list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
-	sched_next_for_rdma();
-unlock:
-	spin_unlock_irqrestore(&poll_list_lock, flags);
+// 	list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
+// 	sched_next_for_rdma();
+// unlock:
+// 	spin_unlock_irqrestore(&poll_list_lock, flags);
 }
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
