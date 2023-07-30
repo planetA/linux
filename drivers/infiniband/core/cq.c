@@ -229,8 +229,7 @@ struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private, int nr_cqe,
 	cq->poll_ctx = poll_ctx;
 	atomic_set(&cq->usecnt, 0);
 	cq->comp_vector = comp_vector;
-	cq->poll_item.poll_queue_head.prev = &cq->poll_item.poll_queue_head;
-	cq->poll_item.poll_queue_head.next = &cq->poll_item.poll_queue_head;
+	INIT_LIST_HEAD(&cq->poll_item.poll_queue_head);
 
 	cq->wc = kmalloc_array(IB_POLL_BATCH, sizeof(*cq->wc), GFP_KERNEL);
 	if (!cq->wc)

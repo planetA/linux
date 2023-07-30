@@ -1271,7 +1271,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			break;
 		}
 		spin_lock_irqsave(&poll_list_lock, flags);
-		__list_del_entry(&cq->poll_item.poll_queue_head);
+		list_del_init(&cq->poll_item.poll_queue_head);
 		spin_unlock_irqrestore(&poll_list_lock, flags);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
