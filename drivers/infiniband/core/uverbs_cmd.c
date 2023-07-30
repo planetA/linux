@@ -1181,7 +1181,7 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 }
 
 struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
-static DEFINE_SPINLOCK(poll_list_lock);
+//static DEFINE_SPINLOCK(poll_list_lock);
 
 static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
@@ -1236,7 +1236,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	unsigned long                  flags;
+	//unsigned long                  flags;
 	//struct sched_entity			  *se;
 
 	
