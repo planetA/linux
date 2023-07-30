@@ -1589,7 +1589,7 @@ enum ib_poll_context {
 };
 
 struct cq_poll_queue_item {
-	struct list_head			  *poll_queue_head;
+	struct list_head			  poll_queue_head;
 	struct sched_entity           *se;
 };
 

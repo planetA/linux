@@ -213,6 +213,7 @@ struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private, int nr_cqe,
 			    int comp_vector, enum ib_poll_context poll_ctx,
 			    const char *caller)
 {
+	LIST_HEAD(poll_list_item);
 	struct ib_cq_init_attr cq_attr = {
 		.cqe		= nr_cqe,
 		.comp_vector	= comp_vector,
@@ -229,6 +230,7 @@ struct ib_cq *__ib_alloc_cq(struct ib_device *dev, void *private, int nr_cqe,
 	cq->poll_ctx = poll_ctx;
 	atomic_set(&cq->usecnt, 0);
 	cq->comp_vector = comp_vector;
+	cq->poll_item.poll_queue_head = poll_list_item;
 
 	cq->wc = kmalloc_array(IB_POLL_BATCH, sizeof(*cq->wc), GFP_KERNEL);
 	if (!cq->wc)
