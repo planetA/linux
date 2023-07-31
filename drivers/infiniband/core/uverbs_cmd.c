@@ -1233,7 +1233,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	unsigned long                  flags;
+	//unsigned long                  flags;
 
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
@@ -1266,10 +1266,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
-		spin_lock_irqsave(&poll_list_lock, flags);
-		printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head);
-		list_del_init(&cq->poll_item.poll_queue_head);
-		spin_unlock_irqrestore(&poll_list_lock, flags);
+		// spin_lock_irqsave(&poll_list_lock, flags);
+		// printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head);
+		// list_del_init(&cq->poll_item.poll_queue_head);
+		// spin_unlock_irqrestore(&poll_list_lock, flags);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
