@@ -1188,35 +1188,32 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	struct cq_poll_queue_item     *cur_poll;
 	struct list_head              *next_item; //poll to probe next
 	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
-	//struct list_head              *loop_queue_buf;
 	int							   ret;
-	//unsigned long                  flags;
 
 	spin_lock_irq(&poll_list_lock);
 	cur_poll = &(cq->poll_item);
-	cur_poll->se = get_cfs_current_task();
-	
-	if (!cur_poll->se)
-		goto yield;
+	cur_poll->ts = get_current();
+	list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
 	
 	list_for_each(next_item, &cq_poll_queue){
+		printk(KERN_ALERT "next_item pointer = %p", next_item);
 		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
-		if (ret == 0){
-			printk(KERN_ALERT "next_item pointer = %p", next_item);
-			list_del_init(next_item);
-			pick_next_task_for_rdma(sched_next_cq->poll_item.se);
-			break;
-		}
+		if (ret)
+			continue;
+		pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
+		break;
 	}
 
-	if (!next_item)
-		goto yield;
-
-	pr_warn("add next: %px, %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev);
-	list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
-yield:
+	pr_warn("add next: %px, %px, %px, %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue);
+	spin_unlock_irq(&poll_list_lock);
 	sched_next_for_rdma();
+
+	//TODO assert
+	spin_lock_irq(&poll_list_lock);
+	printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head.prev);
+	printk(KERN_ALERT "and removing = %p", &cq->poll_item.poll_queue_head.next);
+	list_del_init(&cq->poll_item.poll_queue_head);
 	spin_unlock_irq(&poll_list_lock);
 }
 
@@ -1262,13 +1259,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
-		spin_lock_irq(&poll_list_lock);
-		if (!list_empty(&cq->poll_item.poll_queue_head)){
-			printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head.prev);
-			printk(KERN_ALERT "and removing = %p", &cq->poll_item.poll_queue_head.next);
-			list_del_init(&cq->poll_item.poll_queue_head);
-		}
-		spin_unlock_irq(&poll_list_lock);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
