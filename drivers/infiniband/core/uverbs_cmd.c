@@ -1267,8 +1267,11 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			break;
 		}
 		spin_lock_irq(&poll_list_lock);
-		printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head);
-		list_del_init(&cq->poll_item.poll_queue_head);
+		if (!list_empty(&cq->poll_item.poll_queue_head)){
+			printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head.prev);
+			printk(KERN_ALERT "and removing = %p", &cq->poll_item.poll_queue_head.next);
+			list_del_init(&cq->poll_item.poll_queue_head);
+		}
 		spin_unlock_irq(&poll_list_lock);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
