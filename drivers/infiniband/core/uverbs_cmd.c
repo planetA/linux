@@ -1198,11 +1198,6 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	
 	if (!cur_poll->se)
 		goto yield;
-
-	if (list_empty(&cq_poll_queue)){
-		list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
-		goto yield;
-	}
 	
 	list_for_each(next_item, &cq_poll_queue){
 		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
@@ -1218,6 +1213,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	if (!next_item)
 		goto yield;
 
+	pr_warn("add next: %px, %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev);
 	list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
 yield:
 	sched_next_for_rdma();
