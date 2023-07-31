@@ -1190,9 +1190,9 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
 	//struct list_head              *loop_queue_buf;
 	int							   ret;
-	unsigned long                  flags;
+	//unsigned long                  flags;
 
-	spin_lock_irqsave(&poll_list_lock, flags);
+	spin_lock_irq(&poll_list_lock);
 	cur_poll = &(cq->poll_item);
 	cur_poll->se = get_cfs_current_task();
 	
@@ -1220,8 +1220,8 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 
 	list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
 yield:
-	spin_unlock_irqrestore(&poll_list_lock, flags);
 	sched_next_for_rdma();
+	spin_unlock_irq(&poll_list_lock);
 }
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
@@ -1266,10 +1266,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
-		// spin_lock_irqsave(&poll_list_lock, flags);
-		// printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head);
-		// list_del_init(&cq->poll_item.poll_queue_head);
-		// spin_unlock_irqrestore(&poll_list_lock, flags);
+		spin_lock_irq(&poll_list_lock);
+		printk(KERN_ALERT "removing = %p", &cq->poll_item.poll_queue_head);
+		list_del_init(&cq->poll_item.poll_queue_head);
+		spin_unlock_irq(&poll_list_lock);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
