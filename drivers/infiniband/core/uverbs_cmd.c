@@ -1197,30 +1197,30 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	cur_poll->se = get_cfs_current_task();
 	
 	if (!cur_poll->se)
-		goto unlock;
+		goto yield;
 
 	if (list_empty(&cq_poll_queue)){
 		list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
-		goto unlock;
+		goto yield;
 	}
 	
 	list_for_each_safe(next_item, loop_queue_buf, &cq_poll_queue){
 		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
 		if (ret == 0){
-			__list_del_entry(next_item);
+			list_del_init(next_item);
 			pick_next_task_for_rdma(sched_next_cq->poll_item.se);
 			break;
 		}
 	}
 
 	if (!next_item)
-		goto unlock;
+		goto yield;
 
 	list_add(&cur_poll->poll_queue_head, &cq_poll_queue);
-	sched_next_for_rdma();
-unlock:
+yield:
 	spin_unlock_irqrestore(&poll_list_lock, flags);
+	sched_next_for_rdma();
 }
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
@@ -1232,8 +1232,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	//unsigned long                  flags;
-	//struct sched_entity			  *se;
+	unsigned long                  flags;
 
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
@@ -1266,9 +1265,9 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
-		// spin_lock_irqsave(&poll_list_lock, flags);
-		// list_del_init(&cq->poll_item.poll_queue_head);
-		// spin_unlock_irqrestore(&poll_list_lock, flags);
+		spin_lock_irqsave(&poll_list_lock, flags);
+		list_del_init(&cq->poll_item.poll_queue_head);
+		spin_unlock_irqrestore(&poll_list_lock, flags);
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
