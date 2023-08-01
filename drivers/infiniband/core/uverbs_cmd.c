@@ -1205,7 +1205,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		break;
 	}
 
-	//pr_warn("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
+	pr_warn("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
 	spin_unlock_irq(&poll_list_lock);
 	sched_next_for_rdma();
 
