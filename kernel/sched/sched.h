@@ -3264,5 +3264,4 @@ static inline void update_current_exec_runtime(struct task_struct *curr,
 extern void sched_next_for_rdma(void);
 extern void pick_next_task_for_rdma(struct sched_entity next);
 
-
 #endif /* _KERNEL_SCHED_SCHED_H */

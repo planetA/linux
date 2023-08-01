@@ -12497,8 +12497,10 @@ __init void init_sched_fair_class(void)
 
 extern void sched_next_for_rdma(void){
 	struct cfs_rq cfs;
+	preempt_disable();
 	cfs = (this_rq()->cfs);
 	pick_next_entity(&cfs, cfs.curr);
+	preempt_enable();
 }
 EXPORT_SYMBOL(sched_next_for_rdma);
 
