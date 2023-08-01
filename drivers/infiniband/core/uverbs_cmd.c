@@ -1196,7 +1196,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
 	
 	list_for_each(next_item, &cq_poll_queue){
-		//printk(KERN_ALERT "next_item pointer = %px", next_item);
+		printk(KERN_ALERT "next_item pointer = %px", next_item);
 		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
 		if (ret)
@@ -1205,14 +1205,14 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		break;
 	}
 
-	//pr_warn("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
+	pr_warn("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
 	spin_unlock_irq(&poll_list_lock);
 	sched_next_for_rdma();
 
 	//TODO assert
 	spin_lock_irq(&poll_list_lock);
-	//printk(KERN_ALERT "removing = %px", &cq->poll_item.poll_queue_head.prev);
-	//printk(KERN_ALERT "and removing = %px", &cq->poll_item.poll_queue_head.next);
+	printk(KERN_ALERT "removing = %px", &cq->poll_item.poll_queue_head.prev);
+	printk(KERN_ALERT "and removing = %px", &cq->poll_item.poll_queue_head.next);
 	list_del_init(&cq->poll_item.poll_queue_head);
 	spin_unlock_irq(&poll_list_lock);
 }
