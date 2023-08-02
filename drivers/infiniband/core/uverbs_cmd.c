@@ -1234,7 +1234,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	//unsigned long                  flags;
 
 	
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));

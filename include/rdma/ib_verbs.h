@@ -1622,7 +1622,7 @@ struct ib_cq {
 	 * Implementation details of the RDMA core, don't use in drivers:
 	 */
 	struct rdma_restrack_entry res;
-	struct cq_poll_queue_item  poll_item;
+	//struct cq_poll_queue_item  poll_item;
 };
 
 struct ib_srq {
@@ -3996,10 +3996,6 @@ static inline int ib_poll_cq(struct ib_cq *cq, int num_entries,
  */
 static inline int ib_probe_cq(struct ib_cq *cq)
 {
-	//printk(KERN_ALERT "cq = %p", cq);
-	//printk("device name = %p", cq->device->name);
-	//printk("device name chars = %s", cq->device->name);
-	//printk("probe_one = %p", cq->device->ops.probe_one);
     return cq->device->ops.probe_one(cq);
 }
 

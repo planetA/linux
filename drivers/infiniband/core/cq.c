@@ -393,7 +393,7 @@ static int ib_alloc_cqs(struct ib_device *dev, unsigned int nr_cqes,
 		}
 		cq->shared = true;
 		list_add_tail(&cq->pool_entry, &tmp_list);
-		INIT_LIST_HEAD(&cq->poll_item.poll_queue_head);
+		//INIT_LIST_HEAD(&cq->poll_item.poll_queue_head);
 	}
 
 	spin_lock_irq(&dev->cq_pools_lock);
