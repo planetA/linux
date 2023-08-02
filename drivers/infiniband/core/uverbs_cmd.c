@@ -1201,14 +1201,19 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		ret = ib_probe_cq(sched_next_cq);
 		if (ret)
 			continue;
-		pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
-		break;
+		//pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
+		spin_unlock_irq(&poll_list_lock);
+		ret = yield_to(sched_next_cq->poll_item.ts, true);
+		if (ret == -ESRCH)
+			continue;
+		goto dequeue;
 	}
 
 	pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
 	spin_unlock_irq(&poll_list_lock);
-	sched_next_for_rdma();
+	cond_resched();
 
+dequeue:
 	//TODO assert
 	spin_lock_irq(&poll_list_lock);
 	pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
@@ -1257,7 +1262,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 			ib_uverbs_try_yield(cq); //version 4
-			break;
+			//break;		// do i want this break or poll again?
 		}
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
