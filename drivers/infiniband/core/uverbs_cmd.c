@@ -1192,9 +1192,9 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
 	int							   ret;
 
+	spin_lock_irq(&poll_list_lock);
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
-	spin_lock_irq(&poll_list_lock);
 	list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
 	
 	list_for_each(next_item, &cq_poll_queue){
@@ -1211,10 +1211,11 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 
 	pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
 	spin_unlock_irq(&poll_list_lock);
-	if (!sched_next_cq)
+	if (!sched_next_cq){
 		cond_resched();
-	else
-		yield_to(sched_next_cq->poll_item.ts, true);
+	} else {
+		yield_to(sched_next_cq->poll_item.ts, true); //we might yield to the same task again
+	}
 
 	//TODO assert
 	spin_lock_irq(&poll_list_lock);
@@ -1263,8 +1264,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 			ib_uverbs_try_yield(cq); //version 4
-			//break;		// do i want this break or poll again?
-			continue;
+			break;		// do i want this break or poll again?
+			//continue;
 		}
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
