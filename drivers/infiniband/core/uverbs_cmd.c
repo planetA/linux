@@ -1204,8 +1204,10 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		//pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
 		spin_unlock_irq(&poll_list_lock);
 		ret = yield_to(sched_next_cq->poll_item.ts, true);
-		if (ret == -ESRCH)
+		if (ret == -ESRCH){
+			spin_lock_irq(&poll_list_lock);
 			continue;
+		}
 		goto dequeue;
 	}
 
