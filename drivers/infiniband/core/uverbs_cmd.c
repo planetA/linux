@@ -1264,7 +1264,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 			ib_uverbs_try_yield(cq); //version 4
-			//break;		// do i want this break or poll again?
+			break;		// do i want this break or poll again?
 		}
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
