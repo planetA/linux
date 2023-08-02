@@ -48,8 +48,6 @@
 #include <linux/ratelimit.h>
 #include <linux/task_work.h>
 
-#include <linux/module.h>
-
 #include <asm/switch_to.h>
 
 #include <linux/sched/cond_resched.h>
@@ -12494,19 +12492,3 @@ __init void init_sched_fair_class(void)
 #endif /* SMP */
 
 }
-
-extern void sched_next_for_rdma(void){
-	struct cfs_rq cfs;
-	preempt_disable();
-	cfs = (this_rq()->cfs);
-	pick_next_entity(&cfs, cfs.curr);
-	preempt_enable();
-}
-EXPORT_SYMBOL(sched_next_for_rdma);
-
-extern void pick_next_task_for_rdma(struct sched_entity next){
-	struct cfs_rq cfs;
-	cfs = (this_rq()->cfs);
-	set_next_entity(&cfs, &next);
-}
-EXPORT_SYMBOL(pick_next_task_for_rdma);

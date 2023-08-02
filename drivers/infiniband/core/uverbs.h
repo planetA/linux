@@ -49,7 +49,6 @@
 #include <rdma/uverbs_std_types.h>
 
 #include <linux/sched/cputime.h>
-#include "../../../kernel/sched/sched.h"
 
 #define UVERBS_MODULE_NAME ib_uverbs
 #include <rdma/uverbs_named_ioctl.h>
@@ -322,6 +321,4 @@ ib_uverbs_get_async_event(struct uverbs_attr_bundle *attrs,
 void copy_port_attr_to_resp(struct ib_port_attr *attr,
 			    struct ib_uverbs_query_port_resp *resp,
 			    struct ib_device *ib_dev, u8 port_num);
-
-void dequeue_cq_poll(struct sched_entity *se);
 #endif /* UVERBS_H */
