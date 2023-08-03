@@ -1234,7 +1234,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	int i;
 
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1263,8 +1262,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 			//ib_uverbs_try_yield(cq); //version 4
-			for (i = 0; i < 100000; i++)
-				pr_warn("added latency %i", i);
+			mdelay(10000);
+			pr_warn("slept 10s");
 			break;
 		}
 		
