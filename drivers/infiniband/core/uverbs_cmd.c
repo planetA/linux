@@ -1264,7 +1264,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 
 			//ib_uverbs_try_yield(cq); //version 4
 			for (i = 0; i < 1000; i++)
-				pr_warn("slept 10s");
+				pr_warn("slept 10s %i", i);
 			break;
 		}
 		
