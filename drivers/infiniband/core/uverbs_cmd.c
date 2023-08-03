@@ -1225,6 +1225,8 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 // 	spin_unlock_irq(&poll_list_lock);
 // }
 
+int i_poll_time_test = 0;
+
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_poll_cq       cmd;
@@ -1262,8 +1264,10 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 			//ib_uverbs_try_yield(cq); //version 4
-			mdelay(50);
-			pr_warn("slept 10s");
+			if (i_poll_time_test < 20){
+				mdelay(10000);
+				pr_warn("slept 10s");
+			}
 			break;
 		}
 		
