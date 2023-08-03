@@ -1189,14 +1189,13 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
 	struct cq_poll_queue_item     *cur_poll;
 	// struct list_head              *next_item; //poll to probe next
-	// struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
+	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
 	// int							  ret;
 
 	spin_lock_irq(&poll_list_lock);
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
 	list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
-	spin_unlock_irq(&poll_list_lock);  //remove
 	
 	// list_for_each(next_item, &cq_poll_queue){
 	// 	// pr_alert_ratelimited("next_item pointer = %px", next_item);
@@ -1211,12 +1210,12 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	// }
 
 	// // pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
-	// spin_unlock_irq(&poll_list_lock);
-	// if (!sched_next_cq){
-	// 	cond_resched();
-	// } else {
-	// 	yield_to(sched_next_cq->poll_item.ts, true); //we might yield to the same task again
-	// }
+	spin_unlock_irq(&poll_list_lock);
+	if (!sched_next_cq){
+		cond_resched();
+	} else {
+		yield_to(sched_next_cq->poll_item.ts, false); //we might yield to the same task again
+	}
 
 	//TODO assert
 	spin_lock_irq(&poll_list_lock);
