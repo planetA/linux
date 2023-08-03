@@ -1588,10 +1588,10 @@ enum ib_poll_context {
 	IB_POLL_DIRECT,		   /* caller context, no hw completions */
 };
 
-struct cq_poll_queue_item {
-	struct list_head			  poll_queue_head;
-	struct task_struct           *ts;
-};
+// struct cq_poll_queue_item {
+// 	struct list_head			  poll_queue_head;
+// 	struct task_struct           *ts;
+// };
 
 struct ib_cq {
 	struct ib_device       *device;
