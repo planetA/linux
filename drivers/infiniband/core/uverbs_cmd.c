@@ -1189,7 +1189,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
 	struct cq_poll_queue_item     *cur_poll;
 	// struct list_head              *next_item; //poll to probe next
-	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
+	struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
 	// int							  ret;
 
 	spin_lock_irq(&poll_list_lock);
