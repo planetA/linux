@@ -1180,22 +1180,23 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 	return 0;
 }
 
-// struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
+struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
 // DEFINE_PER_CPU(struct list_head, cq_poll_queue);
 // this_cpu_ptr(&cq_poll_queue) = LIST_HEAD_INIT(cq_poll_queue);
-// static DEFINE_SPINLOCK(poll_list_lock);
+static DEFINE_SPINLOCK(poll_list_lock);
 
 static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
-	// struct cq_poll_queue_item     *cur_poll;
+	struct cq_poll_queue_item     *cur_poll;
 	// struct list_head              *next_item; //poll to probe next
 	// struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
-	// int							   ret;
+	// int							  ret;
 
-	// spin_lock_irq(&poll_list_lock);
-	// cur_poll = &(cq->poll_item);
-	// cur_poll->ts = get_current();
-	// list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
+	spin_lock_irq(&poll_list_lock);
+	cur_poll = &(cq->poll_item);
+	cur_poll->ts = get_current();
+	list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
+	spin_unlock_irq(&poll_list_lock);  //remove
 	
 	// list_for_each(next_item, &cq_poll_queue){
 	// 	// pr_alert_ratelimited("next_item pointer = %px", next_item);
@@ -1217,12 +1218,12 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	// 	yield_to(sched_next_cq->poll_item.ts, true); //we might yield to the same task again
 	// }
 
-	// //TODO assert
-	// spin_lock_irq(&poll_list_lock);
-	// // pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
-	// // pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
-	// list_del_init(&cq->poll_item.poll_queue_head);
-	// spin_unlock_irq(&poll_list_lock);
+	//TODO assert
+	spin_lock_irq(&poll_list_lock);
+	// pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
+	// pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
+	list_del_init(&cq->poll_item.poll_queue_head);
+	spin_unlock_irq(&poll_list_lock);
 }
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
