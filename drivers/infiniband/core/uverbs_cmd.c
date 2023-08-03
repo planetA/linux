@@ -1267,6 +1267,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			if (i_poll_time_test < 20){
 				mdelay(10000);
 				pr_warn("slept 10s");
+				i_poll_time_test++;
 			}
 			break;
 		}
