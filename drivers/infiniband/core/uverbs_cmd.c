@@ -1185,45 +1185,45 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 // this_cpu_ptr(&cq_poll_queue) = LIST_HEAD_INIT(cq_poll_queue);
 // static DEFINE_SPINLOCK(poll_list_lock);
 
-// static void ib_uverbs_try_yield(struct ib_cq* cq)
-// {
-// 	struct cq_poll_queue_item     *cur_poll;
-// 	struct list_head              *next_item; //poll to probe next
-// 	struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
-// 	int							   ret;
+static void ib_uverbs_try_yield(struct ib_cq* cq)
+{
+	// struct cq_poll_queue_item     *cur_poll;
+	// struct list_head              *next_item; //poll to probe next
+	// struct ib_cq                  *sched_next_cq; //poll thats probe finished with having a message
+	// int							   ret;
 
-// 	spin_lock_irq(&poll_list_lock);
-// 	cur_poll = &(cq->poll_item);
-// 	cur_poll->ts = get_current();
-// 	list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
+	// spin_lock_irq(&poll_list_lock);
+	// cur_poll = &(cq->poll_item);
+	// cur_poll->ts = get_current();
+	// list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
 	
-// 	list_for_each(next_item, &cq_poll_queue){
-// 		// pr_alert_ratelimited("next_item pointer = %px", next_item);
-// 		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
-// 		ret = ib_probe_cq(sched_next_cq);
-// 		if (!ret)
-// 			break;
-// 		//pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
-// 		// spin_unlock_irq(&poll_list_lock);
-// 		// ret = yield_to(sched_next_cq->poll_item.ts, true);
-// 		// goto dequeue;
-// 	}
+	// list_for_each(next_item, &cq_poll_queue){
+	// 	// pr_alert_ratelimited("next_item pointer = %px", next_item);
+	// 	sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
+	// 	ret = ib_probe_cq(sched_next_cq);
+	// 	if (!ret)
+	// 		break;
+	// 	//pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
+	// 	// spin_unlock_irq(&poll_list_lock);
+	// 	// ret = yield_to(sched_next_cq->poll_item.ts, true);
+	// 	// goto dequeue;
+	// }
 
-// 	// pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
-// 	spin_unlock_irq(&poll_list_lock);
-// 	if (!sched_next_cq){
-// 		cond_resched();
-// 	} else {
-// 		yield_to(sched_next_cq->poll_item.ts, true); //we might yield to the same task again
-// 	}
+	// // pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
+	// spin_unlock_irq(&poll_list_lock);
+	// if (!sched_next_cq){
+	// 	cond_resched();
+	// } else {
+	// 	yield_to(sched_next_cq->poll_item.ts, true); //we might yield to the same task again
+	// }
 
-// 	//TODO assert
-// 	spin_lock_irq(&poll_list_lock);
-// 	// pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
-// 	// pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
-// 	list_del_init(&cq->poll_item.poll_queue_head);
-// 	spin_unlock_irq(&poll_list_lock);
-// }
+	// //TODO assert
+	// spin_lock_irq(&poll_list_lock);
+	// // pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
+	// // pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
+	// list_del_init(&cq->poll_item.poll_queue_head);
+	// spin_unlock_irq(&poll_list_lock);
+}
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
@@ -1234,7 +1234,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	int i;
 
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1262,9 +1261,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// sched_next_for_rdma(); //version 3
 			// preempt_enable();
 
-			//ib_uverbs_try_yield(cq); //version 4
-			for (i = 0; i < 1000; i++)
-				pr_warn("slept 10s %i", i);
+			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
 		

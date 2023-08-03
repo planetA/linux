@@ -1588,10 +1588,10 @@ enum ib_poll_context {
 	IB_POLL_DIRECT,		   /* caller context, no hw completions */
 };
 
-// struct cq_poll_queue_item {
-// 	struct list_head			  poll_queue_head;
-// 	struct task_struct           *ts;
-// };
+struct cq_poll_queue_item {
+	struct list_head			  poll_queue_head;
+	struct task_struct           *ts;
+};
 
 struct ib_cq {
 	struct ib_device       *device;
@@ -1622,7 +1622,7 @@ struct ib_cq {
 	 * Implementation details of the RDMA core, don't use in drivers:
 	 */
 	struct rdma_restrack_entry res;
-	//struct cq_poll_queue_item  poll_item;
+	struct cq_poll_queue_item  poll_item;
 };
 
 struct ib_srq {
