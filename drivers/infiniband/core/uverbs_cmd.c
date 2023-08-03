@@ -1263,8 +1263,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 			//ib_uverbs_try_yield(cq); //version 4
-			for (i = 0; i < 100; i++)
-				pr_warn("added latency");
+			for (i = 0; i < 100000; i++)
+				pr_warn("added latency %i", i);
 			break;
 		}
 		
