@@ -3260,4 +3260,5 @@ static inline void update_current_exec_runtime(struct task_struct *curr,
 	curr->se.exec_start = now;
 	cgroup_account_cputime(curr, delta_exec);
 }
-#endif /* _KERNEL_SCHED_SCHED_H */
+
+#endif /* _KERNEL_SCHED_SCHED_H */ 
