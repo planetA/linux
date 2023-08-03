@@ -1262,7 +1262,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// preempt_enable();
 
 			//ib_uverbs_try_yield(cq); //version 4
-			mdelay(10000);
+			mdelay(10);
 			pr_warn("slept 10s");
 			break;
 		}
