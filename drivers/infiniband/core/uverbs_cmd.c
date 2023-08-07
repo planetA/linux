@@ -37,9 +37,7 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
-#include <linux/sched/cputime.h>
-#include <linux/percpu-defs.h>
-#include <linux/preempt.h>
+// #include <linux/percpu-defs.h>
 
 #include <linux/uaccess.h>
 
@@ -1180,49 +1178,51 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 	return 0;
 }
 
-struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
+// struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
+// static DEFINE_SPINLOCK(poll_list_lock);
+
 // DEFINE_PER_CPU(struct list_head, cq_poll_queue);
 // this_cpu_ptr(&cq_poll_queue) = LIST_HEAD_INIT(cq_poll_queue);
-static DEFINE_SPINLOCK(poll_list_lock);
+// DEFINE_PER_CPU(struct spinlock, poll_list_lock); 
 
 static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
-	struct cq_poll_queue_item     *cur_poll;
-	struct list_head              *next_item; //poll to probe next
-	struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
-	int							  ret;
+	// struct cq_poll_queue_item     *cur_poll;
+	// struct list_head              *next_item; //poll to probe next
+	// struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
+	// int							  ret;
 
-	spin_lock_irq(&poll_list_lock);
-	cur_poll = &(cq->poll_item);
-	cur_poll->ts = get_current();
-	list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
+	// spin_lock_irq(&poll_list_lock);
+	// cur_poll = &(cq->poll_item);
+	// cur_poll->ts = get_current();
+	// list_add_tail(&cur_poll->poll_queue_head, &cq_poll_queue);
 	
-	list_for_each(next_item, &cq_poll_queue){
-		// pr_alert_ratelimited("next_item pointer = %px", next_item);
-		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
-		ret = ib_probe_cq(sched_next_cq);
-		if (!ret)
-			break;
-		//pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
-		// spin_unlock_irq(&poll_list_lock);
-		// ret = yield_to(sched_next_cq->poll_item.ts, true);
-		// goto dequeue;
-	}
+	// list_for_each(next_item, &cq_poll_queue){
+	// 	// pr_alert_ratelimited("next_item pointer = %px", next_item);
+	// 	sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
+	// 	ret = ib_probe_cq(sched_next_cq);
+	// 	if (!ret)
+	// 		break;
+	// 	//pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
+	// 	// spin_unlock_irq(&poll_list_lock);
+	// 	// ret = yield_to(sched_next_cq->poll_item.ts, true);
+	// 	// goto dequeue;
+	// }
 
-	// // pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
-	spin_unlock_irq(&poll_list_lock);
-	if (!sched_next_cq || sched_next_cq == cq){
-		cond_resched();
-	} else {
-		yield_to(sched_next_cq->poll_item.ts, false); //we might yield to the same task again
-	}
+	// // // pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
+	// spin_unlock_irq(&poll_list_lock);
+	// if (!sched_next_cq || sched_next_cq == cq){
+	// 	cond_resched();
+	// } else {
+	// 	yield_to(sched_next_cq->poll_item.ts, false); //we might yield to the same task again
+	// }
 
-	//TODO assert
-	spin_lock_irq(&poll_list_lock);
-	// pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
-	// pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
-	list_del_init(&cq->poll_item.poll_queue_head);
-	spin_unlock_irq(&poll_list_lock);
+	// //TODO assert
+	// spin_lock_irq(&poll_list_lock);
+	// // pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
+	// // pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
+	// list_del_init(&cq->poll_item.poll_queue_head);
+	// spin_unlock_irq(&poll_list_lock);
 }
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
@@ -1244,11 +1244,11 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	cq = uobj_get_obj_read(cq, UVERBS_OBJECT_CQ, cmd.cq_handle, attrs);
 	if (!cq)
 		return -EINVAL;
-	
+
 	/* we copy a struct ib_uverbs_poll_cq_resp to user space */
 	header_ptr = attrs->ucore.outbuf;
 	data_ptr = header_ptr + sizeof resp;
-	
+
 	memset(&resp, 0, sizeof resp);
 	while (resp.count < cmd.ne) {
 		ret = ib_poll_cq(cq, 1, &wc);
@@ -1265,7 +1265,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
-		
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
 			goto out_put;
