@@ -1185,8 +1185,9 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 // // this_cpu_ptr(&cq_poll_queue) = LIST_HEAD_INIT(cq_poll_queue);
 // static DEFINE_SPINLOCK(poll_list_lock);
 
-// static void ib_uverbs_try_yield(struct ib_cq* cq)
-// {
+static void ib_uverbs_try_yield(struct ib_cq* cq)
+{
+	pr_warn("we are here");
 // 	struct cq_poll_queue_item     *cur_poll;
 // 	struct list_head              *next_item; //poll to probe next
 // 	struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
@@ -1223,7 +1224,7 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 // 	// pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
 // 	list_del_init(&cq->poll_item.poll_queue_head);
 // 	spin_unlock_irq(&poll_list_lock);
-// }
+}
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
@@ -1262,7 +1263,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			// sched_next_for_rdma(); //version 3
 			// preempt_enable();
 
-			//ib_uverbs_try_yield(cq); //version 4
+			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
 		
