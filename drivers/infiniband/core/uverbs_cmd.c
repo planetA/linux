@@ -1200,7 +1200,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	poll_list_lock_cpu = this_cpu_ptr(&poll_list_lock);
 	cq_poll_queue_cpu = this_cpu_ptr(&cq_poll_queue);
 	if (!cq_poll_queue_cpu->next)
-		INIT_LIST_HEAD(cq_poll_queue_cpu->next);
+		INIT_LIST_HEAD(cq_poll_queue_cpu);
 	preempt_enable();
 	spin_lock_irq(poll_list_lock_cpu);
 	cur_poll = &(cq->poll_item);
