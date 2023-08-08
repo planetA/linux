@@ -1250,7 +1250,6 @@ static DEFINE_PER_CPU(struct spinlock, poll_list_lock);
 struct list_head* get_poll_queue(void)
 {
 	if (!(this_cpu_ptr(&cq_poll_queue)->next)){
-		pr_alert("queue was not initialized");
 		INIT_LIST_HEAD(this_cpu_ptr(&cq_poll_queue));
 	}
 	return this_cpu_ptr(&cq_poll_queue);
@@ -1259,7 +1258,6 @@ struct list_head* get_poll_queue(void)
 struct spinlock* get_poll_list_lock(void)
 {
 	if (!(this_cpu_ptr(&poll_list_lock))){
-		pr_alert("lock was not initialized");
 		spin_lock_init(this_cpu_ptr(&poll_list_lock));
 	}
 	return this_cpu_ptr(&poll_list_lock);
@@ -1331,11 +1329,14 @@ out:
 
 static void __exit ib_uverbs_cleanup(void)
 {
-	int cpu;
+	int               cpu;
+	struct list_head *pos;
 	
 	for_each_possible_cpu(cpu){
-		kfree(&per_cpu(cq_poll_queue, cpu));
-		kfree(&per_cpu(poll_list_lock, cpu));
+		list_for_each(pos, &per_cpu(cq_poll_queue, cpu)){
+			__list_del_entry(pos);
+		}
+		__list_del_entry(&per_cpu(cq_poll_queue, cpu));
 	}
 
 	ib_unregister_client(&uverbs_client);
