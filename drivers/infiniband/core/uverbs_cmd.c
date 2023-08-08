@@ -1182,25 +1182,20 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 // struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
 // static DEFINE_SPINLOCK(poll_list_lock);
 
-static DEFINE_PER_CPU(struct list_head, cq_poll_queue) = LIST_HEAD_INIT(cq_poll_queue);
-static DEFINE_PER_CPU(struct spinlock, poll_list_lock) = __SPIN_LOCK_UNLOCKED(poll_list_lock); 
+
 
 static void ib_uverbs_try_yield(struct ib_cq* cq)
 {
 	struct cq_poll_queue_item     *cur_poll;
-	struct list_head              *next_item; //poll to probe next
+	struct list_head              *next_item;
 	struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
 	int							   ret;
 	struct spinlock *poll_list_lock_cpu;
 	struct list_head *cq_poll_queue_cpu;
 
-
-	//you need to disable preemption and list init did not work aswell
 	preempt_disable();
-	poll_list_lock_cpu = this_cpu_ptr(&poll_list_lock);
-	cq_poll_queue_cpu = this_cpu_ptr(&cq_poll_queue);
-	if (!cq_poll_queue_cpu->next)
-		INIT_LIST_HEAD(cq_poll_queue_cpu);
+	poll_list_lock_cpu = get_poll_list_lock();
+	cq_poll_queue_cpu = get_poll_queue();
 	preempt_enable();
 	spin_lock_irq(poll_list_lock_cpu);
 	cur_poll = &(cq->poll_item);
@@ -1208,29 +1203,21 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 	
 	list_for_each(next_item, cq_poll_queue_cpu){
-		// pr_alert_ratelimited("next_item pointer = %px", next_item);
 		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
 		if (!ret)
 			break;
-		//pick_next_task_for_rdma(sched_next_cq->poll_item.ts->se);
-		// spin_unlock_irq(&poll_list_lock);
-		// ret = yield_to(sched_next_cq->poll_item.ts, true);
-		// goto dequeue;
 	}
 
-	// // pr_alert_ratelimited("add next: %px, prev: %px, head: %px, queue: %px, poll: %px", cur_poll->poll_queue_head.next, cur_poll->poll_queue_head.prev, &cur_poll->poll_queue_head, &cq_poll_queue, cur_poll);
 	spin_unlock_irq(poll_list_lock_cpu);
 	if (!sched_next_cq || sched_next_cq == cq){
 		cond_resched();
 	} else {
-		yield_to(sched_next_cq->poll_item.ts, false); //we might yield to the same task again
+		yield_to(sched_next_cq->poll_item.ts, false);
 	}
 
 	//TODO assert
 	spin_lock_irq(poll_list_lock_cpu);
-	// pr_alert_ratelimited("removing = %px", &cq->poll_item.poll_queue_head.prev);
-	// pr_alert_ratelimited("and removing = %px", &cq->poll_item.poll_queue_head.next);
 	list_del_init(&cq->poll_item.poll_queue_head);
 	spin_unlock_irq(poll_list_lock_cpu);
 }
