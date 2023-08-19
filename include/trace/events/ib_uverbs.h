@@ -129,6 +129,59 @@ TRACE_EVENT(ib_uverbs_probe_return,
 
 );
 
+TRACE_EVENT(ib_uverbs_probe_before_yield_to,
+    TP_PROTO(pid_t pid_to, pid_t pid_from),
+
+    TP_ARGS(pid_to, pid_from),
+
+    TP_STRUCT__entry(
+        __field(pid_t, pid_to)
+        __field(pid_t, pid_from)
+    ),
+
+    TP_fast_assign(
+        __entry->pid_to = pid_to;
+        __entry->pid_from = pid_from;
+    ),
+
+    TP_printk("before %i yield_to %i", __entry->pid_from, __entry->pid_to)
+
+);
+
+TRACE_EVENT(ib_uverbs_probe_before_cond_resched,
+    TP_PROTO(pid_t pid_from),
+
+    TP_ARGS(pid_from),
+
+    TP_STRUCT__entry(
+        __field(pid_t, pid_from)
+    ),
+
+    TP_fast_assign(
+        __entry->pid_from = pid_from;
+    ),
+
+    TP_printk("before %i cond_resched", __entry->pid_from)
+
+);
+
+TRACE_EVENT(ib_uverbs_probe_after_yield,
+    TP_PROTO(pid_t pid),
+
+    TP_ARGS(pid),
+
+    TP_STRUCT__entry(
+        __field(pid_t, pid)
+    ),
+
+    TP_fast_assign(
+        __entry->pid = pid;
+    ),
+
+    TP_printk("after yield %i returned", __entry->pid)
+
+);
+
 #endif /* _IB_UVERBS_TRACEPOINT_H */
 
 /* This part must be outside protection */
