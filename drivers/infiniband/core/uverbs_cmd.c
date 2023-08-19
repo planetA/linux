@@ -1207,7 +1207,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
         next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
 		sched_next_cq = container_of(next_queue_item, struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
-		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret);
+		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret, cur_poll->ts->pid);
 		if (!ret)
 			break;
 	}
