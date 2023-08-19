@@ -1249,17 +1249,15 @@ static DEFINE_PER_CPU(struct spinlock, poll_list_lock);
 
 struct list_head* get_poll_queue(void)
 {
-	if (!(this_cpu_ptr(&cq_poll_queue)->next)){
+	if (!(this_cpu_ptr(&cq_poll_queue)->next))
 		INIT_LIST_HEAD(this_cpu_ptr(&cq_poll_queue));
-	}
 	return this_cpu_ptr(&cq_poll_queue);
 }
 
 struct spinlock* get_poll_list_lock(void)
 {
-	if (!(this_cpu_ptr(&poll_list_lock))){
+	if (!(this_cpu_ptr(&poll_list_lock)))
 		spin_lock_init(this_cpu_ptr(&poll_list_lock));
-	}
 	return this_cpu_ptr(&poll_list_lock);
 }
 

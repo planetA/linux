@@ -1190,8 +1190,9 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	struct list_head              *next_item;
 	struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
 	int							   ret;
-	struct spinlock *poll_list_lock_cpu;
-	struct list_head *cq_poll_queue_cpu;
+	struct spinlock               *poll_list_lock_cpu;
+	struct list_head              *cq_poll_queue_cpu;
+	struct cq_poll_queue_item     *next_queue_item;
 
 	preempt_disable();
 	poll_list_lock_cpu = get_poll_list_lock();
@@ -1203,8 +1204,10 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 	
 	list_for_each(next_item, cq_poll_queue_cpu){
-		sched_next_cq = container_of(container_of(next_item, struct cq_poll_queue_item, poll_queue_head), struct ib_cq, poll_item);
+        next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
+		sched_next_cq = container_of(next_queue_item, struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
+		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret);
 		if (!ret)
 			break;
 	}
