@@ -449,6 +449,20 @@ static void mlx5_ib_poll_sw_comp(struct mlx5_ib_cq *cq, int num_entries,
 	}
 }
 
+static void *probe_sw_cqe(struct mlx5_ib_cq *cq, int n)
+{
+	void *cqe = get_cqe(cq, n & cq->ibcq.cqe);
+	struct mlx5_cqe64 *cqe64;
+
+	cqe64 = (cq->mcq.cqe_sz == 64) ? cqe : cqe + 64;
+
+	if (likely(get_cqe_opcode(cqe64) != MLX5_CQE_INVALID)) {
+		return cqe;
+	} else {
+		return NULL;
+	}
+}
+
 int mlx5_probe_one(struct ib_cq *ibcq)
 {
 	struct mlx5_ib_cq *cq;
@@ -456,7 +470,7 @@ int mlx5_probe_one(struct ib_cq *ibcq)
 	unsigned long flags;
 	cq = to_mcq(ibcq);
 	spin_lock_irqsave(&cq->lock, flags);
-	cqe = next_cqe_sw(cq);
+	cqe = probe_sw_cqe(cq, cq->mcq.cons_index);
 	spin_unlock_irqrestore(&cq->lock, flags);
 	if (!cqe)
 		return -EAGAIN;
