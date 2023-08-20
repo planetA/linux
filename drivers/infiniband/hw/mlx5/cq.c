@@ -452,7 +452,15 @@ static void mlx5_ib_poll_sw_comp(struct mlx5_ib_cq *cq, int num_entries,
 static void *probe_sw_cqe(struct mlx5_ib_cq *cq, int n)
 {
 	void *cqe = get_cqe(cq, n & cq->ibcq.cqe);
-	return cqe;
+	struct mlx5_cqe64 *cqe64;
+
+	cqe64 = (cq->mcq.cqe_sz == 64) ? cqe : cqe + 64;
+
+	if (likely(get_cqe_opcode(cqe64) != MLX5_CQE_INVALID)) {
+		return cqe;
+	} else {
+		return NULL;
+	}
 }
 
 int mlx5_probe_one(struct ib_cq *ibcq)
