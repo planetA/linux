@@ -1201,7 +1201,8 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	spin_lock_irq(poll_list_lock_cpu);
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
-	//list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
+	if (list_is_singular(&cur_poll->poll_queue_head))
+		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 	
 	list_for_each(next_item, cq_poll_queue_cpu){
         next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
