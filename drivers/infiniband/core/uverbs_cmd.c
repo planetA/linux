@@ -1208,6 +1208,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	cur_poll->ts = get_current();
 	// if (list_is_singular(&cur_poll->poll_queue_head)){
 		// pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
+	list_del_init(&cur_poll->poll_queue_head);
 	list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 		// pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
 	// }
