@@ -1198,23 +1198,22 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	pr_alert_ratelimited("enter try");
 	poll_list_lock_cpu = get_poll_list_lock();
 	cq_poll_queue_cpu = get_poll_queue();
+	// pr_alert_ratelimited("leave try");
+	preempt_enable();
+	// pr_alert_ratelimited("between try");
+	spin_lock_irq(poll_list_lock_cpu);
+	// pr_alert_ratelimited("enter try 2");
 	
-
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
-	if (list_is_singular(&cur_poll->poll_queue_head)){
-		pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
-		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
-		pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
-	}
-	pr_alert_ratelimited("leave try");
-	preempt_enable();
-	pr_alert_ratelimited("between try");
-	spin_lock_irq(poll_list_lock_cpu);
-	pr_alert_ratelimited("enter try 2");
-	pr_alert_ratelimited("enter loop");
+	// if (list_is_singular(&cur_poll->poll_queue_head)){
+		// pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
+	list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
+		// pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
+	// }
+	// pr_alert_ratelimited("enter loop");
 	list_for_each(next_item, cq_poll_queue_cpu){
-		pr_alert_ratelimited("looping");
+		// pr_alert_ratelimited("looping");
         next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
 		sched_next_cq = container_of(next_queue_item, struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
@@ -1222,7 +1221,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		if (!ret)
 			break;
 	}
-	pr_alert_ratelimited("leave try2");
+	// pr_alert_ratelimited("leave try2");
 	spin_unlock_irq(poll_list_lock_cpu);
 	if (!sched_next_cq || sched_next_cq == cq){
 		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
@@ -1248,8 +1247,8 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 	struct ib_cq                  *cq;
 	struct ib_wc                   wc;
 	int                            ret;
-	struct spinlock               *poll_list_lock_cpu;
-	struct list_head              *cq_poll_queue_cpu;
+	// struct spinlock               *poll_list_lock_cpu;
+	// struct list_head              *cq_poll_queue_cpu;
 
 	ret = uverbs_request(attrs, &cmd, sizeof(cmd));
 	if (ret)
@@ -1282,20 +1281,19 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			break;
 		}
 
-		if (!list_is_singular(&cq->poll_item.poll_queue_head)){
-			// pr_alert_ratelimited("not empty");
-			preempt_disable();
-			pr_alert_ratelimited("enter rm");
+		// if (!list_is_singular(&cq->poll_item.poll_queue_head)){
+		// 	// pr_alert_ratelimited("not empty");
+		// 	preempt_disable();
+		// 	pr_alert_ratelimited("enter rm");
+		// 	poll_list_lock_cpu = get_poll_list_lock();
+		// 	cq_poll_queue_cpu = get_poll_queue();
+		// 	preempt_enable();
+		// 	spin_lock_irq(poll_list_lock_cpu);
+		// 	list_del_init(&cq->poll_item.poll_queue_head);
+		// 	spin_unlock_irq(poll_list_lock_cpu);
+		// 	pr_alert_ratelimited("leave rm");
 
-			poll_list_lock_cpu = get_poll_list_lock();
-			cq_poll_queue_cpu = get_poll_queue();
-			// spin_lock_irq(poll_list_lock_cpu);
-			list_del_init(&cq->poll_item.poll_queue_head);
-			// spin_unlock_irq(poll_list_lock_cpu);
-			pr_alert_ratelimited("leave rm");
-
-			preempt_enable();
-		}
+		// }
 		
 
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
