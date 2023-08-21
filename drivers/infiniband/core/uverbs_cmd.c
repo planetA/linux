@@ -1272,6 +1272,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		}
 
 		if (!list_empty(&cq->poll_item.poll_queue_head)){
+			pr_alert("not empty");
 			preempt_disable();
 			poll_list_lock_cpu = get_poll_list_lock();
 			cq_poll_queue_cpu = get_poll_queue();
