@@ -12490,5 +12490,15 @@ __init void init_sched_fair_class(void)
 	zalloc_cpumask_var(&nohz.idle_cpus_mask, GFP_NOWAIT);
 #endif
 #endif /* SMP */
-
 } 
+
+extern void force_yield_for_rdma(struct task_struct *ts)
+{
+	int flags = 0;
+	preempt_disable();
+	dequeue_task_fair(ts->se.cfs_rq->rq, ts, flags);
+	ts->se.vruntime+=30;
+	enqueue_task_fair(ts->se.cfs_rq->rq, ts, flags);
+	preempt_enable();
+}
+EXPORT_SYMBOL(force_yield_for_rdma);
