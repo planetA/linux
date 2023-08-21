@@ -1212,9 +1212,9 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 	}
 	
-	// pr_alert_ratelimited("enter loop");
+	pr_alert_ratelimited("enter loop");
 	list_for_each(next_item, cq_poll_queue_cpu){
-
+		pr_alert_ratelimited("looping");
         next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
 		sched_next_cq = container_of(next_queue_item, struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
@@ -1222,7 +1222,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		if (!ret)
 			break;
 	}
-	// pr_alert_ratelimited("leave try2");
+	pr_alert_ratelimited("leave try2");
 	spin_unlock_irq(poll_list_lock_cpu);
 	if (!sched_next_cq || sched_next_cq == cq){
 		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
