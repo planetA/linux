@@ -1197,8 +1197,8 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	preempt_disable();
 	poll_list_lock_cpu = get_poll_list_lock();
 	cq_poll_queue_cpu = get_poll_queue();
-	preempt_enable();
-	spin_lock_irq(poll_list_lock_cpu);
+	
+	// spin_lock_irq(poll_list_lock_cpu);
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
 	if (list_is_singular(&cur_poll->poll_queue_head))
@@ -1213,7 +1213,8 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 			break;
 	}
 
-	spin_unlock_irq(poll_list_lock_cpu);
+	// spin_unlock_irq(poll_list_lock_cpu);
+	preempt_enable();
 	if (!sched_next_cq || sched_next_cq == cq){
 		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
 		cond_resched();
@@ -1273,14 +1274,14 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		}
 
 		if (!list_is_singular(&cq->poll_item.poll_queue_head)){
-			pr_alert("not empty");
+			pr_alert_ratelimited("not empty");
 			preempt_disable();
 			poll_list_lock_cpu = get_poll_list_lock();
 			cq_poll_queue_cpu = get_poll_queue();
-			preempt_enable();
-			spin_lock_irq(poll_list_lock_cpu);
+			// spin_lock_irq(poll_list_lock_cpu);
 			list_del_init(&cq->poll_item.poll_queue_head);
-			spin_unlock_irq(poll_list_lock_cpu);
+			// spin_unlock_irq(poll_list_lock_cpu);
+			preempt_enable();
 		}
 		
 
