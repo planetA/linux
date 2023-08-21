@@ -1198,20 +1198,20 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	pr_alert_ratelimited("enter try");
 	poll_list_lock_cpu = get_poll_list_lock();
 	cq_poll_queue_cpu = get_poll_queue();
+	
+
+	cur_poll = &(cq->poll_item);
+	cur_poll->ts = get_current();
+	if (list_is_singular(&cur_poll->poll_queue_head)){
+		pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
+		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
+		pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head, &cur_poll->poll_queue_head.next, &cur_poll->poll_queue_head.prev);
+	}
 	pr_alert_ratelimited("leave try");
 	preempt_enable();
 	pr_alert_ratelimited("between try");
 	spin_lock_irq(poll_list_lock_cpu);
 	pr_alert_ratelimited("enter try 2");
-
-	cur_poll = &(cq->poll_item);
-	cur_poll->ts = get_current();
-	if (list_is_singular(&cur_poll->poll_queue_head)){
-		pr_alert_ratelimited("added stuff %px, %px, %px", &cur_poll->poll_queue_head,&cur_poll->poll_queue_head.next,&cur_poll->poll_queue_head.prev);
-
-		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
-	}
-	
 	pr_alert_ratelimited("enter loop");
 	list_for_each(next_item, cq_poll_queue_cpu){
 		pr_alert_ratelimited("looping");
