@@ -12497,7 +12497,7 @@ extern void force_yield_for_rdma(struct task_struct *ts)
 	int flags = 0;
 	preempt_disable();
 	dequeue_task_fair(ts->se.cfs_rq->rq, ts, flags);
-	ts->se.vruntime+=30;
+	ts->se.vruntime+=3000;
 	enqueue_task_fair(ts->se.cfs_rq->rq, ts, flags);
 	preempt_enable();
 }
