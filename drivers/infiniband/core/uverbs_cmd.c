@@ -1271,7 +1271,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			break;
 		}
 
-		if (!list_empty(&cq->poll_item.poll_queue_head)){
+		if (!list_is_singular(&cq->poll_item.poll_queue_head)){
 			pr_alert("not empty");
 			preempt_disable();
 			poll_list_lock_cpu = get_poll_list_lock();
