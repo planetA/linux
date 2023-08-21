@@ -12495,10 +12495,11 @@ __init void init_sched_fair_class(void)
 extern void force_yield_for_rdma(struct task_struct *ts)
 {
 	int flags = 0;
+	struct rq = ts->se.cfs_rq->rq;
 	//preempt_disable();
-	dequeue_task_fair(ts->se.cfs_rq->rq, ts, flags);
+	dequeue_task_fair(rq, ts, flags);
 	ts->se.vruntime+=1;
-	enqueue_task_fair(ts->se.cfs_rq->rq, ts, flags);
+	enqueue_task_fair(rq, ts, flags);
 	//preempt_enable();
 }
 EXPORT_SYMBOL(force_yield_for_rdma);
