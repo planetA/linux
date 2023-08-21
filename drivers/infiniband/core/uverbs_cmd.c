@@ -1206,8 +1206,10 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
-	if (&cur_poll->poll_queue_head == cur_poll->poll_queue_head.next && &cur_poll->poll_queue_head == cur_poll->poll_queue_head.prev)
+	if (&cur_poll->poll_queue_head == cur_poll->poll_queue_head.next && &cur_poll->poll_queue_head == cur_poll->poll_queue_head.prev){
+		pr_alert_ratelimited("added stuff");
 		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
+	}
 	
 	// pr_alert_ratelimited("enter loop");
 	list_for_each(next_item, cq_poll_queue_cpu){
