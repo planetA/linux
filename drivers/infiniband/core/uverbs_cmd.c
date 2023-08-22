@@ -1206,19 +1206,19 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
 	if(!list_is_singular(&cur_poll->poll_queue_head))
-		list_del_init(&cur_poll->poll_queue_head);
+		// list_del_init(&cur_poll->poll_queue_head);
 	list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 
 	list_for_each(next_item, cq_poll_queue_cpu){
 		backup++;
-		pr_alert("next_item = %px, %px, %px", next_item, next_item->next, next_item->prev);
+		pr_alert("next_item = %px, %px, %px, cq_queue_head = %px", next_item, next_item->next, next_item->prev, cq_poll_queue_cpu);
         next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
 		sched_next_cq = container_of(next_queue_item, struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
 		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret);
 		if (!ret){
 			spin_lock_irq(poll_list_lock_cpu);
-			list_del_init(next_item);
+			// list_del_init(next_item);
 	        spin_unlock_irq(poll_list_lock_cpu);
 			break;
 		}
