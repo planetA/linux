@@ -1192,7 +1192,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	struct cq_poll_queue_item     *cur_poll;
 	struct list_head              *next_item;
 	struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
-	int							   ret;
+	int							   ret = 1;
 	struct spinlock               *poll_list_lock_cpu;
 	struct list_head              *cq_poll_queue_cpu;
 	struct cq_poll_queue_item     *next_queue_item;
@@ -1219,14 +1219,14 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	}
 
 	spin_unlock_irq(poll_list_lock_cpu);
-	if (!sched_next_cq || sched_next_cq == cq){
-		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
-		cond_resched();
-	} else {
+	if (!ret){
 		trace_ib_uverbs_probe_before_yield_to(sched_next_cq->poll_item.ts->pid, cur_poll->ts->pid);
 		yield_to(sched_next_cq->poll_item.ts, false);
+		trace_ib_uverbs_probe_after_yield(cur_poll->ts->pid);
+	} else {
+		trace_ib_uverbs_probe_before_cond_resched();
+		cond_resched();
 	}
-	trace_ib_uverbs_probe_after_yield(cur_poll->ts->pid);
 
 	//TODO assert
 	// spin_lock_irq(poll_list_lock_cpu);
