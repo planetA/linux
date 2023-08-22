@@ -1223,9 +1223,6 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		ret = ib_probe_cq(sched_next_cq);
 		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret);
 		if (!ret){
-			spin_lock_irq(poll_list_lock_cpu);
-			list_del_init(next_item);
-			spin_unlock_irq(poll_list_lock_cpu);
 			trace_ib_uverbs_probe_before_yield_to(sched_next_cq->poll_item.ts->pid, cur_poll->ts->pid);
 			yield_to(sched_next_cq->poll_item.ts, false);
 			break;
@@ -1235,7 +1232,9 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	trace_ib_uverbs_probe_after_yield(cur_poll->ts->pid);
 
 	//TODO assert
-	
+	spin_lock_irq(poll_list_lock_cpu);
+	list_del_init(next_item);
+	spin_unlock_irq(poll_list_lock_cpu);
 }
 
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
