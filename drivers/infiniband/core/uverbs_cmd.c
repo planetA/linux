@@ -1206,7 +1206,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
 	pr_alert("before add");
-	if(list_empty(&cur_poll->poll_queue_head) || &cur_poll->poll_queue_head.next == NULL)
+	if(list_empty(&cur_poll->poll_queue_head) || cur_poll->poll_queue_head.next == NULL)
 		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 
 	list_for_each(next_item, cq_poll_queue_cpu){
