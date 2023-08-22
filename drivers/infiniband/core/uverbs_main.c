@@ -1268,11 +1268,9 @@ void dequeue_cq_poll(struct ib_cq *cq)
 
 	if (!list_empty(&cq->poll_item.poll_queue_head) && cq->poll_item.poll_queue_head.next != NULL){
 		preempt_disable();
-		// pr_alert_ratelimited("enter rm");
 		poll_list_lock_cpu = get_poll_list_lock();
 		cq_poll_queue_cpu = get_poll_queue();
 		preempt_enable();
-		// pr_alert("rm next_item = %px, %px, %px, cq_queue_head = %px", &cq->poll_item.poll_queue_head, &cq->poll_item.poll_queue_head.next, &cq->poll_item.poll_queue_head.prev, cq_poll_queue_cpu);
 		spin_lock_irq(poll_list_lock_cpu);
 		list_del_init(&cq->poll_item.poll_queue_head);
 		spin_unlock_irq(poll_list_lock_cpu);
