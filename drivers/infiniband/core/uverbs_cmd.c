@@ -1284,7 +1284,7 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 			poll_list_lock_cpu = get_poll_list_lock();
 			cq_poll_queue_cpu = get_poll_queue();
 			preempt_enable();
-			pr_alert("next_item = %px, %px, %px, cq_queue_head = %px", &cq->poll_item.poll_queue_head, &cq->poll_item.poll_queue_head.next, &cq->poll_item.poll_queue_head.prev, cq_poll_queue_cpu);
+			pr_alert("rm next_item = %px, %px, %px, cq_queue_head = %px", &cq->poll_item.poll_queue_head, &cq->poll_item.poll_queue_head.next, &cq->poll_item.poll_queue_head.prev, cq_poll_queue_cpu);
 			spin_lock_irq(poll_list_lock_cpu);
 			list_del_init(&cq->poll_item.poll_queue_head);
 			spin_unlock_irq(poll_list_lock_cpu);
