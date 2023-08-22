@@ -1216,7 +1216,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret);
 		if (!ret)
 			break;
-		if (backup > 1000){
+		if (backup > 10){
 			pr_alert("backup break");
 			break;
 		}
