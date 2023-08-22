@@ -1233,7 +1233,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 
 	//TODO assert
 	spin_lock_irq(poll_list_lock_cpu);
-	list_del_init(cur_poll);
+	list_del_init(&cur_poll->poll_queue_head);
 	spin_unlock_irq(poll_list_lock_cpu);
 }
 
