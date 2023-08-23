@@ -109,27 +109,27 @@ TRACE_EVENT(ib_uverbs_ioctl_end,
 );
 
 TRACE_EVENT(ib_uverbs_probe_return,
-    TP_PROTO(pid_t pid, int probe_return, int count, unsigned long cqp),// pid_t calling_pid),
+    TP_PROTO(pid_t pid, int probe_return),// pid_t calling_pid),
 
-    TP_ARGS(pid, probe_return, count, cqp), //calling_pid),
+    TP_ARGS(pid, probe_return), //calling_pid),
 
 	TP_STRUCT__entry(
         __field(pid_t, pid)
         __field(int, probe_return)
-		__field(int, count)
-		__field(unsigned long, cqp)
+		// __field(int, count)
+		// __field(unsigned long, cqp)
         //__field(pid_t, calling_pid)
     ),
 
     TP_fast_assign(
         __entry->pid = pid;
         __entry->probe_return = probe_return;
-		__entry->count = count;
-		__entry->cqp = cqp;
+		// __entry->count = count;
+		// __entry->cqp = cqp;
         //__entry->calling_pid = calling_pid;
     ),
 
-    TP_printk("probe returned: %i for pid: %i, with count: %i, for cq = %lu", __entry->probe_return, __entry->pid, __entry->count, __entry->cqp)
+    TP_printk("probe returned: %i for pid: %i", __entry->probe_return, __entry->pid)
 
 );
 

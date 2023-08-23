@@ -1196,7 +1196,6 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	struct spinlock               *poll_list_lock_cpu;
 	struct list_head              *cq_poll_queue_cpu;
 	struct cq_poll_queue_item     *next_queue_item;
-	int                           count = 0;
 
 
 
@@ -1212,11 +1211,10 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	}
 
 	list_for_each(next_item, cq_poll_queue_cpu){
-		count++;
         next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
 		sched_next_cq = container_of(next_queue_item, struct ib_cq, poll_item);
 		ret = ib_probe_cq(sched_next_cq);
-		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret, count, (unsigned long) sched_next_cq);
+		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret);
 		if (!ret)
 			break;
 	}
@@ -1227,7 +1225,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 		yield_to(sched_next_cq->poll_item.ts, false);
 	} else {
 		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
-		// cond_resched();
+		cond_resched();
 	}
 	trace_ib_uverbs_probe_after_yield(cur_poll->ts->pid);
 
