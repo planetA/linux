@@ -40,9 +40,6 @@
 #include <linux/percpu-defs.h>
 #include <linux/preempt.h>
 
-#include <linux/sched/cputime.h>
-#include <../../../kernel/sched/sched.h>
-
 #include <linux/uaccess.h>
 
 #include <rdma/uverbs_types.h>
