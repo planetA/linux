@@ -1203,7 +1203,8 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	spin_lock_irq(poll_list_lock_cpu);
 	cur_poll = &(cq->poll_item);
 	cur_poll->ts = get_current();
-	if(list_empty(&cur_poll->poll_queue_head) || cur_poll->poll_queue_head.next == NULL){
+	BUG_ON(cur_poll->poll_queue_head.next == NULL);
+	if(list_empty(&cur_poll->poll_queue_head)){
 		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
 	}
 
@@ -1217,12 +1218,12 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	}
 
 	spin_unlock_irq(poll_list_lock_cpu);
-	if (!ret){
+	if (!ret && sched_next_cq != cq){
 		trace_ib_uverbs_probe_before_yield_to(sched_next_cq->poll_item.ts->pid, cur_poll->ts->pid);
 		yield_to(sched_next_cq->poll_item.ts, false);
-	} else {
+	} else if (sched_next_cq != cq) {
 		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
-		cond_resched();
+		// cond_resched();
 	}
 	trace_ib_uverbs_probe_after_yield(cur_poll->ts->pid);
 

@@ -1266,7 +1266,8 @@ void dequeue_cq_poll(struct ib_cq *cq)
 	struct spinlock               *poll_list_lock_cpu;
 	struct list_head              *cq_poll_queue_cpu;
 
-	if (!list_empty(&cq->poll_item.poll_queue_head) && cq->poll_item.poll_queue_head.next != NULL){
+	BUG_ON(cq->poll_item.poll_queue_head.next == NULL);
+	if (!list_empty(&cq->poll_item.poll_queue_head)){
 		preempt_disable();
 		poll_list_lock_cpu = get_poll_list_lock();
 		cq_poll_queue_cpu = get_poll_queue();
