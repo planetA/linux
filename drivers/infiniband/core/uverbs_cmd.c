@@ -1220,6 +1220,7 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	spin_unlock_irq(poll_list_lock_cpu);
 	if (!ret && sched_next_cq != cq){
 		trace_ib_uverbs_probe_before_yield_to(sched_next_cq->poll_item.ts->pid, cur_poll->ts->pid);
+		cond_resched();
 		yield_to(sched_next_cq->poll_item.ts, false);
 	} else if (sched_next_cq != cq) {
 		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
