@@ -11,7 +11,7 @@
 enum rdmacg_resource_type {
 	RDMACG_RESOURCE_HCA_HANDLE,
 	RDMACG_RESOURCE_HCA_OBJECT,
-	RDMACG_RESOURCE_BPS_SEND_MAX,
+	RDMACG_RESOURCE_GBPS_SEND_MAX,
 	RDMACG_RESOURCE_MAX,
 };
 
@@ -47,5 +47,15 @@ int rdmacg_try_charge(struct rdma_cgroup **rdmacg,
 void rdmacg_uncharge(struct rdma_cgroup *cg,
 		     struct rdmacg_device *device,
 		     enum rdmacg_resource_type index);
+
+/* APIs for RDMA/IB stack to traffic control pool specific resources */
+struct rdma_cgroup *rdmacg_accounting_start(struct rdmacg_device *device);
+int rdmacg_accounting_add(struct rdma_cgroup *cg, struct rdmacg_device *device,
+			  enum rdmacg_resource_type index, int usage);
+int rdmacg_accounting_charge(struct rdma_cgroup *cg,
+				 struct rdmacg_device *device,
+				 enum rdmacg_resource_type index);
+int rdmacg_accounting_end(struct rdma_cgroup *cg, struct rdmacg_device *device,
+			  enum rdmacg_resource_type index);
 #endif	/* CONFIG_CGROUP_RDMA */
 #endif	/* _CGROUP_RDMA_H */

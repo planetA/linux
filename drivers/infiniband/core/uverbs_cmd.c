@@ -1988,10 +1988,13 @@ static void *alloc_wr(size_t wr_size, __u32 num_sge)
 
 static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 {
+	struct ib_ucontext             *ucontext;
+	struct rdmacg_device           *cg_device;
 	struct ib_uverbs_post_send      cmd;
 	struct ib_uverbs_post_send_resp resp;
 	struct ib_uverbs_send_wr       *user_wr;
 	struct ib_send_wr              *wr = NULL, *last, *next;
+	struct rdma_cgroup	       *cgrp;
 	const struct ib_send_wr	       *bad_wr;
 	struct ib_qp                   *qp;
 	int                             i, sg_ind;
@@ -2026,6 +2029,26 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		goto out;
 	}
 
+	ucontext = attrs->context;
+	if (!ucontext) {
+		pr_err("ucontext is NULL\n");
+		ret = -EINVAL;
+		goto out_put;
+	}
+
+	cg_device = &ucontext->device->cg_device;
+	if (!cg_device) {
+		pr_err("cg_device is NULL\n");
+		ret = -EINVAL;
+		goto out_put;
+	}
+
+	cgrp = rdmacg_accounting_start(cg_device);
+	if (IS_ERR(cgrp)) {
+		ret = PTR_ERR(cgrp);
+		goto out_put;
+	}
+
 	is_ud = qp->qp_type == IB_QPT_UD;
 	sg_ind = 0;
 	last = NULL;
@@ -2033,12 +2056,12 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		if (copy_from_user(user_wr, wqes + i * cmd.wqe_size,
 				   cmd.wqe_size)) {
 			ret = -EFAULT;
-			goto out_put;
+			goto out_cg;
 		}
 
 		if (user_wr->num_sge + sg_ind > cmd.sge_count) {
 			ret = -EINVAL;
-			goto out_put;
+			goto out_cg;
 		}
 
 		if (is_ud) {
@@ -2047,14 +2070,14 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if (user_wr->opcode != IB_WR_SEND &&
 			    user_wr->opcode != IB_WR_SEND_WITH_IMM) {
 				ret = -EINVAL;
-				goto out_put;
+				goto out_cg;
 			}
 
 			next_size = sizeof(*ud);
 			ud = alloc_wr(next_size, user_wr->num_sge);
 			if (!ud) {
 				ret = -ENOMEM;
-				goto out_put;
+				goto out_cg;
 			}
 
 			ud->ah = uobj_get_obj_read(ah, UVERBS_OBJECT_AH,
@@ -2062,7 +2085,7 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if (!ud->ah) {
 				kfree(ud);
 				ret = -EINVAL;
-				goto out_put;
+				goto out_cg;
 			}
 			ud->remote_qpn = user_wr->wr.ud.remote_qpn;
 			ud->remote_qkey = user_wr->wr.ud.remote_qkey;
@@ -2077,7 +2100,7 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			rdma = alloc_wr(next_size, user_wr->num_sge);
 			if (!rdma) {
 				ret = -ENOMEM;
-				goto out_put;
+				goto out_cg;
 			}
 
 			rdma->remote_addr = user_wr->wr.rdma.remote_addr;
@@ -2092,7 +2115,7 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			atomic = alloc_wr(next_size, user_wr->num_sge);
 			if (!atomic) {
 				ret = -ENOMEM;
-				goto out_put;
+				goto out_cg;
 			}
 
 			atomic->remote_addr = user_wr->wr.atomic.remote_addr;
@@ -2108,11 +2131,11 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			next = alloc_wr(next_size, user_wr->num_sge);
 			if (!next) {
 				ret = -ENOMEM;
-				goto out_put;
+				goto out_cg;
 			}
 		} else {
 			ret = -EINVAL;
-			goto out_put;
+			goto out_cg;
 		}
 
 		if (user_wr->opcode == IB_WR_SEND_WITH_IMM ||
@@ -2136,18 +2159,34 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		next->send_flags = user_wr->send_flags;
 
 		if (next->num_sge) {
+			int sg_i;
+
 			next->sg_list = (void *) next +
 				ALIGN(next_size, sizeof(struct ib_sge));
 			if (copy_from_user(next->sg_list, sgls + sg_ind,
 					   next->num_sge *
 						   sizeof(struct ib_sge))) {
 				ret = -EFAULT;
-				goto out_put;
+				goto out_cg;
+			}
+
+			for (sg_i = 0; sg_i < next->num_sge; sg_i++) {
+				ret = rdmacg_accounting_add(
+					cgrp, cg_device,
+					RDMACG_RESOURCE_GBPS_SEND_MAX,
+					next->sg_list[sg_i].length);
+				if (ret)
+					goto out_cg;
 			}
 			sg_ind += next->num_sge;
 		} else
 			next->sg_list = NULL;
 	}
+
+	ret = rdmacg_accounting_charge(cgrp, cg_device,
+				       RDMACG_RESOURCE_GBPS_SEND_MAX);
+	if (ret)
+		goto out_cg;
 
 	if (trace_qp_post_send_wr_enabled()) {
 		struct ib_send_wr *w;
@@ -2180,6 +2219,9 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 	ret2 = uverbs_response(attrs, &resp, sizeof(resp));
 	if (ret2)
 		ret = ret2;
+
+out_cg:
+	rdmacg_accounting_end(cgrp, cg_device, RDMACG_RESOURCE_GBPS_SEND_MAX);
 
 out_put:
 	rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
