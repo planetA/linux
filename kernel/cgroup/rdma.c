@@ -35,15 +35,18 @@ enum rdmacg_file_type {
  * added/defined at IB verb/core layer.
  */
 static char const *rdmacg_resource_names[] = {
-	[RDMACG_RESOURCE_HCA_HANDLE]	= "hca_handle",
-	[RDMACG_RESOURCE_HCA_OBJECT]	= "hca_object",
-	[RDMACG_RESOURCE_BPS_SEND_MAX]  = "bps_send_max",
+	[RDMACG_RESOURCE_HCA_HANDLE] = "hca_handle",
+	[RDMACG_RESOURCE_HCA_OBJECT] = "hca_object",
+	[RDMACG_RESOURCE_GBPS_SEND_MAX] = "gbps_send_max",
 };
 
 /* resource tracker for each resource of rdma cgroup */
 struct rdmacg_resource {
-	int max;
-	int usage;
+	s64 max;
+	s64 usage;
+	s64 requested;
+
+	ktime_t last_update;
 };
 
 /*
@@ -303,6 +306,306 @@ err:
 	return ret;
 }
 EXPORT_SYMBOL(rdmacg_try_charge);
+
+/**
+ * rdmacg_accounting_start - start hierarchical accounting of the rdma resource.
+ *
+ * @device: pointer to rdmacg device
+ *
+ * This function follows accounting resource in hierarchical way. It the new
+ * value to exceed the hierarchical limit, the subsequent rdmacg_throttle will
+ * delay the call. The function locks the rdmacg_mutex, if initialization is
+ * successful.
+ *
+ * If successful, returns pointer to rdma cgroup which will own this resource,
+ * otherwise -EAGAIN, -ENOMEM or -EINVAL.
+ *
+ * The function allocates resource pool in the hierarchy for each parent it come
+ * across for first resource. Later on resource pool will be available.
+ * Therefore it will be much faster thereon to initialization.
+ */
+struct rdma_cgroup *rdmacg_accounting_start(struct rdmacg_device *device)
+{
+	struct rdma_cgroup *cg = NULL, *p;
+	struct rdmacg_resource_pool *rpool;
+	int ret = 0;
+
+	lockdep_assert_not_held(&rdmacg_mutex);
+
+	/*
+	 * hold on to css, as cgroup can be removed but resource
+	 * accounting happens on css.
+	 */
+	cg = get_current_rdmacg();
+
+	mutex_lock(&rdmacg_mutex);
+	for (p = cg; p; p = parent_rdmacg(p)) {
+		rpool = get_cg_rpool_locked(p, device);
+		if (IS_ERR(rpool)) {
+			ret = PTR_ERR(rpool);
+			goto err;
+		}
+	}
+
+	return cg;
+
+err:
+	mutex_unlock(&rdmacg_mutex);
+	return ERR_PTR(ret);
+}
+EXPORT_SYMBOL(rdmacg_accounting_start);
+
+/**
+ * rdmacg_accounting_add - hierarchically account for the usage of the rdma
+ * resource
+ * @rdmacg: pointer to rdma cgroup which will own this resource
+ * @device: pointer to rdmacg device
+ * @index: index of the resource to charge in cgroup (resource pool)
+ * @requested: requested usage of the resource
+ *
+ * This function follows adds usage of the resource in hierarchical way. It will
+ * not fail if the charge would cause the new value to exceed the hierarchical
+ * limit.
+ *
+ * Returns 0 if the charge succeeded, otherwise -EAGAIN, -ENOMEM or -EINVAL.
+ *
+ * Accounting needs to consider resources on two criteria. (a) per cgroup & (b) per
+ * device resource usage. Per cgroup resource usage ensures that tasks of cgroup
+ * doesn't cross the configured limits. Per device provides granular
+ * configuration in multi device usage.
+ */
+int rdmacg_accounting_add(struct rdma_cgroup *rdmacg,
+			  struct rdmacg_device *device,
+			  enum rdmacg_resource_type index, int requested)
+{
+	struct rdma_cgroup *p;
+	struct rdmacg_resource_pool *rpool;
+	s64 new;
+
+	lockdep_assert_held(&rdmacg_mutex);
+
+	if (index >= RDMACG_RESOURCE_MAX)
+		return -EINVAL;
+
+	for (p = rdmacg; p; p = parent_rdmacg(p)) {
+		rpool = get_cg_rpool_locked(p, device);
+		if (IS_ERR(rpool)) {
+			// We checked rpools before, it is a bug if it fails.
+			WARN(IS_ERR(rpool), "Invalid device %p or rdma cgroup %p\n",
+			     p, device);
+
+			return PTR_ERR(rpool);
+		}
+
+		new = rpool->resources[index].requested + requested;
+		rpool->resources[index].requested = new;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(rdmacg_accounting_add);
+
+static int rdmacg_accounting_commit(struct rdma_cgroup *rdmacg,
+			  struct rdmacg_device *device,
+			  enum rdmacg_resource_type index)
+{
+	struct rdma_cgroup *p;
+	struct rdmacg_resource_pool *rpool;
+
+	lockdep_assert_held(&rdmacg_mutex);
+
+	BUG_ON(index >= RDMACG_RESOURCE_MAX);
+
+	for (p = rdmacg; p; p = parent_rdmacg(p)) {
+		rpool = get_cg_rpool_locked(p, device);
+		BUG_ON(IS_ERR(rpool));
+
+		rpool->resources[index].usage += rpool->resources[index].requested;
+	}
+
+	return 0;
+}
+
+/**
+ * rdmacg_accounting_try_charge - hierarchically try to charge the accounted
+ * rdma resource
+ *
+ * @rdmacg: pointer to rdma cgroup which will own this resource
+ * @device: pointer to rdmacg device
+ * @index: index of the resource to charge in cgroup (resource pool)
+ *
+ * This function follows charging for accounted resource in hierarchical way. If
+ * the accounted value exceeds the allocated quota, the function will sleep to
+ * gather more quota. If successful, the function unlocks the rdmacg_mutex.
+ *
+ *  Returns 0 if the charge succeeded, otherwise -EAGAIN, -ENOMEM or -EINVAL.
+ */
+int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
+			     struct rdmacg_device *device,
+			     enum rdmacg_resource_type index)
+{
+	struct rdma_cgroup *p;
+	struct rdmacg_resource_pool *rpool;
+	int ret = 0;
+
+	lockdep_assert_held(&rdmacg_mutex);
+
+	if (index >= RDMACG_RESOURCE_MAX)
+		return -EINVAL;
+
+	for (p = rdmacg; p; p = parent_rdmacg(p)) {
+		const u64 window_size = 200;
+		ktime_t t_0, t_1, w, dt;
+		s64 c_0, c_1, l, r_1, d_1;
+		u64 lw_div;
+		u32 lw_mod;
+
+		rpool = get_cg_rpool_locked(p, device);
+		if (IS_ERR(rpool)) {
+			// We checked rpools before, it is a bug if it fails.
+			WARN(IS_ERR(rpool),
+			     "Invalid device %p or rdma cgroup %p\n", p,
+			     device);
+
+			ret = PTR_ERR(rpool);
+			goto err;
+		}
+
+		/*
+		* We update the resource usage. For that we need to record the
+		* timestamp of the previous update T_0. We guarantee the
+		* bandwidth of the resource usage over the time interval W.
+		* Overall the resource limit is L. This means that the resource
+		* recovery rate is R = L / W.
+		*
+		* Before we block on the resource we update the commited
+		* resource usage to the current time T_1. We can then calculate
+		* the depreciated C_0 at time T_1, which would depreciate to 0
+		* over the time interval W as:
+		*
+		*  C_0 - L / W * (T_1 - T_0)
+		*
+		* The commited resource cannot go below 0.
+		*
+		* Now we need to calculate the new commited amount. For that, we
+		* need to account for the requested resource usage R_1 we are
+		* trying to charge now.
+		*
+		* C_1 = max(0, C_0 - L / W * (T_1 - T_0)) + R_1
+		*
+		* Now, we need to sleep until the commited resource "melts"
+		* below the limit.
+		*
+		* Considering that we need to do integer division, we need to be
+		* a bit more careful. We rewrite part of the equation as:
+		*
+		* L div W * dT + L mod W * dT / W, where dT = T_1 - T_0
+		*/
+
+		w = ms_to_ktime(window_size);
+
+		r_1 = rpool->resources[index].requested;
+		/*
+		 * Need to ensure we have no overflow, so we put one 1024
+		 * outside. Also divide by 8, because limit is set in bits, but
+		 * accounting goes in bytes.
+		 */
+		l = div_s64(rpool->resources[index].max * 1024 * 1024 / 8 * w, NSEC_PER_SEC) * 1024;
+		lw_div = div_u64_rem(l, w, &lw_mod);
+
+		c_0 = rpool->resources[index].usage;
+		t_0 = rpool->resources[index].last_update;
+
+		t_1 = ktime_get();
+		dt = ktime_sub(t_1, t_0);
+
+		if (dt > w)
+			d_1 = 0;
+		else
+			d_1 = c_0 - lw_div * dt - div64_s64(dt * (u64) lw_mod, w);
+
+
+		c_1 = max(0LL, d_1) + r_1;
+
+		// pr_err("rate limiter variables: c_0=%lld, c_1=%lld, r_1=%lld, l=%lld, w=%lld, lw_div=%lld, lw_mod=%u, d_1=%lld\n",
+		// 	c_0, c_1, r_1, l, w, lw_div, lw_mod, d_1);
+		// pr_err("Time stamps: t_0=%lld, t_1=%lld, dt=%lld\n",
+		// 	t_0, t_1, dt);
+
+		/* If depreciated + requested is bigger than limit, we need to
+		 * wait. But if depreciated is already below zero, we cannot
+		 * depreciate further, so we let the communication through.
+	         */
+		while ((d_1 + r_1 > l) && (d_1 > 0) && (l != S32_MAX)) {
+			// pr_err("rate limiter variables: c_0=%lld, c_1=%lld, r_1=%lld, l=%lld, w=%lld, lw_div=%lld, lw_mod=%u, d_1=%lld\n",
+			// 	c_0, c_1, r_1, l, w, lw_div, lw_mod, d_1);
+
+			schedule_timeout_interruptible(
+				msecs_to_jiffies(20));
+			c_0 = d_1;
+			t_0 = t_1;
+
+			t_1 = ktime_get();
+			dt = ktime_sub(t_1, t_0);
+
+			pr_err("Time stamps: t_0=%lld, t_1=%lld, dt=%lld\n",
+				t_0, t_1, dt);
+
+			if (dt > w)
+				d_1 = 0;
+			else
+				d_1 = c_0 - lw_div * dt - div64_s64(lw_mod * dt, w);
+
+			/*
+		         * Check for signals and kill conditions while holding
+			 * wait_lock. This ensures the lock cancellation is
+			 * ordered against mutex_unlock() and wake-ups do not go
+			 * missing.
+			 */
+			if (signal_pending_state(TASK_INTERRUPTIBLE, current)) {
+				ret = -EINTR;
+				break;
+			}
+		}
+
+		rpool->resources[index].usage = max(0LL, d_1);
+		rpool->resources[index].last_update = t_1;
+
+		if (ret)
+			goto err;
+	}
+
+	rdmacg_accounting_commit(rdmacg, device, index);
+
+	return 0;
+
+err:
+	return ret;
+}
+EXPORT_SYMBOL(rdmacg_accounting_charge);
+
+int rdmacg_accounting_end(struct rdma_cgroup *rdmacg,
+			     struct rdmacg_device *device,
+			     enum rdmacg_resource_type index)
+{
+	struct rdma_cgroup *p;
+	struct rdmacg_resource_pool *rpool;
+
+	lockdep_assert_held(&rdmacg_mutex);
+
+	BUG_ON(index >= RDMACG_RESOURCE_MAX);
+
+	for (p = rdmacg; p; p = parent_rdmacg(p)) {
+		rpool = get_cg_rpool_locked(p, device);
+		BUG_ON(IS_ERR(rpool));
+
+		rpool->resources[index].requested = 0;
+	}
+
+	mutex_unlock(&rdmacg_mutex);
+	return 0;
+}
+EXPORT_SYMBOL(rdmacg_accounting_end);
 
 /**
  * rdmacg_register_device - register rdmacg device to rdma controller.
