@@ -37,6 +37,7 @@ enum rdmacg_file_type {
 static char const *rdmacg_resource_names[] = {
 	[RDMACG_RESOURCE_HCA_HANDLE]	= "hca_handle",
 	[RDMACG_RESOURCE_HCA_OBJECT]	= "hca_object",
+	[RDMACG_RESOURCE_BPS_SEND_MAX]  = "bps_send_max",
 };
 
 /* resource tracker for each resource of rdma cgroup */
