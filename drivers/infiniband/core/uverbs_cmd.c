@@ -1218,10 +1218,10 @@ static void ib_uverbs_try_yield(struct ib_cq* cq)
 	}
 
 	spin_unlock_irq(poll_list_lock_cpu);
-	if (!ret && sched_next_cq != cq){
+	if (!ret && next_queue_item->ts->pid != cur_poll->ts->pid){
 		trace_ib_uverbs_probe_before_yield_to(sched_next_cq->poll_item.ts->pid, cur_poll->ts->pid);
 		yield_to(sched_next_cq->poll_item.ts, false);
-	} else if (sched_next_cq != cq) {
+	} else if (next_queue_item->ts->pid != cur_poll->ts->pid) {
 		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
 		cond_resched();
 	}
