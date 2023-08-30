@@ -14,6 +14,7 @@
 #include <linux/cgroup.h>
 #include <linux/parser.h>
 #include <linux/cgroup_rdma.h>
+#include <linux/delay.h>
 
 #define RDMACG_MAX_STR "max"
 
@@ -537,11 +538,22 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 		 * depreciate further, so we let the communication through.
 	         */
 		while ((d_1 + r_1 > l) && (d_1 > 0) && (l != S32_MAX)) {
-			// pr_err("rate limiter variables: c_0=%lld, c_1=%lld, r_1=%lld, l=%lld, w=%lld, lw_div=%lld, lw_mod=%u, d_1=%lld\n",
-			// 	c_0, c_1, r_1, l, w, lw_div, lw_mod, d_1);
+			/* We need to wait out until overflow credits expire to continue */
+			s64 overflow;
+			s64 timeout;
 
-			schedule_timeout_interruptible(
-				msecs_to_jiffies(20));
+			pr_err("rate limiter variables: c_0=%lld, c_1=%lld, r_1=%lld, l=%lld, w=%lld, lw_div=%lld, lw_mod=%u, d_1=%lld\n",
+				c_0, c_1, r_1, l, w, lw_div, lw_mod, d_1);
+
+			/* We never force the application to go into negatives with the credits */
+			overflow = min(d_1 + r_1 - l, d_1);
+
+			/* Simplify some numbers to avoid overflows. No need to be super precise */
+			timeout = div64_s64(overflow * (w / USEC_PER_MSEC), l);
+
+			pr_err("rate limiter: overflow=%lld, timeout=%lld\n",
+				overflow, timeout);
+			usleep_range(timeout, 20 * USEC_PER_MSEC);
 			c_0 = d_1;
 			t_0 = t_1;
 
