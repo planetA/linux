@@ -542,8 +542,8 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 			s64 overflow;
 			s64 timeout;
 
-			pr_err("rate limiter variables: c_0=%lld, c_1=%lld, r_1=%lld, l=%lld, w=%lld, lw_div=%lld, lw_mod=%u, d_1=%lld\n",
-				c_0, c_1, r_1, l, w, lw_div, lw_mod, d_1);
+			// pr_err("rate limiter variables: c_0=%lld, c_1=%lld, r_1=%lld, l=%lld, w=%lld, lw_div=%lld, lw_mod=%u, d_1=%lld\n",
+			// 	c_0, c_1, r_1, l, w, lw_div, lw_mod, d_1);
 
 			/* We never force the application to go into negatives with the credits */
 			overflow = min(d_1 + r_1 - l, d_1);
@@ -551,17 +551,20 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 			/* Simplify some numbers to avoid overflows. No need to be super precise */
 			timeout = div64_s64(overflow * (w / USEC_PER_MSEC), l);
 
-			pr_err("rate limiter: overflow=%lld, timeout=%lld\n",
-				overflow, timeout);
+			// pr_err("rate limiter: overflow=%lld, timeout=%lld\n",
+			// 	overflow, timeout);
+			mutex_unlock(&rdmacg_mutex);
 			usleep_range(timeout, 20 * USEC_PER_MSEC);
+			mutex_lock(&rdmacg_mutex);
+
 			c_0 = d_1;
 			t_0 = t_1;
 
 			t_1 = ktime_get();
 			dt = ktime_sub(t_1, t_0);
 
-			pr_err("Time stamps: t_0=%lld, t_1=%lld, dt=%lld\n",
-				t_0, t_1, dt);
+			// pr_err("Time stamps: t_0=%lld, t_1=%lld, dt=%lld\n",
+			// 	t_0, t_1, dt);
 
 			if (dt > w)
 				d_1 = 0;
@@ -578,6 +581,18 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 				ret = -EINTR;
 				break;
 			}
+		}
+
+		/* We released the lock since the last time we got rpool */
+		rpool = get_cg_rpool_locked(p, device);
+		if (IS_ERR(rpool)) {
+			// We checked rpools before, it is a bug if it fails.
+			WARN(IS_ERR(rpool),
+			     "Invalid device %p or rdma cgroup %p\n", p,
+			     device);
+
+			ret = PTR_ERR(rpool);
+			goto err;
 		}
 
 		rpool->resources[index].usage = max(0LL, d_1);
