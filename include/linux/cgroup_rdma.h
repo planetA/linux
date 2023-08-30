@@ -51,7 +51,7 @@ void rdmacg_uncharge(struct rdma_cgroup *cg,
 /* APIs for RDMA/IB stack to traffic control pool specific resources */
 struct rdma_cgroup *rdmacg_accounting_start(struct rdmacg_device *device);
 int rdmacg_accounting_add(struct rdma_cgroup *cg, struct rdmacg_device *device,
-			  enum rdmacg_resource_type index, int usage);
+			  enum rdmacg_resource_type index, s64 usage);
 int rdmacg_accounting_charge(struct rdma_cgroup *cg,
 				 struct rdmacg_device *device,
 				 enum rdmacg_resource_type index);
