@@ -85,13 +85,13 @@ static inline struct rdma_cgroup *get_current_rdmacg(void)
 }
 
 static void set_resource_limit(struct rdmacg_resource_pool *rpool,
-			       int index, int new_max)
+			       int index, s64 new_max)
 {
-	if (new_max == S32_MAX) {
-		if (rpool->resources[index].max != S32_MAX)
+	if (new_max == S64_MAX) {
+		if (rpool->resources[index].max != S64_MAX)
 			rpool->num_max_cnt++;
 	} else {
-		if (rpool->resources[index].max == S32_MAX)
+		if (rpool->resources[index].max == S64_MAX)
 			rpool->num_max_cnt--;
 	}
 	rpool->resources[index].max = new_max;
@@ -102,7 +102,7 @@ static void set_all_resource_max_limit(struct rdmacg_resource_pool *rpool)
 	int i;
 
 	for (i = 0; i < RDMACG_RESOURCE_MAX; i++)
-		set_resource_limit(rpool, i, S32_MAX);
+		set_resource_limit(rpool, i, S64_MAX);
 }
 
 static void free_cg_rpool_locked(struct rdmacg_resource_pool *rpool)
@@ -377,7 +377,7 @@ EXPORT_SYMBOL(rdmacg_accounting_start);
  */
 int rdmacg_accounting_add(struct rdma_cgroup *rdmacg,
 			  struct rdmacg_device *device,
-			  enum rdmacg_resource_type index, int requested)
+			  enum rdmacg_resource_type index, s64 requested)
 {
 	struct rdma_cgroup *p;
 	struct rdmacg_resource_pool *rpool;
@@ -537,7 +537,7 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 		 * wait. But if depreciated is already below zero, we cannot
 		 * depreciate further, so we let the communication through.
 	         */
-		while ((d_1 + r_1 > l) && (d_1 > 0) && (l != S32_MAX)) {
+		while ((d_1 + r_1 > l) && (d_1 > 0) && (l != S64_MAX)) {
 			/* We need to wait out until overflow credits expire to continue */
 			s64 overflow;
 			s64 timeout;
@@ -684,9 +684,10 @@ void rdmacg_unregister_device(struct rdmacg_device *device)
 }
 EXPORT_SYMBOL(rdmacg_unregister_device);
 
-static int parse_resource(char *c, int *intval)
+static int parse_resource(char *c, s64 *intval)
 {
 	substring_t argstr;
+	u64 val;
 	char *name, *value = c;
 	size_t len;
 	int ret, i;
@@ -704,28 +705,30 @@ static int parse_resource(char *c, int *intval)
 	argstr.from = value;
 	argstr.to = value + len;
 
-	ret = match_int(&argstr, intval);
+	ret = match_u64(&argstr, &val);
+	*intval = val;
 	if (ret >= 0) {
 		if (*intval < 0)
 			return -EINVAL;
 		return i;
 	}
 	if (strncmp(value, RDMACG_MAX_STR, len) == 0) {
-		*intval = S32_MAX;
+		*intval = S64_MAX;
 		return i;
 	}
 	return -EINVAL;
 }
 
 static int rdmacg_parse_limits(char *options,
-			       int *new_limits, unsigned long *enables)
+			       s64 *new_limits, unsigned long *enables)
 {
 	char *c;
 	int err = -EINVAL;
 
 	/* parse resource options */
 	while ((c = strsep(&options, " ")) != NULL) {
-		int index, intval;
+		int index;
+		s64 intval;
 
 		index = parse_resource(c, &intval);
 		if (index < 0)
@@ -761,7 +764,7 @@ static ssize_t rdmacg_resource_set_max(struct kernfs_open_file *of,
 	struct rdmacg_resource_pool *rpool;
 	struct rdmacg_device *device;
 	char *options = strstrip(buf);
-	int *new_limits;
+	s64 *new_limits;
 	unsigned long enables = 0;
 	int i = 0, ret = 0;
 
@@ -772,7 +775,7 @@ static ssize_t rdmacg_resource_set_max(struct kernfs_open_file *of,
 		goto err;
 	}
 
-	new_limits = kcalloc(RDMACG_RESOURCE_MAX, sizeof(int), GFP_KERNEL);
+	new_limits = kcalloc(RDMACG_RESOURCE_MAX, sizeof(s64), GFP_KERNEL);
 	if (!new_limits) {
 		ret = -ENOMEM;
 		goto err;
@@ -825,7 +828,7 @@ static void print_rpool_values(struct seq_file *sf,
 {
 	enum rdmacg_file_type sf_type;
 	int i;
-	u32 value;
+	s64 value;
 
 	sf_type = seq_cft(sf)->private;
 
@@ -836,7 +839,7 @@ static void print_rpool_values(struct seq_file *sf,
 			if (rpool)
 				value = rpool->resources[i].max;
 			else
-				value = S32_MAX;
+				value = S64_MAX;
 		} else {
 			if (rpool)
 				value = rpool->resources[i].usage;
@@ -844,10 +847,10 @@ static void print_rpool_values(struct seq_file *sf,
 				value = 0;
 		}
 
-		if (value == S32_MAX)
+		if (value == S64_MAX)
 			seq_puts(sf, RDMACG_MAX_STR);
 		else
-			seq_printf(sf, "%d", value);
+			seq_printf(sf, "%lld", value);
 		seq_putc(sf, ' ');
 	}
 }
