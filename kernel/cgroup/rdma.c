@@ -457,7 +457,7 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 	for (p = rdmacg; p; p = parent_rdmacg(p)) {
 		const u64 window_size = 200;
 		ktime_t t_0, t_1, w, dt;
-		s64 c_0, c_1, l, r_1, d_1;
+		s64 c_0, c_1, l, r_1, d_1, limit;
 		u64 lw_div;
 		u32 lw_mod;
 
@@ -511,7 +511,8 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 		 * outside. Also divide by 8, because limit is set in bits, but
 		 * accounting goes in bytes.
 		 */
-		l = div_s64(rpool->resources[index].max * 1024 * 1024 / 8 * w, NSEC_PER_SEC) * 1024;
+		limit = rpool->resources[index].max;
+		l = div_s64(limit * 1024 * 1024 / 8 * w, NSEC_PER_SEC) * 1024;
 		lw_div = div_u64_rem(l, w, &lw_mod);
 
 		c_0 = rpool->resources[index].usage;
@@ -520,7 +521,7 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 		t_1 = ktime_get();
 		dt = ktime_sub(t_1, t_0);
 
-		if (dt > w)
+		if (dt > w || limit == S64_MAX)
 			d_1 = 0;
 		else
 			d_1 = c_0 - lw_div * dt - div64_s64(dt * (u64) lw_mod, w);
@@ -537,7 +538,7 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 		 * wait. But if depreciated is already below zero, we cannot
 		 * depreciate further, so we let the communication through.
 	         */
-		while ((d_1 + r_1 > l) && (d_1 > 0) && (l != S64_MAX)) {
+		while ((d_1 + r_1 > l) && (d_1 > 0) && (limit != S64_MAX)) {
 			/* We need to wait out until overflow credits expire to continue */
 			s64 overflow;
 			s64 timeout;
@@ -550,15 +551,29 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 
 			/* Simplify some numbers to avoid overflows. No need to be super precise */
 			timeout = div64_s64(overflow * (w / USEC_PER_MSEC), l);
+			timeout = min(timeout, (s64) 20ULL * USEC_PER_MSEC);
+
+			rpool->resources[index].usage = d_1;
+			rpool->resources[index].last_update = t_1;
 
 			// pr_err("rate limiter: overflow=%lld, timeout=%lld\n",
 			// 	overflow, timeout);
 			mutex_unlock(&rdmacg_mutex);
-			usleep_range(timeout, 20 * USEC_PER_MSEC);
+			usleep_range_state(timeout, 20 * USEC_PER_MSEC, TASK_INTERRUPTIBLE);
 			mutex_lock(&rdmacg_mutex);
 
-			c_0 = d_1;
-			t_0 = t_1;
+			limit = rpool->resources[index].max;
+			r_1 = rpool->resources[index].requested;
+			/*
+			* Need to ensure we have no overflow, so we put one 1024
+			* outside. Also divide by 8, because limit is set in bits, but
+			* accounting goes in bytes.
+			*/
+			l = div_s64(limit * 1024 * 1024 / 8 * w, NSEC_PER_SEC) * 1024;
+			lw_div = div_u64_rem(l, w, &lw_mod);
+
+			c_0 = rpool->resources[index].usage;
+			t_0 = rpool->resources[index].last_update;
 
 			t_1 = ktime_get();
 			dt = ktime_sub(t_1, t_0);
@@ -566,7 +581,7 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 			// pr_err("Time stamps: t_0=%lld, t_1=%lld, dt=%lld\n",
 			// 	t_0, t_1, dt);
 
-			if (dt > w)
+			if (dt > w || limit == S64_MAX)
 				d_1 = 0;
 			else
 				d_1 = c_0 - lw_div * dt - div64_s64(lw_mod * dt, w);
@@ -598,8 +613,12 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 		rpool->resources[index].usage = max(0LL, d_1);
 		rpool->resources[index].last_update = t_1;
 
-		if (ret)
-			goto err;
+		/* Print rpool info and the name */
+		// pr_err("rpool: %s, usage=%lld; last_update=%lld; requested=%lld; max=%lld\n",
+		// 	p->css.cgroup->kn->name, rpool->resources[index].usage,
+		// 	rpool->resources[index].last_update,
+		// 	rpool->resources[index].requested,
+		// 	rpool->resources[index].max);
 	}
 
 	rdmacg_accounting_commit(rdmacg, device, index);
