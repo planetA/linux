@@ -48,8 +48,6 @@
 #include <linux/ratelimit.h>
 #include <linux/task_work.h>
 
-#include <linux/module.h>
-
 #include <asm/switch_to.h>
 
 #include <linux/sched/cond_resched.h>
@@ -12492,12 +12490,4 @@ __init void init_sched_fair_class(void)
 	zalloc_cpumask_var(&nohz.idle_cpus_mask, GFP_NOWAIT);
 #endif
 #endif /* SMP */
-
-}
-
-extern void sched_next_for_rdma(void){
-	struct cfs_rq cfs;
-	cfs = (this_rq()->cfs);
-	pick_next_entity(&cfs, cfs.curr);
-}
-EXPORT_SYMBOL(sched_next_for_rdma);
+} 

@@ -45,6 +45,7 @@ static int uverbs_free_cq(struct ib_uobject *uobject,
 		container_of(uobject, struct ib_ucq_object, uevent.uobject);
 	int ret;
 
+	dequeue_cq_poll(cq);
 	ret = ib_destroy_cq_user(cq, &attrs->driver_udata);
 	if (ret)
 		return ret;
@@ -139,6 +140,8 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 
 	ret = uverbs_copy_to(attrs, UVERBS_ATTR_CREATE_CQ_RESP_CQE, &cq->cqe,
 			     sizeof(cq->cqe));
+
+	INIT_LIST_HEAD(&cq->poll_item.poll_queue_head);
 	return ret;
 
 err_free:

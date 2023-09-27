@@ -1244,9 +1244,44 @@ static char *uverbs_devnode(const struct device *dev, umode_t *mode)
 	return kasprintf(GFP_KERNEL, "infiniband/%s", dev_name(dev));
 }
 
+static DEFINE_PER_CPU(struct list_head, cq_poll_queue);
+static DEFINE_PER_CPU(struct spinlock, poll_list_lock);
+
+struct list_head* get_poll_queue(void)
+{
+	if (!(this_cpu_ptr(&cq_poll_queue)->next))
+		INIT_LIST_HEAD(this_cpu_ptr(&cq_poll_queue));
+	return this_cpu_ptr(&cq_poll_queue);
+}
+
+struct spinlock* get_poll_list_lock(void)
+{
+	if (!(this_cpu_ptr(&poll_list_lock)))
+		spin_lock_init(this_cpu_ptr(&poll_list_lock));
+	return this_cpu_ptr(&poll_list_lock);
+}
+
+void dequeue_cq_poll(struct ib_cq *cq)
+{
+	struct spinlock               *poll_list_lock_cpu;
+	struct list_head              *cq_poll_queue_cpu;
+
+	BUG_ON(cq->poll_item.poll_queue_head.next == NULL);
+	if (!list_empty(&cq->poll_item.poll_queue_head)){
+		preempt_disable();
+		poll_list_lock_cpu = get_poll_list_lock();
+		cq_poll_queue_cpu = get_poll_queue();
+		preempt_enable();
+		spin_lock_irq(poll_list_lock_cpu);
+		list_del_init(&cq->poll_item.poll_queue_head);
+		spin_unlock_irq(poll_list_lock_cpu);
+	}
+}
+
+
 static int __init ib_uverbs_init(void)
 {
-	int ret;
+	int ret, cpu;
 
 	ret = register_chrdev_region(IB_UVERBS_BASE_DEV,
 				     IB_UVERBS_NUM_FIXED_MINOR,
@@ -1285,6 +1320,11 @@ static int __init ib_uverbs_init(void)
 		goto out_class;
 	}
 
+	for_each_possible_cpu(cpu){
+		INIT_LIST_HEAD(&per_cpu(cq_poll_queue, cpu));
+		spin_lock_init(&per_cpu(poll_list_lock, cpu));
+	}
+
 	return 0;
 
 out_class:
@@ -1304,6 +1344,16 @@ out:
 
 static void __exit ib_uverbs_cleanup(void)
 {
+	int               cpu;
+	struct list_head *pos;
+	
+	for_each_possible_cpu(cpu){
+		list_for_each(pos, &per_cpu(cq_poll_queue, cpu)){
+			__list_del_entry(pos);
+		}
+		__list_del_entry(&per_cpu(cq_poll_queue, cpu));
+	}
+
 	ib_unregister_client(&uverbs_client);
 	class_destroy(uverbs_class);
 	unregister_chrdev_region(IB_UVERBS_BASE_DEV,

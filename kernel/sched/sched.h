@@ -3261,6 +3261,4 @@ static inline void update_current_exec_runtime(struct task_struct *curr,
 	cgroup_account_cputime(curr, delta_exec);
 }
 
-extern void sched_next_for_rdma(void);
-
-#endif /* _KERNEL_SCHED_SCHED_H */
+#endif /* _KERNEL_SCHED_SCHED_H */ 

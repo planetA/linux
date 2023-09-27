@@ -37,7 +37,8 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
-#include <linux/sched/cputime.h>
+#include <linux/percpu-defs.h>
+#include <linux/preempt.h>
 
 #include <linux/uaccess.h>
 
@@ -47,7 +48,6 @@
 
 #include "uverbs.h"
 #include "core_priv.h"
-#include "../../../kernel/sched/sched.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ib_uverbs.h>
@@ -1179,6 +1179,60 @@ static int copy_wc_to_user(struct ib_device *ib_dev, void __user *dest,
 	return 0;
 }
 
+// struct list_head cq_poll_queue = LIST_HEAD_INIT(cq_poll_queue);
+// static DEFINE_SPINLOCK(poll_list_lock);
+
+
+
+static void ib_uverbs_try_yield(struct ib_cq* cq)
+{
+	struct cq_poll_queue_item     *cur_poll;
+	struct list_head              *next_item;
+	struct ib_cq                  *sched_next_cq = NULL; //poll thats probe finished with having a message
+	int							   ret = 1;
+	struct spinlock               *poll_list_lock_cpu;
+	struct list_head              *cq_poll_queue_cpu;
+	struct cq_poll_queue_item     *next_queue_item;
+
+
+
+	preempt_disable();
+	poll_list_lock_cpu = get_poll_list_lock();
+	cq_poll_queue_cpu = get_poll_queue();
+	preempt_enable();
+	spin_lock_irq(poll_list_lock_cpu);
+	cur_poll = &(cq->poll_item);
+	cur_poll->ts = get_current();
+	BUG_ON(cur_poll->poll_queue_head.next == NULL);
+	if(list_empty(&cur_poll->poll_queue_head)){
+		list_add_tail(&cur_poll->poll_queue_head, cq_poll_queue_cpu);
+	}
+
+	list_for_each(next_item, cq_poll_queue_cpu){
+        next_queue_item = container_of(next_item, struct cq_poll_queue_item, poll_queue_head);
+		sched_next_cq = container_of(next_queue_item, struct ib_cq, poll_item);
+		ret = ib_probe_cq(sched_next_cq);
+		trace_ib_uverbs_probe_return(next_queue_item->ts->pid, ret);
+		if (!ret)
+			break;
+	}
+
+	spin_unlock_irq(poll_list_lock_cpu);
+	if (!ret && next_queue_item->ts->pid != cur_poll->ts->pid){
+		trace_ib_uverbs_probe_before_yield_to(sched_next_cq->poll_item.ts->pid, cur_poll->ts->pid);
+		yield_to(sched_next_cq->poll_item.ts, false);
+	} else if (next_queue_item->ts->pid != cur_poll->ts->pid) {
+		trace_ib_uverbs_probe_before_cond_resched(cur_poll->ts->pid);
+		cond_resched();
+	}
+	trace_ib_uverbs_probe_after_yield(cur_poll->ts->pid);
+
+	//TODO assert
+	// spin_lock_irq(poll_list_lock_cpu);
+	// list_del_init(&cur_poll->poll_queue_head);
+	// spin_unlock_irq(poll_list_lock_cpu);
+}
+
 static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 {
 	struct ib_uverbs_poll_cq       cmd;
@@ -1208,13 +1262,19 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		ret = ib_poll_cq(cq, 1, &wc);
 		if (ret < 0)
 			goto out_put;
-		if (!ret){
+		if (!ret) {
 			//schedule(); //version 1
 			//do_sched_yield(); //version 2
 			
-			sched_next_for_rdma();
+			// preempt_disable();
+			// sched_next_for_rdma(); //version 3
+			// preempt_enable();
+
+			ib_uverbs_try_yield(cq); //version 4
 			break;
 		}
+
+		dequeue_cq_poll(cq);
 
 		ret = copy_wc_to_user(cq->device, data_ptr, &wc);
 		if (ret)
@@ -1223,7 +1283,6 @@ static int ib_uverbs_poll_cq(struct uverbs_attr_bundle *attrs)
 		data_ptr += sizeof(struct ib_uverbs_wc);
 		++resp.count;
 	}
-
 	if (copy_to_user(header_ptr, &resp, sizeof resp)) {
 		ret = -EFAULT;
 		goto out_put;

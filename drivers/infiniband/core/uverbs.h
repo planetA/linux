@@ -248,6 +248,10 @@ void ib_uverbs_detach_umcast(struct ib_qp *qp,
 
 long ib_uverbs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
+struct list_head* get_poll_queue(void);
+struct spinlock* get_poll_list_lock(void);
+extern void dequeue_cq_poll(struct ib_cq *cq);
+
 struct ib_uverbs_flow_spec {
 	union {
 		union {
