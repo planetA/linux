@@ -1588,6 +1588,11 @@ enum ib_poll_context {
 	IB_POLL_DIRECT,		   /* caller context, no hw completions */
 };
 
+struct cq_poll_queue_item {
+	struct list_head			  poll_queue_head;
+	struct task_struct           *ts;
+};
+
 struct ib_cq {
 	struct ib_device       *device;
 	struct ib_ucq_object   *uobject;
@@ -1606,6 +1611,7 @@ struct ib_cq {
 	};
 	struct workqueue_struct *comp_wq;
 	struct dim *dim;
+	struct cq_poll_queue_item  poll_item;
 
 	/* updated only by trace points */
 	ktime_t timestamp;
@@ -2352,6 +2358,7 @@ struct ib_device_ops {
 	void (*drain_rq)(struct ib_qp *qp);
 	void (*drain_sq)(struct ib_qp *qp);
 	int (*poll_cq)(struct ib_cq *cq, int num_entries, struct ib_wc *wc);
+	int (*probe_one)(struct ib_cq *cq);
 	int (*peek_cq)(struct ib_cq *cq, int wc_cnt);
 	int (*req_notify_cq)(struct ib_cq *cq, enum ib_cq_notify_flags flags);
 	int (*post_srq_recv)(struct ib_srq *srq,
@@ -3973,6 +3980,11 @@ static inline int ib_poll_cq(struct ib_cq *cq, int num_entries,
 			     struct ib_wc *wc)
 {
 	return cq->device->ops.poll_cq(cq, num_entries, wc);
+}
+
+static inline int ib_probe_cq(struct ib_cq *cq)
+{
+    return cq->device->ops.probe_one(cq);
 }
 
 /**
