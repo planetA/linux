@@ -432,6 +432,7 @@ static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 
 	if (count > sizeof(resp)) {
 		/* Give enough memory for at least single response */
+		opr_err("Too large write %zu need %zu\n", count, sizeof(resp));
 		return -ENOMEM;
 	}
 
