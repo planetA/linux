@@ -421,6 +421,7 @@ static int ovey_create_device(const char *ibdev_name,
 	ovey_dev = ib_alloc_device(ovey_device, base);
 	if (!ovey_dev) {
 		ret = PTR_ERR(ovey_dev);
+		opr_err("ovey_device allocation failed: %d\n", ret);
 		goto err_put;
 	}
 
@@ -462,6 +463,7 @@ err_free:
 err_put:
 	ib_device_put(parent);
 err:
+	opr_err("ovey_create_device() failed because of %d!\n", ret);
 	return ret;
 }
 
