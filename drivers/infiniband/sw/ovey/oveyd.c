@@ -88,8 +88,8 @@ int oveyd_lease_device(struct ovey_device *ovey_dev)
 
 	ret = send_request_block(ovey_dev, &request);
 
-	printk("Received reply %llx %llx\n", request.resp.lease_device.guid,
-	       request.req.lease_device.guid);
+	opr_err("Received reply %llx %llx ret %d\n", request.resp.lease_device.guid,
+	       request.req.lease_device.guid, ret);
 	/* Completed */
 	ovey_dev->base.node_guid = request.resp.lease_device.guid;
 

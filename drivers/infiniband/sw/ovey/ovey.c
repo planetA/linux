@@ -433,7 +433,7 @@ static int ovey_create_device(const char *ibdev_name,
 	uuid_copy(&ovey_dev->network, network);
 	generate_random_uuid((unsigned char *)&ovey_dev->device);
 
-	printk("Create device %pUb from %pUb\n", &ovey_dev->device, network);
+	opr_err("Create device %pUb from %pUb\n", &ovey_dev->device, network);
 	ovey_dev->parent = parent;
 	init_completion(&ovey_dev->completion);
 
