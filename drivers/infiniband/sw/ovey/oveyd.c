@@ -17,7 +17,7 @@ static void oveyd_request_init(struct oveyd_request *request,
 			       struct ovey_device *ovey_dev, u16 port, u16 type)
 {
 	memset(&request->req, 0, sizeof(request->req));
-	request->req.type = type;
+	request->req.cmd_type = type;
 	request->req.len = sizeof(request->req);
 	request->req.seq = atomic_fetch_add(1, &oveyd_next_seq);
 	uuid_copy(&request->req.network, &ovey_dev->network);
@@ -84,14 +84,14 @@ int oveyd_lease_device(struct ovey_device *ovey_dev)
 
 	oveyd_request_init(&request, ovey_dev, 0, OVEYD_REQ_LEASE_DEVICE);
 
-	request.req.lease_device.guid = ovey_dev->parent->node_guid;
+	request.req.cmd_union.lease_device.guid = ovey_dev->parent->node_guid;
 
 	ret = send_request_block(ovey_dev, &request);
 
-	opr_err("Received reply %llx %llx ret %d\n", request.resp.lease_device.guid,
-	       request.req.lease_device.guid, ret);
+	opr_err("Received reply %llx %llx ret %d\n", request.resp.cmd_union.lease_device.guid,
+	       request.req.cmd_union.lease_device.guid, ret);
 	/* Completed */
-	ovey_dev->base.node_guid = request.resp.lease_device.guid;
+	ovey_dev->base.node_guid = request.resp.cmd_union.lease_device.guid;
 
 	return ret;
 }
@@ -129,20 +129,20 @@ int oveyd_lease_gid(struct ovey_device *ovey_dev, u8 port, int idx,
 
 	oveyd_request_init(&request, ovey_dev, port, OVEYD_REQ_LEASE_GID);
 
-	request.req.lease_gid.idx = idx;
-	request.req.lease_gid.subnet_prefix = gid->global.subnet_prefix;
-	request.req.lease_gid.interface_id = gid->global.interface_id;
+	request.req.cmd_union.lease_gid.idx = idx;
+	request.req.cmd_union.lease_gid.subnet_prefix = gid->global.subnet_prefix;
+	request.req.cmd_union.lease_gid.interface_id = gid->global.interface_id;
 
 	ret = send_request_block(ovey_dev, &request);
 
 	printk("Received reply %llx-%llx to %llx-%llx\n",
-	       request.req.lease_gid.interface_id,
-	       request.req.lease_gid.subnet_prefix,
-	       request.resp.lease_gid.interface_id,
-	       request.resp.lease_gid.subnet_prefix);
+	       request.req.cmd_union.lease_gid.interface_id,
+	       request.req.cmd_union.lease_gid.subnet_prefix,
+	       request.resp.cmd_union.lease_gid.interface_id,
+	       request.resp.cmd_union.lease_gid.subnet_prefix);
 	/* Completed */
-	gid->global.subnet_prefix = request.resp.lease_gid.subnet_prefix;
-	gid->global.interface_id = request.resp.lease_gid.interface_id;
+	gid->global.subnet_prefix = request.resp.cmd_union.lease_gid.subnet_prefix;
+	gid->global.interface_id = request.resp.cmd_union.lease_gid.interface_id;
 
 	return ret;
 }
@@ -171,28 +171,28 @@ int oveyd_set_gid(struct ovey_device *ovey_dev, u8 virt_port, int virt_idx,
 	oveyd_request_init(&request, ovey_dev, virt_port,
 			   OVEYD_REQ_SET_GID);
 
-	request.req.set_gid.real_idx = real_idx;
-	request.req.set_gid.real_subnet_prefix = real_gid->global.subnet_prefix;
-	request.req.set_gid.real_interface_id = real_gid->global.interface_id;
+	request.req.cmd_union.set_gid.real_idx = real_idx;
+	request.req.cmd_union.set_gid.real_subnet_prefix = real_gid->global.subnet_prefix;
+	request.req.cmd_union.set_gid.real_interface_id = real_gid->global.interface_id;
 
-	request.req.set_gid.virt_idx = virt_idx;
-	request.req.set_gid.virt_subnet_prefix = virt_gid->global.subnet_prefix;
-	request.req.set_gid.virt_interface_id = virt_gid->global.interface_id;
+	request.req.cmd_union.set_gid.virt_idx = virt_idx;
+	request.req.cmd_union.set_gid.virt_subnet_prefix = virt_gid->global.subnet_prefix;
+	request.req.cmd_union.set_gid.virt_interface_id = virt_gid->global.interface_id;
 
 	opr_info("Set gid send %llx-%llx to %llx-%llx\n",
-		 request.req.set_gid.virt_interface_id,
-		 request.req.set_gid.virt_subnet_prefix,
-		 request.req.set_gid.real_interface_id,
-		 request.req.set_gid.real_subnet_prefix);
+		 request.req.cmd_union.set_gid.virt_interface_id,
+		 request.req.cmd_union.set_gid.virt_subnet_prefix,
+		 request.req.cmd_union.set_gid.real_interface_id,
+		 request.req.cmd_union.set_gid.real_subnet_prefix);
 
 	ret = send_request_block(ovey_dev, &request);
 
 	/* Completed */
 	opr_info("Set gid received reply %llx-%llx to %llx-%llx\n",
-		 request.resp.set_gid.virt_interface_id,
-		 request.resp.set_gid.virt_subnet_prefix,
-		 request.resp.set_gid.real_interface_id,
-		 request.resp.set_gid.real_subnet_prefix);
+		 request.resp.cmd_union.set_gid.virt_interface_id,
+		 request.resp.cmd_union.set_gid.virt_subnet_prefix,
+		 request.resp.cmd_union.set_gid.real_interface_id,
+		 request.resp.cmd_union.set_gid.real_subnet_prefix);
 
 	return ret;
 }
@@ -218,22 +218,22 @@ int oveyd_create_port(struct ovey_device *ovey_dev, u8 port, struct ib_port_immu
 
 	oveyd_request_init(&request, ovey_dev, 0, OVEYD_REQ_CREATE_PORT);
 
-	request.req.create_port.port = port;
-	request.req.create_port.pkey_tbl_len = attr->pkey_tbl_len;
-	request.req.create_port.gid_tbl_len = attr->gid_tbl_len;
-	request.req.create_port.core_cap_flags = attr->core_cap_flags;
-	request.req.create_port.max_mad_size = attr->max_mad_size;
+	request.req.cmd_union.create_port.port = port;
+	request.req.cmd_union.create_port.pkey_tbl_len = attr->pkey_tbl_len;
+	request.req.cmd_union.create_port.gid_tbl_len = attr->gid_tbl_len;
+	request.req.cmd_union.create_port.core_cap_flags = attr->core_cap_flags;
+	request.req.cmd_union.create_port.max_mad_size = attr->max_mad_size;
 
 	ret = send_request_block(ovey_dev, &request);
 
 	printk("Received reply %x to %x\n",
-		request.req.create_port.gid_tbl_len,
-	       request.resp.create_port.gid_tbl_len);
+		request.req.cmd_union.create_port.gid_tbl_len,
+	       request.resp.cmd_union.create_port.gid_tbl_len);
 	/* Completed */
-	attr->pkey_tbl_len = request.resp.create_port.pkey_tbl_len;
-	attr->gid_tbl_len = request.resp.create_port.gid_tbl_len;
-	attr->core_cap_flags = request.resp.create_port.core_cap_flags;
-	attr->max_mad_size = request.resp.create_port.max_mad_size;
+	attr->pkey_tbl_len = request.resp.cmd_union.create_port.pkey_tbl_len;
+	attr->gid_tbl_len = request.resp.cmd_union.create_port.gid_tbl_len;
+	attr->core_cap_flags = request.resp.cmd_union.create_port.core_cap_flags;
+	attr->max_mad_size = request.resp.cmd_union.create_port.max_mad_size;
 
 	return ret;
 }
@@ -251,14 +251,14 @@ int oveyd_set_port_attr(struct ovey_device *ovey_dev, u8 port,
 	oveyd_request_init(&request, ovey_dev, port,
 			   OVEYD_REQ_SET_PORT_ATTR);
 
-	request.req.set_port_attr.lid = attr->lid;
+	request.req.cmd_union.set_port_attr.lid = attr->lid;
 
 	ret = send_request_block(ovey_dev, &request);
 
-	printk("Received reply %d to %x\n", request.req.set_port_attr.lid,
-	       request.resp.set_port_attr.lid);
+	printk("Received reply %d to %x\n", request.req.cmd_union.set_port_attr.lid,
+	       request.resp.cmd_union.set_port_attr.lid);
 	/* Completed */
-	attr->lid = request.resp.set_port_attr.lid;
+	attr->lid = request.resp.cmd_union.set_port_attr.lid;
 
 	return ret;
 }
@@ -284,15 +284,15 @@ int oveyd_create_qp(struct ovey_qp *ovey_qp, struct ib_qp_init_attr *attrs)
 
 	oveyd_request_init(&request, ovey_dev, 0, OVEYD_REQ_CREATE_QP);
 
-	request.req.create_qp.qpn = ovey_qp->parent->qp_num;
+	request.req.cmd_union.create_qp.qpn = ovey_qp->parent->qp_num;
 
 	ret = send_request_block(ovey_dev, &request);
 
 	printk("Received reply %x to %x\n",
-		request.req.create_qp.qpn,
-	       request.resp.create_qp.qpn);
+		request.req.cmd_union.create_qp.qpn,
+	       request.resp.cmd_union.create_qp.qpn);
 	/* Completed */
-	ovey_qp->base.qp_num = request.resp.create_qp.qpn;
+	ovey_qp->base.qp_num = request.resp.cmd_union.create_qp.qpn;
 
 	return ret;
 }
@@ -304,8 +304,8 @@ int oveyd_resolve_qp(struct ovey_qp *ovey_qp,
 	int ret;
 	struct ovey_device *ovey_dev = to_ovey_dev(ovey_qp->base.device);
 	struct oveyd_request request;
-	struct oveydr_resolve_qp *req = &request.req.resolve_qp;
-	struct oveydr_resolve_qp *resp = &request.resp.resolve_qp;
+	struct oveydr_resolve_qp *req = &request.req.cmd_union.resolve_qp;
+	struct oveydr_resolve_qp *resp = &request.resp.cmd_union.resolve_qp;
 	const struct ib_global_route *grh;
 	u32 dlid;
 
@@ -432,7 +432,7 @@ static ssize_t ovey_eventdev_write(struct file *file, const char __user *buf,
 
 	if (count > sizeof(resp)) {
 		/* Give enough memory for at least single response */
-		opr_err("Too large write %zu need %zu\n", count, sizeof(resp));
+		opr_err("Too large write %zu has %zu\n", count, sizeof(resp));
 		return -ENOMEM;
 	}
 

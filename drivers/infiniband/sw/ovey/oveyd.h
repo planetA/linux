@@ -74,38 +74,34 @@ struct oveydr_create_qp {
 	u32 qpn;
 };
 
+union cmd_union {
+	u32 none;
+	struct oveydr_lease_device lease_device;
+	struct oveydr_lease_gid lease_gid;
+	struct oveydr_resolve_qp resolve_qp;
+	struct oveydr_set_gid set_gid;
+	struct oveydr_create_port create_port;
+	struct oveydr_set_port_attr set_port_attr;
+	struct oveydr_create_qp create_qp;
+};
+
 struct oveyd_req_pkt {
 	/* Header must always go first */
-	u16 type;
+	u16 cmd_type;
 	u16 len;
 	u32 seq;
 	uuid_t network;
 	uuid_t device;
 	u16 port;
-	union {
-		struct oveydr_lease_device lease_device;
-		struct oveydr_lease_gid lease_gid;
-		struct oveydr_resolve_qp resolve_qp;
-		struct oveydr_set_gid set_gid;
-		struct oveydr_create_port create_port;
-		struct oveydr_set_port_attr set_port_attr;
-		struct oveydr_create_qp create_qp;
-	};
+	union cmd_union cmd_union;
 };
 
 struct oveyd_resp_pkt {
-	u16 type;
+	u16 cmd_type;
 	u16 len;
 	u32 seq;
-	union {
-		struct oveydr_lease_device lease_device;
-		struct oveydr_lease_gid lease_gid;
-		struct oveydr_resolve_qp resolve_qp;
-		struct oveydr_set_gid set_gid;
-		struct oveydr_create_port create_port;
-		struct oveydr_set_port_attr set_port_attr;
-		struct oveydr_create_qp create_qp;
-	};
+	u32 status;
+	union cmd_union cmd_union;
 };
 
 struct oveyd_request {
