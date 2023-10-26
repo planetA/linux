@@ -300,11 +300,12 @@ static int set_data_inl_seg(struct mlx5_ib_qp *qp, const struct ib_send_wr *wr,
 				if (pinned_pages <= 0) {
 					return -EFAULT;
 				}
-				put_page(&pages[0]);
 
 				if (unlikely(copy_from_user(*wqe, addr, copysz))) {
+					put_page(&pages[0]);
 					return -EFAULT;
 				}
+				put_page(&pages[0]);
 			}
 			len -= copysz;
 			addr += copysz;
