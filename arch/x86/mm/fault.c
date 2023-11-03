@@ -1356,7 +1356,7 @@ retry:
 	}
 
 	if (address > DEFAULT_MAP_WINDOW && address < HIDDEN_REGION_MAX) {
-		bad_area(regs, error_code, address);
+		bad_area(regs, hw_error_code, address);
 		return;
 	}
 
