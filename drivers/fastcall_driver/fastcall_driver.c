@@ -79,7 +79,6 @@ static unsigned long function_offset(const void (*fn)(void))
 
 int fast_call_unregistration(unsigned long __user user_address)
 {
-	unsigned long fce_addr;
 	struct mesg message;
 	unsigned long ret = 0;
 
@@ -104,11 +103,10 @@ return ret;
 
 int fast_call_example(unsigned long __user user_address){
 	struct page *hidden_pages[1];
-	struct mm_struct *mm = current->mm;
 	unsigned long fce_addr;
 	struct fastcall_entry *entry;
 	struct mesg message;
-	unsigned long ret = 0, i;
+	int ret = 0, i;
 
 
 
@@ -121,7 +119,7 @@ int fast_call_example(unsigned long __user user_address){
 
 
 	fce_addr = fce_regions_creation(fce_pages, 1, sr_pages, 1, function_offset(fce_function), 9);
-	if (IS_ERR((int)fce_addr) || fce_addr < 0 || IS_ERR_VALUE(fce_addr)) {
+	if (IS_ERR(fce_addr)) {
 		pr_info("fast_call_example: falied to call fce_regions_creation, fce_addr = %lx\n", fce_addr);
 		ret = -ENOMEM;
 		goto fail_fce_creation;
@@ -130,28 +128,28 @@ int fast_call_example(unsigned long __user user_address){
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
 	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
 	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
 	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
 	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %lx\n", ret);
+		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
