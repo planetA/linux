@@ -83,14 +83,14 @@ int fast_call_unregistration(unsigned long __user user_address)
 	unsigned long ret = 0;
 
 	if (copy_from_user(&message, (void *)user_address, sizeof(struct mesg))) {
-		pr_info("fast_call_unregistration: falied to copy message struct to kernel space from user_addr: %lx\n", user_address);
+		pr_debug("fast_call_unregistration: falied to copy message struct to kernel space from user_addr: %lx\n", user_address);
 		ret = -EFAULT;
 		goto fail_copy_from_user;
 	}
 
 	ret = fsc_unregistration(message.fce_region_addr);
 	if (ret < 0) {
-		pr_info("fast_call_unregistration: falied to unregister the fast call function with address: %lx\n", user_address);
+		pr_debug("fast_call_unregistration: falied to unregister the fast call function with address: %lx\n", user_address);
 		ret = -EFAULT;
 		goto fail_unregister_fsc;
 	}
@@ -115,61 +115,61 @@ int fast_call_example(unsigned long __user user_address){
 
 	memset(page_address(hidden_pages[0]), 'D', PAGE_SIZE);
 
-	pr_info("fast_call_example: fastcall function offset: %lx\n", function_offset(fce_function));
+	pr_debug("fast_call_example: fastcall function offset: %lx\n", function_offset(fce_function));
 
 
 	fce_addr = fce_regions_creation(fce_pages, 1, sr_pages, 1, function_offset(fce_function), 9);
 	if (IS_ERR(fce_addr)) {
-		pr_info("fast_call_example: falied to call fce_regions_creation, fce_addr = %lx\n", fce_addr);
+		pr_debug("fast_call_example: falied to call fce_regions_creation, fce_addr = %lx\n", fce_addr);
 		ret = -ENOMEM;
 		goto fail_fce_creation;
 	}
 
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
-	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
+	if (IS_ERR(ret)) {
+		pr_debug("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
-	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
+	if (IS_ERR(ret)) {
+		pr_debug("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
-	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
+	if (IS_ERR(ret)) {
+		pr_debug("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
-	if (ret < 0) {
-		pr_info("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
+	if (IS_ERR(ret)) {
+		pr_debug("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
 
 	entry = find_entry(fce_addr);
 	if(!entry){
-		pr_info("fast_call_example: can't get the entry for the system call\n");
+		pr_debug("fast_call_example: can't get the entry for the system call\n");
 		ret = -EINTR;
 		goto fail_get_entry;
 	}
 
-	pr_info("fast_call_example: amount of fastcall %d\n",fc_table->entries_size);
-	pr_info("fast_call_example: regions address of fastcall, fce_region:%lx, secrect_region:%lx\n", \
+	pr_debug("fast_call_example: amount of fastcall %d\n",fc_table->entries_size);
+	pr_debug("fast_call_example: regions address of fastcall, fce_region:%lx, secrect_region:%lx\n", \
 	entry->fce_region_addr, entry->secret_region_addr);
 
-	pr_info("fast_call_example: nr_hidden_region_current: %d\n", entry->nr_hidden_region_current);
+	pr_debug("fast_call_example: nr_hidden_region_current: %d\n", entry->nr_hidden_region_current);
 
 	for (i = 0;i < NR_HIDDEN_REGION;i++){
 		message.hidden_region_addr[i] = entry->hidden_region_addrs[i];
-		pr_info("fast_call_example: %d hidden region address 0x%lx\n", i, entry->hidden_region_addrs[i]);
+		pr_debug("fast_call_example: %d hidden region address 0x%lx\n", i, entry->hidden_region_addrs[i]);
 	}
 
 	message.fce_region_addr = entry->fce_region_addr;
@@ -177,11 +177,13 @@ int fast_call_example(unsigned long __user user_address){
 
 
 	if (copy_to_user((void *)user_address, &message, sizeof(struct mesg))) {
-		pr_info("fast_call_example: falied to copy message struct to user space,user_addr: %lx, fce_reg_addr: %lx, \
+		pr_debug("fast_call_example: falied to copy message struct to user space,user_addr: %lx, fce_reg_addr: %lx, \
 		secret_reg_addr: %lx\n", user_address, message.fce_region_addr, message.secret_region_addr);
 		ret = -EFAULT;
 		goto fail_copy_user;
 	}
+
+	return 0;
 
 fail_fce_creation:
 fail_creation_hidden_region:
@@ -212,25 +214,25 @@ static long fce_ioctl(struct file *file, unsigned int cmd, unsigned long args)
 
 	switch (cmd) {
 	case FCE_COMMAND_FASTCALL_REGISTRATION:
-		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_REGISTRATION\n");
-		pr_info("fce_ioctl: user address: %lu\n", args);
+		pr_debug("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_REGISTRATION\n");
+		pr_debug("fce_ioctl: user address: %lu\n", args);
 
 		ret = fast_call_example(args);
-		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
+		pr_debug("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
 		break;
 	case FCE_COMMAND_FASTCALL_UNREGISTRATION:
-		pr_info("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_UNREGISTRATION\n");
-		pr_info("fce_ioctl: user address: %lu\n", args);
+		pr_debug("fce_ioctl: the cmd is FCE_COMMAND_FASTCALL_UNREGISTRATION\n");
+		pr_debug("fce_ioctl: user address: %lu\n", args);
 
 		ret = fast_call_unregistration(args);
-		pr_info("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
+		pr_debug("fce_ioctl: fce_ioctl ended with ret: %lu\n", ret);
 		break;
 	case FCE_COMMAND_NOOP:
 		ret = 0;
-		pr_info("fce_ioctl: fce_ioctl noop ended with ret: %lu\n", ret);
+		pr_debug("fce_ioctl: fce_ioctl noop ended with ret: %lu\n", ret);
 		break;
 	default:
-		pr_info("fce_ioctl: the input cmd didn't get any match\n");
+		pr_debug("fce_ioctl: the input cmd didn't get any match\n");
 		ret = -1;
 	}
 

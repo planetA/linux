@@ -95,7 +95,7 @@ static void unmap_region(unsigned long vma_addr)
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 
-	pr_info("unmap_region: function starts");
+	pr_debug("unmap_region: function starts");
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (vma->vm_start <= vma_addr && vma->vm_end >= vma_addr)
 			break;
@@ -107,7 +107,7 @@ static void unmap_region(unsigned long vma_addr)
 	// Make do_munmap possible
 	vma->vm_private_data = (void *)&unmappable_mapping;
 	WARN_ON(do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start, NULL));
-	pr_info("unmap_region: unmap_region finished, no bug");
+	pr_debug("unmap_region: unmap_region finished, no bug");
 }
 
 /*
@@ -144,31 +144,31 @@ static unsigned long region_mapping(struct page **pages, unsigned long num, unsi
 	struct vm_area_struct *vma;
 	unsigned long len = num * PAGE_SIZE;
 
-	pr_info("region_mapping: function starts");
-    pr_info("region_mapping: function argument , start address: %lx num of pages: %lu\n", start_address, num);
+	pr_debug("region_mapping: function starts");
+    pr_debug("region_mapping: function argument , start address: %lx num of pages: %lu\n", start_address, num);
 
 	if (is_hidden_region)	
 		vma = _install_special_mapping(mm, start_address, len, flags, &fastcall_hidden_pages_mapping);
 	else
 		vma = _install_special_mapping(mm, start_address, len, flags, &fastcall_pages_mapping);
 	if (IS_ERR(vma)) {
-		pr_info("region_mapping: falied to allocat a vma for box, error code: %ld, flags: %lu, start address: %lx\n", PTR_ERR(vma), flags, start_address);
+		pr_debug("region_mapping: falied to allocat a vma for box, error code: %ld, flags: %lu, start address: %lx\n", PTR_ERR(vma), flags, start_address);
 		goto fail_insert_vma;
 	}
 
 	err = vm_insert_pages(vma, start_address, pages, &num);
 	if (err < 0) {
-		pr_info("region_mapping: falied to insert pages to vma, error code: %lu, flags: %lu, start address: %lu, page acount:  %lu\n", (unsigned long)vma, flags, start_address, num);
+		pr_debug("region_mapping: falied to insert pages to vma, error code: %lu, flags: %lu, start address: %lu, page acount:  %lu\n", (unsigned long)vma, flags, start_address, num);
 		goto fail_insert_page;
 	}
-	pr_info("region_mapping: function end with no bug , return start address :%lx \n", start_address);
+	pr_debug("region_mapping: function end with no bug , return start address :%lx \n", start_address);
 
 	return start_address;
 fail_insert_vma:
-	pr_info("region_mapping: function end with fail_insert_vma\n");
+	pr_debug("region_mapping: function end with fail_insert_vma\n");
 	return (unsigned long)vma;
 fail_insert_page:
-	pr_info("region_mapping: function end with fail_insert_page\n");
+	pr_debug("region_mapping: function end with fail_insert_page\n");
 	unmap_region(start_address);
 	return err;
 }
@@ -217,17 +217,17 @@ struct fastcall_entry *find_entry(unsigned long fce_address)
 	struct fastcall_entry *ret = NULL;
 	size_t i;
 
-	pr_info("find_entry: start \n");
+	pr_debug("find_entry: start \n");
 
 	if (!fc_table || !fc_table->entries) {
-		pr_info("find_entry: table not initialized \n");
+		pr_debug("find_entry: table not initialized \n");
 		goto fail_table_exist;
 	}
 
 
 
 	// if (mutex_lock_killable(&fc_table->mutex)){
-	// 	pr_info("is_fce_address_valid: lock the table failed \n");
+	// 	pr_debug("is_fce_address_valid: lock the table failed \n");
 	// 	goto fail_table_lock;
 	// }
 
@@ -238,13 +238,13 @@ struct fastcall_entry *find_entry(unsigned long fce_address)
 		struct fastcall_entry *entry = &fc_table->entries[i];
 
 		if (entry->fce_region_addr == fce_address) {
-			pr_info("find_entry: the corresponding entry with fce_address %lx in array entries is found \n", fce_address);
+			pr_debug("find_entry: the corresponding entry with fce_address %lx in array entries is found \n", fce_address);
 			ret = entry;
 			goto find_fce_address;
 		}
 	}
 
-	pr_info("find_entry: can't find the corresponding entry in array entries with fce_address: %lx\n", fce_address);
+	pr_debug("find_entry: can't find the corresponding entry in array entries with fce_address: %lx\n", fce_address);
 
 fail_table_exist:
 find_fce_address:
@@ -288,7 +288,7 @@ static struct vm_area_struct *find_fc_vma(unsigned long address)
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 
-	pr_info("find_fc_vma: enter\n");
+	pr_debug("find_fc_vma: enter\n");
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (vma->vm_start <= address && vma->vm_end >= address)
 			break;
@@ -296,12 +296,12 @@ static struct vm_area_struct *find_fc_vma(unsigned long address)
 
 	// No fastcall mapping was found in the process.
 	if (!vma) {
-		pr_info("find_fc_vma: No fastcall mapping was found in the process.\n");
+		pr_debug("find_fc_vma: No fastcall mapping was found in the process.\n");
 		BUG();
 	}
 
 
-	pr_info("find_fc_vma: end,find vma\n");
+	pr_debug("find_fc_vma: end,find vma\n");
 	return vma;
 
 }
@@ -317,7 +317,7 @@ int delete_hidden_region(unsigned long fce_address, unsigned long hr_address, st
 	struct fastcall_entry *entry;
 
 	if (!mutex_trylock(&fc_table->mutex)) {
-		pr_info("delete_hidden_region: fail_lock\n");
+		pr_debug("delete_hidden_region: fail_lock\n");
 		goto fail_lock;
 	}
 
@@ -377,30 +377,30 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 	int index, i;
 
 	if (!mutex_trylock(&fc_table->mutex)) {
-		pr_info("hidden_region_creatrion: fail_lock\n");
+		pr_debug("hidden_region_creatrion: fail_lock\n");
 		ret = -1;
 		goto fail_lock;
 	}
 
 	if (!entry) {
-		pr_info("hidden_region_creatrion: fce_address:%px not valid\n", fce_address);
+		pr_debug("hidden_region_creatrion: fce_address:%px not valid\n", fce_address);
 		goto invalid_fce_entry;
 	}
 
 
 
 	if (entry->nr_hidden_region_current >= NR_HIDDEN_REGION || entry->nr_hidden_region_current >=  entry->max_hidden_region) {
-		pr_info("hidden_region_creatrion: entry with fce_address %px can't have more hidden region\n", fce_address);
+		pr_debug("hidden_region_creatrion: entry with fce_address %px can't have more hidden region\n", fce_address);
 		goto invalid_fce_entry;
 	}
 
 
-	pr_info("hidden_region_creatrion: start \n");
-	pr_info("hidden_region_creatrion: fce_address:%px, hidden page number: %d\n", fce_address, hr_num);
+	pr_debug("hidden_region_creatrion: start \n");
+	pr_debug("hidden_region_creatrion: fce_address:%px, hidden page number: %d\n", fce_address, hr_num);
 
 	if (!fc_table) {
 		ret = -EINTR;
-		pr_info("hidden_region_creatrion: fc_table not initialized,call fce_regions_creation first \n");
+		pr_debug("hidden_region_creatrion: fc_table not initialized,call fce_regions_creation first \n");
 		goto fail_fce_address_invailid;
 	}
 
@@ -410,9 +410,9 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 
 
 	hr_start_address = get_randomized_address(PAGE_SIZE, true);
-	pr_info("fast_call_example: hidden_addr: %lx\n", hr_start_address);
+	pr_debug("fast_call_example: hidden_addr: %lx\n", hr_start_address);
 	if (IS_ERR_VALUE(hr_start_address)) {
-		pr_info("hidden_region_creatrion: falied to find a unmapped area for hidden box, fce_addr: %lx, hidden_addr: %lx\n", fce_address, hr_start_address);
+		pr_debug("hidden_region_creatrion: falied to find a unmapped area for hidden box, fce_addr: %lx, hidden_addr: %lx\n", fce_address, hr_start_address);
 		ret = -ENOMEM;
 		goto fail_get_free_vma_area;
 	}
@@ -421,7 +421,7 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 
 	ret = region_mapping(hr_pages, hr_num, HIDEN_REGION_FLAG, hr_start_address, true);
 	if (ret != hr_start_address) {
-		pr_info("hidden_region_creatrion: falied to install hidden box,  ret = 0x%lx, start_adr = 0x%lx\n", ret, hr_start_address);
+		pr_debug("hidden_region_creatrion: falied to install hidden box,  ret = 0x%lx, start_adr = 0x%lx\n", ret, hr_start_address);
 		ret = -ENOMEM;
 		goto fail_creat_vma;
 	}
@@ -449,17 +449,17 @@ unsigned long hidden_region_creation(unsigned long fce_address, struct page **hr
 	
 
 	mmap_write_unlock(mm);
-	pr_info("hidden_region_creatrion: the start address of this region ret = 0x%lx, fce_addr: 0x%lx\n", ret, fce_address);
+	pr_debug("hidden_region_creatrion: the start address of this region ret = 0x%lx, fce_addr: 0x%lx\n", ret, fce_address);
 
 
-	pr_info("hidden_region_creatrion:region addresses in fc_table, fc_address:%lx \n", entry->fce_region_addr);
-	pr_info("hidden_region_creatrion:region addresses in fc_table, secret_adr:%lx \n",entry->secret_region_addr);
-	pr_info("hidden_region_creatrion:region addresses in fc_table, hidden_addr: %lx\n", entry->hidden_region_addrs[entry->nr_hidden_region_current-1]);
-	pr_info("hidden_region_creatrion: current number of hidden region in entry: %d\n", entry->nr_hidden_region_current);
+	pr_debug("hidden_region_creatrion:region addresses in fc_table, fc_address:%lx \n", entry->fce_region_addr);
+	pr_debug("hidden_region_creatrion:region addresses in fc_table, secret_adr:%lx \n",entry->secret_region_addr);
+	pr_debug("hidden_region_creatrion:region addresses in fc_table, hidden_addr: %lx\n", entry->hidden_region_addrs[entry->nr_hidden_region_current-1]);
+	pr_debug("hidden_region_creatrion: current number of hidden region in entry: %d\n", entry->nr_hidden_region_current);
 
 
-	pr_info("hidden_region_creatrion:region addresses in fc_table, registered fastcall: %d\n", fc_table->entries_size);
-	pr_info("hidden_region_creatrion:  function end with no bug\n");
+	pr_debug("hidden_region_creatrion:region addresses in fc_table, registered fastcall: %d\n", fc_table->entries_size);
+	pr_debug("hidden_region_creatrion:  function end with no bug\n");
 
 	mutex_unlock(&fc_table->mutex);
 	return ret;
@@ -522,21 +522,21 @@ int fsc_unregistration(unsigned long fce_address)
 
 
 	if (!entry) {
-		pr_info("fsc_unregistration: fce_address:0x%lx not valid\n", fce_address);
+		pr_debug("fsc_unregistration: fce_address:0x%lx not valid\n", fce_address);
 		ret = -1;
 		goto invalid_fce_entry;
 	}
 
 	for (i = 0; i < NR_HIDDEN_REGION; i++) {
 		if (entry->hidden_region_addrs[i] != 0) {
-			pr_info("fsc_unregistration: hidden_region_addrs:0x%lx \n", entry->hidden_region_addrs[i]);
+			pr_debug("fsc_unregistration: hidden_region_addrs:0x%lx \n", entry->hidden_region_addrs[i]);
 			hr_vma = find_fc_vma(entry->hidden_region_addrs[i]);
 			zap_page_range(hr_vma, entry->hidden_region_addrs[i], (hr_vma->vm_end - hr_vma->vm_start) * PAGE_SIZE);
 			unmap_region(entry->hidden_region_addrs[i]);
 			entry->hidden_region_addrs[i] = 0;
 		}
 	}
-	pr_info("fsc_unregistration: hidden regions are deleted\n");
+	pr_debug("fsc_unregistration: hidden regions are deleted\n");
 	fce_vma = find_fc_vma(entry->fce_region_addr);
 	sr_vma = find_fc_vma(entry->secret_region_addr);
 
@@ -562,7 +562,7 @@ int fsc_unregistration(unsigned long fce_address)
 
 
 find_fc_vam:
-	pr_info("fsc_unregistration: end with no bug\n");
+	pr_debug("fsc_unregistration: end with no bug\n");
 
 
 invalid_fce_entry:
@@ -581,10 +581,10 @@ int initianlize_table(void)
 	size_t i, j;
 
 
-	pr_info("initianlize_table: function starts\n");
+	pr_debug("initianlize_table: function starts\n");
 	fc_table = kmalloc(sizeof(struct fastcall_table), GFP_KERNEL);
 	if (!fc_table) {
-		pr_info("initianlize_table: failed to allocat memory for table\n");
+		pr_debug("initianlize_table: failed to allocat memory for table\n");
 		return -ENOMEM;
 	}
 
@@ -599,7 +599,7 @@ int initianlize_table(void)
 	}
 	fc_table->entries_size = 0;
 
-	pr_info("initianlize_table: function ends successfully \n");
+	pr_debug("initianlize_table: function ends successfully \n");
 	return 0;
 
 
@@ -632,7 +632,7 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 	struct mm_struct *mm = current->mm;
 
 
-	pr_info("fce_regions_creation: function starts\n");
+	pr_debug("fce_regions_creation: function starts\n");
 	ret = 0;
 
 	if(!fc_table){
@@ -640,7 +640,7 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 	}
 
 	if (!mutex_trylock(&fc_table->mutex)){
-		pr_info("fce_regions_creation: fail_lock\n");
+		pr_debug("fce_regions_creation: fail_lock\n");
 		ret = -1;
 		goto fail_lock;
 	}
@@ -649,7 +649,7 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 
 	//BUG_ON(fc_table->entries_size >= NR_ENTRIES);
 	if(fc_table->entries_size >= NR_ENTRIES) {
-		pr_info("fce_regions_creation: can't have more fastcall \n");
+		pr_debug("fce_regions_creation: can't have more fastcall \n");
 		ret = -ENOSPC;
 		goto fail_create_fce;
 	}
@@ -663,18 +663,18 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 	//fce_start_adr = get_unmapped_area(NULL, 0, (fce_pages_num + secret_pages_num) * PAGE_SIZE, 0, 0);
 	ret = get_randomized_address((fce_pages_num + secret_pages_num) * PAGE_SIZE, false);
 	if (IS_ERR(ret)) {
-		pr_info("fce_regions_creation: falied to find a unmapped area for fce_region, exec_only_region: %lx\n", fce_start_adr);
+		pr_debug("fce_regions_creation: falied to find a unmapped area for fce_region, exec_only_region: %lx\n", fce_start_adr);
 		goto fail_get_free_vma_area;
 	}
 	fce_start_adr = ret;
 
 	secret_start_adr = fce_start_adr + PAGE_SIZE * fce_pages_num;
-	pr_info("fce_regions_creation: fce_start_adr: %lx, secret_start_adr: %lx fce_function_offset:%lx \n",\
+	pr_debug("fce_regions_creation: fce_start_adr: %lx, secret_start_adr: %lx fce_function_offset:%lx \n",\
 	 fce_start_adr, secret_start_adr, offset);
 
 	ret = region_mapping(fce_pages, fce_pages_num, FCE_REGION_FLAG, fce_start_adr, false);
 	if (ret != fce_start_adr) {
-		pr_info("fastcall_register: falied to install fce mapping, ret = %lx, fce_start_adr = %lx\n", ret, fce_start_adr);
+		pr_debug("fastcall_register: falied to install fce mapping, ret = %lx, fce_start_adr = %lx\n", ret, fce_start_adr);
 		goto fail_creat_vma;
 	}
 
@@ -686,14 +686,14 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 	//TODO: change it to VM_EXEC | VM_MAYEXEC
 	ret = region_mapping(secret_pages, secret_pages_num, FCE_REGION_FLAG, secret_start_adr, false);
 	if (ret != secret_start_adr) {
-		pr_info("fce_regions_creation: falied to install exec_only_pages mapping, ret = %lx, secret_start_adr = %lx\n", ret, secret_start_adr);
+		pr_debug("fce_regions_creation: falied to install exec_only_pages mapping, ret = %lx, secret_start_adr = %lx\n", ret, secret_start_adr);
 		goto fail_creat_vma;
 	}
 	mmap_write_unlock(mm);
 
 	entry = find_entry(0);
 	if (!entry) {
-		pr_info("fce_regions_creation: can't creat fastcall entry anymore, there are too many\n");
+		pr_debug("fce_regions_creation: can't creat fastcall entry anymore, there are too many\n");
 		ret = -ENOMEM;
 		goto failed_find_entry;
 	}
@@ -705,11 +705,11 @@ int secret_pages_num, unsigned long offset, int max_hidden_region)
 	entry->fce_region_addr = fce_start_adr;
 	entry->secret_region_addr = secret_start_adr;
 	entry->max_hidden_region = max_hidden_region;
-	pr_info("fce_regions_creation: entry->fce_region_addr: = 0x%lx, entry->exect_region_addr  = 0x%lx\n", \
+	pr_debug("fce_regions_creation: entry->fce_region_addr: = 0x%lx, entry->exect_region_addr  = 0x%lx\n", \
 	entry->fce_region_addr, entry->secret_region_addr);
 
 
-	pr_info("fce_regions_creation: function end with no bug\n");
+	pr_debug("fce_regions_creation: function end with no bug\n");
 	mutex_unlock(&fc_table->mutex);
 	return fce_start_adr;
 
@@ -718,17 +718,17 @@ fail_lock:
 fail_get_free_vma_area:
 	mutex_unlock(&fc_table->mutex);
 	mmap_write_unlock(mm);
-	pr_info("fce_regions_creation: function end with fail_get_free_vma_area\n");
+	pr_debug("fce_regions_creation: function end with fail_get_free_vma_area\n");
 	return ERR_PTR(ret);
 fail_creat_vma:
 	mutex_unlock(&fc_table->mutex);
 	mmap_write_unlock(mm);
-	pr_info("fce_regions_creation: function end with fail_creat_vma \n");
+	pr_debug("fce_regions_creation: function end with fail_creat_vma \n");
 	return ERR_PTR(ret);
 
 fail_create_fce:
 	mutex_unlock(&fc_table->mutex);
-	pr_info("fce_regions_creation: function end with fail_creat_fce, too many entrys \n");
+	pr_debug("fce_regions_creation: function end with fail_creat_fce, too many entrys \n");
 failed_find_entry:
 	unmap_region(fce_start_adr);
 	unmap_region(secret_start_adr);

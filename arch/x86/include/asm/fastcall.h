@@ -8,7 +8,7 @@
 
 #ifdef CONFIG_FASTCALL
 
-#define NR_ENTRIES 50
+#define NR_ENTRIES 150
 #define NR_HIDDEN_REGION 10
 #define MOV_SLOT_SIZE 15
 #define MOV_SLOT_OFFSET 2
