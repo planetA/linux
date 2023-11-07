@@ -133,6 +133,7 @@ int fast_call_example(unsigned long __user user_address){
 		goto fail_creation_hidden_region;
 	}
 
+#if 0
 	ret = hidden_region_creation(fce_addr, hidden_pages, 1, sr_pages[0]);
 	if (IS_ERR(ret)) {
 		pr_debug("fast_call_example: hidden_region_creatrion falied ,ret = %d\n", ret);
@@ -153,6 +154,7 @@ int fast_call_example(unsigned long __user user_address){
 		ret = -ENOMEM;
 		goto fail_creation_hidden_region;
 	}
+#endif
 
 	entry = find_entry(fce_addr);
 	if(!entry){
