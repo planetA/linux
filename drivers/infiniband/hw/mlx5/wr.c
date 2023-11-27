@@ -257,8 +257,9 @@ static u8 wq_sig(void *wqe)
 	return calc_sig(wqe, (*((u8 *)wqe + 8) & 0x3f) << 4);
 }
 
-static int set_data_inl_seg(struct mlx5_ib_qp *qp, const struct ib_send_wr *wr,
-			    void **wqe, int *wqe_sz, void **cur_edge)
+static int set_data_inl_seg(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
+			    const struct ib_send_wr *wr, void **wqe,
+			    int *wqe_sz, void **cur_edge)
 {
 	struct mlx5_wqe_inline_seg *seg;
 	size_t offset;
@@ -296,14 +297,22 @@ static int set_data_inl_seg(struct mlx5_ib_qp *qp, const struct ib_send_wr *wr,
 				int pinned_pages;
 				int flags = 0;
 
+				dump_stack();
+				mlx5_ib_warn(dev,
+					"mlx5_ib: failed to copy inline data: addr %px size %lu, "
+					"in_irq %lu, in_softirq %lu, in_interrupt %lu in_atomic %d\n",
+					addr, copysz,
+					in_irq(), in_softirq(), in_interrupt(), in_atomic());
 				pinned_pages = get_user_pages_fast((unsigned long) addr, nr_pages, flags, &pages);
 				if (pinned_pages <= 0) {
+					mlx5_ib_warn(dev, "mlx5_ib: failed to pin pages\n");
 					return -EFAULT;
 				}
 
 				if (unlikely(copy_from_user(*wqe, addr, copysz))) {
 					put_page(&pages[0]);
-					return -EFAULT;
+					mlx5_ib_warn(dev, "mlx5_ib: failed to copy inline data\n");
+					return -EIO;
 				}
 				put_page(&pages[0]);
 			}
@@ -1179,10 +1188,10 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 
 		if (wr->send_flags & IB_SEND_INLINE && num_sge) {
 			spin_unlock_irqrestore(&qp->sq.lock, flags);
-			err = set_data_inl_seg(qp, wr, &seg, &size, &cur_edge);
+			err = set_data_inl_seg(dev, qp, wr, &seg, &size, &cur_edge);
 			spin_lock_irqsave(&qp->sq.lock, flags);
 			if (unlikely(err)) {
-				mlx5_ib_warn(dev, "\n");
+				mlx5_ib_warn(dev, "Failed set_data_inl_seg: %d\n", err);
 				*bad_wr = wr;
 				goto out;
 			}
