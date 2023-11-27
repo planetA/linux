@@ -307,6 +307,7 @@ static int set_data_inl_seg(struct mlx5_ib_qp *qp, const struct ib_send_wr *wr,
 				}
 				put_page(&pages[0]);
 			}
+
 			len -= copysz;
 			addr += copysz;
 			*wqe += copysz;
@@ -1177,7 +1178,9 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 		}
 
 		if (wr->send_flags & IB_SEND_INLINE && num_sge) {
+			spin_unlock_irqrestore(&qp->sq.lock, flags);
 			err = set_data_inl_seg(qp, wr, &seg, &size, &cur_edge);
+			spin_lock_irqsave(&qp->sq.lock, flags);
 			if (unlikely(err)) {
 				mlx5_ib_warn(dev, "\n");
 				*bad_wr = wr;
