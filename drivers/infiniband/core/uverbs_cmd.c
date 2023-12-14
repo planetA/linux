@@ -42,6 +42,7 @@
 
 #include <rdma/uverbs_types.h>
 #include <rdma/uverbs_std_types.h>
+#include <trace/events/rdma_uverbs.h>
 #include "rdma_core.h"
 
 #include "uverbs.h"
@@ -2146,6 +2147,25 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			sg_ind += next->num_sge;
 		} else
 			next->sg_list = NULL;
+	}
+
+	if (trace_qp_post_send_wr_enabled()) {
+		struct ib_send_wr *w;
+
+		for (w = wr; w; w = w->next) {
+			int i;
+			size_t total_size = 0;
+			int imm_opcodes = (IB_WR_RDMA_WRITE_WITH_IMM |
+					   IB_WR_SEND_WITH_IMM);
+			for (i = 0; i < w->num_sge; i++)
+				total_size += w->sg_list[i].length;
+
+			if (w->opcode & imm_opcodes) {
+				total_size += 4;
+			}
+
+			trace_qp_post_send_wr(qp, w, total_size, cmd.wr_count);
+		}
 	}
 
 	resp.bad_wr = 0;
