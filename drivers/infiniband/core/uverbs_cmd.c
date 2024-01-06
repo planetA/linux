@@ -2036,19 +2036,6 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		goto out_put;
 	}
 
-	cg_device = &ucontext->device->cg_device;
-	if (!cg_device) {
-		pr_err("cg_device is NULL\n");
-		ret = -EINVAL;
-		goto out_put;
-	}
-
-	cgrp = rdmacg_accounting_start(cg_device);
-	if (IS_ERR(cgrp)) {
-		ret = PTR_ERR(cgrp);
-		goto out_put;
-	}
-
 	is_ud = qp->qp_type == IB_QPT_UD;
 	sg_ind = 0;
 	last = NULL;
@@ -2056,12 +2043,12 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		if (copy_from_user(user_wr, wqes + i * cmd.wqe_size,
 				   cmd.wqe_size)) {
 			ret = -EFAULT;
-			goto out_cg;
+			goto out_put;
 		}
 
 		if (user_wr->num_sge + sg_ind > cmd.sge_count) {
 			ret = -EINVAL;
-			goto out_cg;
+			goto out_put;
 		}
 
 		if (is_ud) {
@@ -2070,14 +2057,14 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if (user_wr->opcode != IB_WR_SEND &&
 			    user_wr->opcode != IB_WR_SEND_WITH_IMM) {
 				ret = -EINVAL;
-				goto out_cg;
+				goto out_put;
 			}
 
 			next_size = sizeof(*ud);
 			ud = alloc_wr(next_size, user_wr->num_sge);
 			if (!ud) {
 				ret = -ENOMEM;
-				goto out_cg;
+				goto out_put;
 			}
 
 			ud->ah = uobj_get_obj_read(ah, UVERBS_OBJECT_AH,
@@ -2085,7 +2072,7 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			if (!ud->ah) {
 				kfree(ud);
 				ret = -EINVAL;
-				goto out_cg;
+				goto out_put;
 			}
 			ud->remote_qpn = user_wr->wr.ud.remote_qpn;
 			ud->remote_qkey = user_wr->wr.ud.remote_qkey;
@@ -2100,7 +2087,7 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			rdma = alloc_wr(next_size, user_wr->num_sge);
 			if (!rdma) {
 				ret = -ENOMEM;
-				goto out_cg;
+				goto out_put;
 			}
 
 			rdma->remote_addr = user_wr->wr.rdma.remote_addr;
@@ -2115,7 +2102,7 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			atomic = alloc_wr(next_size, user_wr->num_sge);
 			if (!atomic) {
 				ret = -ENOMEM;
-				goto out_cg;
+				goto out_put;
 			}
 
 			atomic->remote_addr = user_wr->wr.atomic.remote_addr;
@@ -2131,11 +2118,11 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 			next = alloc_wr(next_size, user_wr->num_sge);
 			if (!next) {
 				ret = -ENOMEM;
-				goto out_cg;
+				goto out_put;
 			}
 		} else {
 			ret = -EINVAL;
-			goto out_cg;
+			goto out_put;
 		}
 
 		if (user_wr->opcode == IB_WR_SEND_WITH_IMM ||
@@ -2159,36 +2146,33 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		next->send_flags = user_wr->send_flags;
 
 		if (next->num_sge) {
-			int sg_i;
-
 			next->sg_list = (void *) next +
 				ALIGN(next_size, sizeof(struct ib_sge));
 			if (copy_from_user(next->sg_list, sgls + sg_ind,
 					   next->num_sge *
 						   sizeof(struct ib_sge))) {
 				ret = -EFAULT;
-				goto out_cg;
-			}
-
-			for (sg_i = 0; sg_i < next->num_sge; sg_i++) {
-				ret = rdmacg_accounting_add(
-					cgrp, cg_device,
-					RDMACG_RESOURCE_GBPS_SEND_MAX,
-					next->sg_list[sg_i].length);
-				if (ret)
-					goto out_cg;
+				goto out_put;
 			}
 			sg_ind += next->num_sge;
 		} else
 			next->sg_list = NULL;
 	}
 
-	ret = rdmacg_accounting_charge(cgrp, cg_device,
-				       RDMACG_RESOURCE_GBPS_SEND_MAX);
-	if (ret)
-		goto out_cg;
+	cg_device = &ucontext->device->cg_device;
+	if (!cg_device) {
+		pr_err("cg_device is NULL\n");
+		ret = -EINVAL;
+		goto out_put;
+	}
 
-	if (trace_qp_post_send_wr_enabled()) {
+	cgrp = rdmacg_accounting_start(cg_device);
+	if (IS_ERR(cgrp)) {
+		ret = PTR_ERR(cgrp);
+		goto out_put;
+	}
+
+	{
 		struct ib_send_wr *w;
 
 		for (w = wr; w; w = w->next) {
@@ -2203,9 +2187,21 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 				total_size += 4;
 			}
 
+			ret = rdmacg_accounting_add(
+				cgrp, cg_device,
+				RDMACG_RESOURCE_GBPS_SEND_MAX,
+				total_size);
+			if (ret)
+				goto out_cg;
+
 			trace_qp_post_send_wr(qp, w, total_size, cmd.wr_count);
 		}
 	}
+
+	ret = rdmacg_accounting_charge(cgrp, cg_device,
+				       RDMACG_RESOURCE_GBPS_SEND_MAX);
+	if (ret)
+		goto out_cg;
 
 	resp.bad_wr = 0;
 	ret = qp->device->ops.post_send(qp->real_qp, wr, &bad_wr);
