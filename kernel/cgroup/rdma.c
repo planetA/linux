@@ -15,6 +15,7 @@
 #include <linux/parser.h>
 #include <linux/cgroup_rdma.h>
 #include <linux/delay.h>
+#include <trace/events/cgroup.h>
 
 #define RDMACG_MAX_STR "max"
 
@@ -456,6 +457,9 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 
 	for (p = rdmacg; p; p = parent_rdmacg(p)) {
 		const u64 window_size = 200;
+		const u64 KILO = 1000;
+		const u64 MEGA = KILO * KILO;
+		// const u64 GIGA = KILO * MEGA;
 		ktime_t t_0, t_1, w, dt;
 		s64 c_0, c_1, l, r_1, d_1, limit;
 		u64 lw_div;
@@ -507,12 +511,12 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 
 		r_1 = rpool->resources[index].requested;
 		/*
-		 * Need to ensure we have no overflow, so we put one 1024
+		 * Need to ensure we have no overflow, so we put one KILO
 		 * outside. Also divide by 8, because limit is set in bits, but
 		 * accounting goes in bytes.
 		 */
 		limit = rpool->resources[index].max;
-		l = div_s64(limit * 1024 * 1024 / 8 * w, NSEC_PER_SEC) * 1024;
+		l = div_s64(limit * MEGA / 8 * w, NSEC_PER_SEC) * KILO;
 		lw_div = div_u64_rem(l, w, &lw_mod);
 
 		c_0 = rpool->resources[index].usage;
@@ -556,7 +560,7 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 			rpool->resources[index].usage = d_1;
 			rpool->resources[index].last_update = t_1;
 
-			// pr_err("rate limiter: overflow=%lld, timeout=%lld\n",
+			// pr_err_ratelimited("rate limiter: overflow=%lld, timeout=%lld\n",
 			// 	overflow, timeout);
 			mutex_unlock(&rdmacg_mutex);
 			usleep_range_state(timeout, 20 * USEC_PER_MSEC, TASK_INTERRUPTIBLE);
@@ -565,11 +569,11 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 			limit = rpool->resources[index].max;
 			r_1 = rpool->resources[index].requested;
 			/*
-			* Need to ensure we have no overflow, so we put one 1024
+			* Need to ensure we have no overflow, so we put one KILO
 			* outside. Also divide by 8, because limit is set in bits, but
 			* accounting goes in bytes.
 			*/
-			l = div_s64(limit * 1024 * 1024 / 8 * w, NSEC_PER_SEC) * 1024;
+			l = div_s64(limit * MEGA / 8 * w, NSEC_PER_SEC) * KILO;
 			lw_div = div_u64_rem(l, w, &lw_mod);
 
 			c_0 = rpool->resources[index].usage;
@@ -577,6 +581,8 @@ int rdmacg_accounting_charge(struct rdma_cgroup *rdmacg,
 
 			t_1 = ktime_get();
 			dt = ktime_sub(t_1, t_0);
+
+			trace_cgroup_rdma_throttle(device, overflow, timeout, ktime_to_ms(dt));
 
 			// pr_err("Time stamps: t_0=%lld, t_1=%lld, dt=%lld\n",
 			// 	t_0, t_1, dt);

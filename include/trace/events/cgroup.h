@@ -6,6 +6,7 @@
 #define _TRACE_CGROUP_H
 
 #include <linux/cgroup.h>
+#include <linux/cgroup_rdma.h>
 #include <linux/tracepoint.h>
 
 DECLARE_EVENT_CLASS(cgroup_root,
@@ -202,6 +203,46 @@ DEFINE_EVENT(cgroup_event, cgroup_notify_frozen,
 	TP_PROTO(struct cgroup *cgrp, const char *path, int val),
 
 	TP_ARGS(cgrp, path, val)
+);
+
+DECLARE_EVENT_CLASS(cgroup_rdma_event,
+	TP_PROTO(
+		const struct rdmacg_device *device,
+		s64 overflow,
+                s64 timeout,
+		s64 diff
+	),
+
+	TP_ARGS(device, overflow, timeout, diff),
+
+	TP_STRUCT__entry(
+		__string(device_name, device->name)
+		__field(s64,  overflow)
+		__field(s64,  timeout)
+		__field(s64,  diff)
+	),
+
+	TP_fast_assign(
+		__assign_str(device_name, device->name);
+		__entry->overflow = overflow;
+		__entry->timeout = timeout;
+		__entry->diff = diff;
+	),
+
+	TP_printk("device=%s overflow=%lld timeout=%lld diff=%lld",
+		__get_str(device_name), __entry->overflow, __entry->timeout, __entry->diff)
+);
+
+DEFINE_EVENT(cgroup_rdma_event, cgroup_rdma_throttle,
+
+	TP_PROTO(
+		const struct rdmacg_device *device,
+		s64 overflow,
+                s64 timeout,
+		s64 diff
+	),
+
+	TP_ARGS(device, overflow, timeout, diff)
 );
 
 #endif /* _TRACE_CGROUP_H */
