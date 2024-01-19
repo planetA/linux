@@ -1075,6 +1075,23 @@ void mlx5r_ring_db(struct mlx5_ib_qp *qp, unsigned int nreq,
 	bf->offset ^= bf->buf_size;
 }
 
+static int post_send_delay(struct mlx5_ib_dev *dev)
+{
+	/* Timeout in ns */
+	int timeout;
+
+	timeout = atomic_read(&dev->send_delay.timeout);
+
+	if (!timeout) {
+		return 0;
+	}
+
+	/* Nanosleep */
+	ndelay(timeout);
+
+	return 0;
+}
+
 int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 		      const struct ib_send_wr **bad_wr, bool drain)
 {
@@ -1103,6 +1120,8 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 
 	if (qp->type == IB_QPT_GSI)
 		return mlx5_ib_gsi_post_send(ibqp, wr, bad_wr);
+
+	post_send_delay(dev);
 
 	spin_lock_irqsave(&qp->sq.lock, flags);
 

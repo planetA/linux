@@ -898,6 +898,25 @@ struct mlx5_ib_delay_drop {
 	struct dentry		*dir_debugfs;
 };
 
+enum {
+	MLX5_MAX_SEND_DELAY_TIMEOUT_NS = 100 * 1000,
+	MLX5_MAX_SEND_DELAY_INTERVAL_MS = 1000,
+};
+
+struct mlx5_ib_send_delay {
+	struct mlx5_ib_dev     *dev;
+	struct delayed_work	send_delay_work;
+	/* serialize setting of send delay */
+	spinlock_t		lock;
+	unsigned int		interval;
+	bool			activate;
+	atomic_t		timeout;
+	atomic_t		index;
+	atomic_t		events_cnt;
+	atomic_t		rqs_cnt;
+	struct dentry		*dir_debugfs;
+};
+
 enum mlx5_ib_stages {
 	MLX5_IB_STAGE_INIT,
 	MLX5_IB_STAGE_FS,
@@ -918,6 +937,7 @@ enum mlx5_ib_stages {
 	MLX5_IB_STAGE_IB_REG,
 	MLX5_IB_STAGE_POST_IB_REG_UMR,
 	MLX5_IB_STAGE_DELAY_DROP,
+	MLX5_IB_STAGE_DELAY_SEND,
 	MLX5_IB_STAGE_RESTRACK,
 	MLX5_IB_STAGE_MAX,
 };
@@ -1092,6 +1112,7 @@ struct mlx5_ib_dev {
 	struct mlx5_sq_bfreg	wc_bfreg;
 	struct mlx5_sq_bfreg	fp_bfreg;
 	struct mlx5_ib_delay_drop	delay_drop;
+	struct mlx5_ib_send_delay	send_delay;
 	const struct mlx5_ib_profile	*profile;
 
 	struct mlx5_ib_lb_state		lb;

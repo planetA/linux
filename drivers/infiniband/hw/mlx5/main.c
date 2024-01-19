@@ -46,6 +46,7 @@
 #include <rdma/uverbs_ioctl.h>
 #include <rdma/mlx5_user_ioctl_verbs.h>
 #include <rdma/mlx5_user_ioctl_cmds.h>
+#include <rdma/ib_verbs.h>
 
 #define UVERBS_MODULE_NAME mlx5_ib
 #include <rdma/uverbs_named_ioctl.h>
@@ -2587,6 +2588,31 @@ static void delay_drop_handler(struct work_struct *work)
 	mutex_unlock(&delay_drop->lock);
 }
 
+static void send_delay_handler(struct work_struct *work)
+{
+	// unsigned long flags;
+	// struct mlx5_ib_send_delay *send_delay =
+	// 	container_of(work, struct mlx5_ib_send_delay,
+	// 		     send_delay_work.work);
+	// struct ib_device *ibdev = &send_delay->dev->ib_dev;
+	// unsigned int interval;
+	// int index = atomic_read(&send_delay->index);
+	// u32 value;
+
+	// if (index < 0)
+	// 	return;
+
+	// atomic_inc(&send_delay->events_cnt);
+
+	// value = (u32) rdma_counter_get_hwstat_value(ibdev, 0, index);
+
+	// atomic_set(&send_delay->events_cnt, value);
+
+	// spin_lock_irqsave(&send_delay->lock, flags);
+	// schedule_delayed_work(&send_delay->send_delay_work, interval);
+	// spin_unlock_irqrestore(&send_delay->lock, flags);
+}
+
 static void handle_general_event(struct mlx5_ib_dev *ibdev, struct mlx5_eqe *eqe,
 				 struct ib_event *ibev)
 {
@@ -3114,6 +3140,94 @@ static const struct file_operations fops_delay_drop_timeout = {
 	.open	= simple_open,
 	.write	= delay_drop_timeout_write,
 	.read	= delay_drop_timeout_read,
+};
+
+static ssize_t send_delay_timeout_read(struct file *filp, char __user *buf,
+				       size_t count, loff_t *pos)
+{
+	struct mlx5_ib_send_delay *send_delay = filp->private_data;
+	unsigned long timeout;
+	char lbuf[20];
+	int len;
+
+	timeout = atomic_read(&send_delay->timeout);
+
+	len = snprintf(lbuf, sizeof(lbuf), "%lu\n", timeout);
+	return simple_read_from_buffer(buf, count, pos, lbuf, len);
+}
+
+static ssize_t send_delay_timeout_write(struct file *filp, const char __user *buf,
+					size_t count, loff_t *pos)
+{
+	struct mlx5_ib_send_delay *send_delay = filp->private_data;
+	unsigned long timeout;
+	unsigned long var;
+
+	if (kstrtoul_from_user(buf, count, 0, &var))
+		return -EFAULT;
+
+	timeout = min_t(unsigned long, roundup(var, 100), MLX5_MAX_SEND_DELAY_TIMEOUT_NS);
+	if (timeout != var)
+		mlx5_ib_dbg(send_delay->dev, "Round delay drop timeout to %lu nsec\n",
+			    timeout);
+
+	atomic_set(&send_delay->timeout, timeout);
+
+	return count;
+}
+
+static const struct file_operations fops_send_delay_timeout = {
+	.owner	= THIS_MODULE,
+	.open	= simple_open,
+	.write	= send_delay_timeout_write,
+	.read	= send_delay_timeout_read,
+};
+
+static ssize_t send_delay_interval_read(struct file *filp, char __user *buf,
+				       size_t count, loff_t *pos)
+{
+	struct mlx5_ib_send_delay *send_delay = filp->private_data;
+	unsigned long flags;
+	char lbuf[20];
+	u32 interval;
+	int len;
+
+	spin_lock_irqsave(&send_delay->lock, flags);
+	interval = jiffies_to_msecs(send_delay->interval);
+	spin_unlock_irqrestore(&send_delay->lock, flags);
+
+	len = snprintf(lbuf, sizeof(lbuf), "%u\n", interval);
+	return simple_read_from_buffer(buf, count, pos, lbuf, len);
+}
+
+static ssize_t send_delay_interval_write(struct file *filp, const char __user *buf,
+					size_t count, loff_t *pos)
+{
+	struct mlx5_ib_send_delay *send_delay = filp->private_data;
+	unsigned long flags;
+	unsigned int interval;
+	unsigned int var;
+
+	if (kstrtouint_from_user(buf, count, 0, &var))
+		return -EFAULT;
+
+	interval = min_t(unsigned int, var, MLX5_MAX_SEND_DELAY_INTERVAL_MS);
+	if (interval != var)
+		mlx5_ib_dbg(send_delay->dev, "Round delay drop interval to %u usec\n",
+			    interval);
+
+	spin_lock_irqsave(&send_delay->lock, flags);
+	send_delay->interval = msecs_to_jiffies(interval);
+	spin_unlock_irqrestore(&send_delay->lock, flags);
+
+	return count;
+}
+
+static const struct file_operations fops_send_delay_interval = {
+	.owner	= THIS_MODULE,
+	.open	= simple_open,
+	.write	= send_delay_interval_write,
+	.read	= send_delay_interval_read,
 };
 
 static void mlx5_ib_unbind_slave_port(struct mlx5_ib_dev *ibdev,
@@ -4081,6 +4195,65 @@ static void mlx5_ib_stage_delay_drop_cleanup(struct mlx5_ib_dev *dev)
 	dev->delay_drop.dir_debugfs = NULL;
 }
 
+static int mlx5_ib_stage_send_delay_init(struct mlx5_ib_dev *dev)
+{
+	struct dentry *root;
+	// unsigned long flags;
+	int i;
+
+	spin_lock_init(&dev->send_delay.lock);
+	dev->send_delay.dev = dev;
+	dev->send_delay.activate = false;
+	dev->send_delay.interval = msecs_to_jiffies(MLX5_MAX_SEND_DELAY_INTERVAL_MS);
+	INIT_DELAYED_WORK(&dev->send_delay.send_delay_work, send_delay_handler);
+	atomic_set(&dev->send_delay.timeout, 0);
+	atomic_set(&dev->send_delay.rqs_cnt, 0);
+	atomic_set(&dev->send_delay.events_cnt, 0);
+
+	atomic_set(&dev->send_delay.index, -1);
+	for (i = 0; i < dev->port[0].cnts.num_q_counters; i++) {
+		mlx5_ib_dbg(dev, "counter %d name %s\n", i, dev->port[0].cnts.descs[i].name);
+		if (!strcmp(dev->port[0].cnts.descs[i].name, "local_ack_timeout_err")) {
+			atomic_set(&dev->send_delay.index, i);
+			break;
+		}
+	}
+
+	if (!mlx5_debugfs_root)
+		return 0;
+
+	root = debugfs_create_dir("send_delay", mlx5_debugfs_get_dev_root(dev->mdev));
+	dev->delay_drop.dir_debugfs = root;
+
+	debugfs_create_atomic_t("num_timeout_events", 0400, root,
+				&dev->send_delay.events_cnt);
+	debugfs_create_atomic_t("counter_index", 0400, root,
+				&dev->send_delay.index);
+	debugfs_create_atomic_t("num_rqs", 0400, root,
+				&dev->send_delay.rqs_cnt);
+	debugfs_create_file("timeout", 0600, root, &dev->send_delay,
+			    &fops_send_delay_timeout);
+	debugfs_create_file("interval", 0600, root, &dev->send_delay,
+			    &fops_send_delay_interval);
+
+#if 0
+	spin_lock_irqsave(&dev->send_delay.lock, flags);
+	schedule_delayed_work(&dev->send_delay.send_delay_work, dev->send_delay.interval);
+	spin_unlock_irqrestore(&dev->send_delay.lock, flags);
+#endif
+	return 0;
+}
+
+static void mlx5_ib_stage_send_delay_cleanup(struct mlx5_ib_dev *dev)
+{
+	cancel_delayed_work_sync(&dev->send_delay.send_delay_work);
+	if (!dev->send_delay.dir_debugfs)
+		return;
+
+	debugfs_remove_recursive(dev->send_delay.dir_debugfs);
+	dev->send_delay.dir_debugfs = NULL;
+}
+
 static int mlx5_ib_stage_dev_notifier_init(struct mlx5_ib_dev *dev)
 {
 	dev->mdev_events.notifier_call = mlx5_ib_event;
@@ -4197,6 +4370,9 @@ static const struct mlx5_ib_profile pf_profile = {
 	STAGE_CREATE(MLX5_IB_STAGE_DELAY_DROP,
 		     mlx5_ib_stage_delay_drop_init,
 		     mlx5_ib_stage_delay_drop_cleanup),
+	STAGE_CREATE(MLX5_IB_STAGE_DELAY_SEND,
+		     mlx5_ib_stage_send_delay_init,
+		     mlx5_ib_stage_send_delay_cleanup),
 	STAGE_CREATE(MLX5_IB_STAGE_RESTRACK,
 		     mlx5_ib_restrack_init,
 		     NULL),
