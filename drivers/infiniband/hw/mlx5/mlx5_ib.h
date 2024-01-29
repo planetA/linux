@@ -1627,6 +1627,7 @@ static inline int mlx5_delay(atomic_t *delay)
 {
 	/* Timeout in ns */
 	int delay_ns;
+	int random;
 	int i;
 
 	delay_ns = atomic_read(delay);
@@ -1634,6 +1635,9 @@ static inline int mlx5_delay(atomic_t *delay)
 	if (!delay_ns) {
 		return 0;
 	}
+
+	get_random_bytes(&random, sizeof(random));
+	delay_ns = random % delay_ns;
 
 	for (i = 0; i < delay_ns; i++) {
 		__asm__ __volatile__ ("" : "+g" (i) : :);
