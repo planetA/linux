@@ -910,10 +910,9 @@ struct mlx5_ib_send_delay {
 	spinlock_t		lock;
 	unsigned int		interval;
 	bool			activate;
-	atomic_t		timeout;
-	atomic_t		index;
-	atomic_t		events_cnt;
-	atomic_t		rqs_cnt;
+	atomic_t		send;
+	atomic_t		recv;
+	atomic_t		poll;
 	struct dentry		*dir_debugfs;
 };
 
@@ -1112,7 +1111,7 @@ struct mlx5_ib_dev {
 	struct mlx5_sq_bfreg	wc_bfreg;
 	struct mlx5_sq_bfreg	fp_bfreg;
 	struct mlx5_ib_delay_drop	delay_drop;
-	struct mlx5_ib_send_delay	send_delay;
+	struct mlx5_ib_send_delay	delay;
 	const struct mlx5_ib_profile	*profile;
 
 	struct mlx5_ib_lb_state		lb;
@@ -1622,6 +1621,25 @@ static inline bool mlx5_umem_needs_ats(struct mlx5_ib_dev *dev,
 	if (!MLX5_CAP_GEN(dev->mdev, ats) || !umem->is_dmabuf)
 		return false;
 	return access_flags & IB_ACCESS_RELAXED_ORDERING;
+}
+
+static inline int mlx5_delay(atomic_t *delay)
+{
+	/* Timeout in ns */
+	int delay_ns;
+	int i;
+
+	delay_ns = atomic_read(delay);
+
+	if (!delay_ns) {
+		return 0;
+	}
+
+	for (i = 0; i < delay_ns; i++) {
+		__asm__ __volatile__ ("" : "+g" (i) : :);
+	}
+
+	return 0;
 }
 
 #endif /* MLX5_IB_H */

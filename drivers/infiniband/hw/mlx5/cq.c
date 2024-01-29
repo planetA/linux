@@ -621,6 +621,8 @@ int mlx5_ib_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 	int soft_polled = 0;
 	int npolled;
 
+	mlx5_delay(&dev->delay.poll);
+
 	spin_lock_irqsave(&cq->lock, flags);
 	if (mdev->state == MLX5_DEVICE_STATE_INTERNAL_ERROR) {
 		/* make sure no soft wqe's are waiting */
